@@ -6,7 +6,7 @@
 const APP_VERSION = "22";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 if (!window.APP_CONFIG || !window.APP_CONFIG.firebase) {
   document.body.innerHTML = '<div style="color:#fff;font-family:sans-serif;padding:40px">Falta config.js con los datos de Firebase.</div>';
@@ -2172,15 +2172,24 @@ let RECEP = [], recepLoaded = false, recFilterMes = "", recFlash = "", recGestio
 async function recepLoad(gestion) {
   gestion = gestion || recGestion || String(new Date().getFullYear());
   try {
-    let q;
-    if (gestion === "todas") {
-      q = query(collection(db, "recepciones"), orderBy("fechaISO", "desc"), limit(1500));
-    } else {
+    // Carga por páginas de 1000 hasta traer TODO (antes se cortaba en 3000)
+    const filtros = [];
+    if (gestion !== "todas") {
       const a = gestion + "-01-01", b = (Number(gestion) + 1) + "-01-01";
-      q = query(collection(db, "recepciones"), where("fechaISO", ">=", a), where("fechaISO", "<", b), orderBy("fechaISO", "desc"), limit(3000));
+      filtros.push(where("fechaISO", ">=", a), where("fechaISO", "<", b));
     }
-    const snap = await getDocs(q);
-    RECEP = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const PAG = 1000, TOPE = gestion === "todas" ? 20000 : 15000;
+    let todos = [], ultimo = null;
+    while (todos.length < TOPE) {
+      const partes = [collection(db, "recepciones"), ...filtros, orderBy("fechaISO", "desc")];
+      if (ultimo) partes.push(startAfter(ultimo));
+      partes.push(limit(PAG));
+      const snap = await getDocs(query(...partes));
+      todos = todos.concat(snap.docs);
+      if (snap.docs.length < PAG) break;
+      ultimo = snap.docs[snap.docs.length - 1];
+    }
+    RECEP = todos.map(d => Object.assign({ id: d.id }, d.data()));
     RECEP.sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
     recLoadedGestion = gestion; recepLoaded = true; recepError = "";
   } catch (e) { recepError = e.code || e.message; recepLoaded = true; /* conserva lo que ya había */ }
