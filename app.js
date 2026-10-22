@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "23";
+const APP_VERSION = "24";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -68,7 +68,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 // Secciones del menú (apartados) y las pestañas (views) que contienen
 const NAV_SECTIONS = [
   { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "tarifas", "calendario"] },
-  { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "arqueo", "egresos"] },
+  { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "arqueo", "egresos", "repfinanzas"] },
   { key: "listas",   label: "LISTAS",          views: ["declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
   { key: "reportes", label: "REPORTES",        views: ["presence", "historial", "reports"] },
@@ -76,7 +76,7 @@ const NAV_SECTIONS = [
 ];
 const VIEW_LABELS = {
   inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
-  recepcion: "Recepción", arqueo: "Arqueo", egresos: "Egresos",
+  recepcion: "Recepción", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
   declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
   presence: "Presencia", historial: "Historial", reports: "Reportes",
@@ -188,6 +188,7 @@ function switchView(v, btn) {
   if (v === "calendario") renderCalendario();
   if (v === "arqueo") renderArqueo();
   if (v === "egresos") renderEgresos();
+  if (v === "repfinanzas") renderRepFinanzas();
   if (v === "presence") renderPresence();
   if (v === "historial") renderHistorial();
   if (v === "bandeja") renderBandeja();
@@ -3121,7 +3122,6 @@ function paintListaTrabajo(tipo, viewId, titulo) {
       <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.rubro ? " · " + escape(r.rubro) : ""}</div></td>
       <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
       <td>${escape(perTxt(perDe(r)))}</td>
-      <td class="mono" style="text-align:right">${money(r.importe)}</td>
       <td>${ltFila(r, "estadoTrabajo", ESTADOS_TRABAJO, canEdit)}</td></tr>`).join("");
   const nota = tipo === "declaracion"
     ? "Declaraciones mensuales del período <b>Octubre 2026</b> en adelante, más todo lo que se recepcione desde ahora. Lo anterior ya está culminado."
@@ -3139,8 +3139,8 @@ function paintListaTrabajo(tipo, viewId, titulo) {
       <select id="lt_est"><option value="">Todos los estados</option>${ESTADOS_TRABAJO.map(([v, l]) => `<option value="${v}" ${v === ui.est ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input id="lt_q" placeholder="🔎 Buscar cliente, NIT, detalle…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
     </div>
-    <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>${tipo === "eeff" ? "Gestión" : "Período"}</th><th style="text-align:right">Importe</th><th>Estado</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">No hay registros con este filtro.</td></tr>`}</tbody></table></div>`;
+    <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>${tipo === "eeff" ? "Gestión" : "Período"}</th><th>Estado</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" style="color:var(--muted)">No hay registros con este filtro.</td></tr>`}</tbody></table></div>`;
   const root = el(viewId), repaint = () => paintListaTrabajo(tipo, viewId, titulo);
   if (el("lt_per")) el("lt_per").onchange = e => { ui.per = e.target.value; repaint(); };
   el("lt_est").onchange = e => { ui.est = e.target.value; repaint(); };
@@ -3159,12 +3159,11 @@ const DJ_ESTADOS = [
   ["pendiente", "Pendiente", "off"],
   ["rcv", "RCV en curso", "mut"],
   ["falta_declarar", "Falta declarar", "danger"],
-  ["terminado", "Terminado", "ok"],
-  ["mal_recepcionado", "Mal recepcionado", "danger"]
+  ["terminado", "Terminado", "ok"]
 ];
 // Estado: si alguien lo fijó a mano se respeta; si no, se calcula solo con lo llenado
 function djEstado(r) {
-  if (r.dj_estado) return r.dj_estado;
+  if (r.dj_estado && DJ_ESTADOS.some(e => e[0] === r.dj_estado)) return r.dj_estado;
   if (r.dj_fechaDeclaracion || r.dj_declaradoPor) return "terminado";
   if (r.dj_rcvFinalizado) return "falta_declarar";
   if (r.dj_rcvIniciado || r.dj_rcvPor) return "rcv";
@@ -3177,10 +3176,10 @@ function djHoy() { const d = new Date(); return d.getFullYear() + "-" + String(d
 function djFechaTxt(iso) { if (!iso) return ""; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); }
 const DJ_UI = { q: "", est: "", per: "", resp: "", tab: "lista", agr: "periodo" };
 // Agrupa estados para el resumen: En proceso = RCV en curso + Falta declarar; Entregado = Terminado
-function djGrupo(k) { return k === "terminado" ? "entregado" : (k === "rcv" || k === "falta_declarar") ? "en_proceso" : k === "mal_recepcionado" ? "mal" : "pendiente"; }
-function djResumenHTML(base) {
+function djGrupo(k) { return k === "terminado" ? "entregado" : (k === "rcv" || k === "falta_declarar") ? "en_proceso" : "pendiente"; }
+function djResumenHTML(base, conDinero) {
   const tot = l => {
-    const o = { n: l.length, bs: 0, pendiente: 0, en_proceso: 0, entregado: 0, mal: 0 };
+    const o = { n: l.length, bs: 0, pendiente: 0, en_proceso: 0, entregado: 0 };
     l.forEach(r => { o.bs += Number(r.importe) || 0; o[djGrupo(djEstado(r))]++; });
     return o;
   };
@@ -3190,24 +3189,23 @@ function djResumenHTML(base) {
   const grupos = {};
   base.forEach(r => { const k = keyDe(r) || "sin"; (grupos[k] = grupos[k] || []).push(r); });
   const keys = Object.keys(grupos).sort().reverse();
-  const fila = (lbl, o) => `<tr><td><b>${lbl}</b></td><td class="mono" style="text-align:right">${o.n}</td><td class="mono" style="text-align:right">${money(o.bs)}</td>
+  const fila = (lbl, o) => `<tr><td><b>${lbl}</b></td><td class="mono" style="text-align:right">${o.n}</td>${conDinero ? `<td class="mono" style="text-align:right">${money(o.bs)}</td>` : ""}
     <td class="mono" style="text-align:right;color:var(--warn)">${o.pendiente}</td><td class="mono" style="text-align:right">${o.en_proceso}</td>
-    <td class="mono" style="text-align:right;color:var(--ok)">${o.entregado}</td><td class="mono" style="text-align:right;color:var(--danger)">${o.mal || ""}</td>
+    <td class="mono" style="text-align:right;color:var(--ok)">${o.entregado}</td>
     <td style="min-width:120px"><div style="height:8px;background:var(--panel2);border-radius:20px;overflow:hidden"><i style="display:block;height:100%;width:${o.n ? Math.round(o.entregado / o.n * 100) : 0}%;background:var(--ok)"></i></div><div class="note" style="margin:2px 0 0">${pct(o.entregado, o.n)} entregado</div></td></tr>`;
   return `
-    <p class="lead">Declaraciones recepcionadas desde la migración a Firebase (período Octubre 2026 en adelante y todo lo nuevo).</p>
+    ${conDinero ? "" : `<p class="lead">Declaraciones recepcionadas desde la migración a Firebase (período Octubre 2026 en adelante y todo lo nuevo).</p>`}
     <div class="kpis">
       <div class="kpi"><div class="n">${T.n}</div><div class="l">Recepcionadas para declarar</div></div>
-      <div class="kpi"><div class="n" style="font-size:22px">${money(T.bs)}</div><div class="l">Total recepcionado</div></div>
+      ${conDinero ? `<div class="kpi"><div class="n" style="font-size:22px">${money(T.bs)}</div><div class="l">Total recepcionado</div></div>` : ""}
       <div class="kpi"><div class="n" style="color:var(--warn)">${T.pendiente}</div><div class="l">Pendientes</div></div>
       <div class="kpi"><div class="n">${T.en_proceso}</div><div class="l">En proceso</div></div>
       <div class="kpi"><div class="n" style="color:var(--ok)">${T.entregado}</div><div class="l">Entregados</div></div>
-      ${T.mal ? `<div class="kpi"><div class="n" style="color:var(--danger)">${T.mal}</div><div class="l">Mal recepcionados</div></div>` : ""}
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><h3 style="margin:0 auto 0 0">Por mes</h3>
       <select id="dj_agr"><option value="periodo" ${DJ_UI.agr === "periodo" ? "selected" : ""}>Por período a declarar</option><option value="recepcion" ${DJ_UI.agr === "recepcion" ? "selected" : ""}>Por mes en que se recepcionó</option></select></div>
-    <div style="overflow:auto"><table><thead><tr><th>Mes</th><th style="text-align:right">Recepcionadas</th><th style="text-align:right">Total Bs</th><th style="text-align:right">Pendientes</th><th style="text-align:right">En proceso</th><th style="text-align:right">Entregados</th><th style="text-align:right">Mal rec.</th><th>Avance</th></tr></thead>
-    <tbody>${keys.map(k => fila(k === "sin" ? "Sin mes" : recPeriodoTxt(k), tot(grupos[k]))).join("") || `<tr><td colspan="8" class="note">Sin datos todavía.</td></tr>`}</tbody>
+    <div style="overflow:auto"><table><thead><tr><th>Mes</th><th style="text-align:right">Recepcionadas</th>${conDinero ? `<th style="text-align:right">Total Bs</th>` : ""}<th style="text-align:right">Pendientes</th><th style="text-align:right">En proceso</th><th style="text-align:right">Entregados</th><th>Avance</th></tr></thead>
+    <tbody>${keys.map(k => fila(k === "sin" ? "Sin mes" : recPeriodoTxt(k), tot(grupos[k]))).join("") || `<tr><td colspan="7" class="note">Sin datos todavía.</td></tr>`}</tbody>
     ${keys.length > 1 ? `<tfoot>${fila("TOTAL", T)}</tfoot>` : ""}</table></div>
     <p class="note">En proceso = RCV en curso + Falta declarar · Entregado = Terminado.</p>`;
 }
@@ -3252,7 +3250,7 @@ function paintDDJJ() {
     <p class="lead">Declaraciones del período <b>Octubre 2026</b> en adelante, más <b>toda declaración que se recepcione desde ahora</b>, sea del mes que sea (lo anterior ya está culminado). Toca una fila para llenar el <b>RCV</b>, la <b>Declaración</b> y el <b>Seguimiento</b>.</p>
     <div class="kpis">
       <div class="kpi"><div class="n">${base.length}</div><div class="l">Total</div></div>
-      ${DJ_ESTADOS.map(([k, l]) => `<div class="kpi dj-kpi" data-k="${k}" style="cursor:pointer;${DJ_UI.est === k ? "outline:2px solid var(--accent)" : ""}"><div class="n" ${k === "terminado" ? 'style="color:var(--ok)"' : (k === "falta_declarar" || k === "mal_recepcionado") ? 'style="color:var(--danger)"' : ""}>${cnt(k)}</div><div class="l">${l}</div></div>`).join("")}
+      ${DJ_ESTADOS.map(([k, l]) => `<div class="kpi dj-kpi" data-k="${k}" style="cursor:pointer;${DJ_UI.est === k ? "outline:2px solid var(--accent)" : ""}"><div class="n" ${k === "terminado" ? 'style="color:var(--ok)"' : k === "falta_declarar" ? 'style="color:var(--danger)"' : ""}>${cnt(k)}</div><div class="l">${l}</div></div>`).join("")}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
       <select id="dj_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === DJ_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("")}</select>
@@ -3292,7 +3290,7 @@ function openDDJJ(r) {
       <div><h3 style="margin:0">${escape(r.clienteNombre || "—")}</h3>
         <div class="note" style="margin:2px 0 0">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
       <button class="mini" id="dj_x">✕</button></div>
-    <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? '<button class="mini" id="dj_vercred">🔑 Ver accesos del cliente (SIN)</button>' : ""}</div>
+    <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? "🔑 Cargando accesos del cliente…" : "🔑 Accesos visibles solo para quienes pueden editar."}</div>
     <div class="fs">1) RCV</div>
     <div class="grid3">
       ${f("RCV realizado por", sel("dj_rcvPor", [""].concat(eq), r.dj_rcvPor))}
@@ -3341,8 +3339,8 @@ function openDDJJ(r) {
     $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo; };
     $("dj_declaradoPor").onchange = () => { if ($("dj_declaradoPor").value && !$("dj_fechaDeclaracion").value) $("dj_fechaDeclaracion").value = djHoy(); };
   }
-  if ($("dj_vercred")) $("dj_vercred").onclick = () => {
-    const box = $("dj_cred"); box.textContent = "Buscando en la Base de Datos…";
+  if (canEdit) (() => {
+    const box = $("dj_cred");
     bdEnsureLoaded(ok => {
       if (!ok) { box.textContent = "No se pudo abrir la Base de Datos."; return; }
       const nit = String(r.nit || "").replace(/\D/g, "");
@@ -3350,9 +3348,10 @@ function openDDJJ(r) {
       if (!c) { box.textContent = "Este NIT no está en la Base de Datos de clientes."; return; }
       const items = [["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["Contraseña SIAT", bdV(c, "passSiat")], ["Correo", bdV(c, "correo")], ["Celular", bdV(c, "celular")]].filter(x => x[1]);
       box.innerHTML = items.map(([l, v], i) => `<span style="display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><span style="color:var(--muted)">${l}:</span> <b class="mono">${escape(v)}</b> <button class="mini dj-copy" data-i="${i}" title="Copiar">📋</button></span>`).join("") || "El cliente no tiene accesos guardados.";
+      box.innerHTML = `<b style="color:var(--accent);margin-right:8px">🔑 Accesos SIN</b>` + box.innerHTML;
       box.querySelectorAll(".dj-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(items[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
     });
-  };
+  })();
   if ($("dj_save")) $("dj_save").onclick = async () => {
     const v = id => $(id).value.trim(), c = id => !!$(id).checked;
     const ahora = new Date().toLocaleString("es-BO");
@@ -3378,6 +3377,42 @@ function openDDJJ(r) {
   };
 }
 
+// ---------- FINANZAS · Reportes financieros (con importes; solo para quien tenga permiso) ----------
+const RF_UI = { tab: "declaraciones" };
+async function renderRepFinanzas() {
+  el("v-repfinanzas").innerHTML = `<h1>Reportes financieros</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  await ltLoad();
+  paintRepFinanzas();
+}
+function paintRepFinanzas() {
+  const tabs = [["declaraciones", "Declaraciones"], ["eeff", "Estados Fin. (EEFF)"], ["facturacion", "Facturación"]];
+  let body = "";
+  if (RF_UI.tab === "declaraciones") {
+    body = djResumenHTML(LT_DATA.filter(r => enListaTrabajo(r, "declaracion")), true);
+  } else {
+    const tipo = RF_UI.tab;
+    const base = LT_DATA.filter(r => enListaTrabajo(r, tipo));
+    const keyDe = r => tipo === "eeff" ? (recGestionEEFF(r) || "—") : (recPeriodoKey(r) || "—");
+    const lbl = k => k === "—" ? "Sin dato" : tipo === "eeff" ? "Gestión " + k : recPeriodoTxt(k);
+    const g = {}; base.forEach(r => { const k = keyDe(r); (g[k] = g[k] || []).push(r); });
+    const sum = l => l.reduce((a, r) => a + (Number(r.importe) || 0), 0);
+    const hecho = r => tipo === "eeff" ? (r.estadoTrabajo === "entregado") : (r.estadoFactura === "facturado");
+    const keys = Object.keys(g).sort().reverse();
+    body = `<div class="kpis">
+        <div class="kpi"><div class="n">${base.length}</div><div class="l">Recepcionados</div></div>
+        <div class="kpi"><div class="n" style="font-size:22px">${money(sum(base))}</div><div class="l">Total recepcionado</div></div>
+        <div class="kpi"><div class="n" style="color:var(--ok)">${base.filter(hecho).length}</div><div class="l">${tipo === "eeff" ? "Entregados" : "Facturados"}</div></div>
+      </div>
+      <table><thead><tr><th>${tipo === "eeff" ? "Gestión" : "Mes"}</th><th style="text-align:right">Cantidad</th><th style="text-align:right">Total Bs</th><th style="text-align:right">${tipo === "eeff" ? "Entregados" : "Facturados"}</th></tr></thead>
+      <tbody>${keys.map(k => `<tr><td><b>${escape(lbl(k))}</b></td><td class="mono" style="text-align:right">${g[k].length}</td><td class="mono" style="text-align:right">${money(sum(g[k]))}</td><td class="mono" style="text-align:right">${g[k].filter(hecho).length}</td></tr>`).join("") || `<tr><td colspan="4" class="note">Sin datos todavía.</td></tr>`}</tbody></table>`;
+  }
+  el("v-repfinanzas").innerHTML = `<h1>Reportes financieros</h1>
+    <p class="note" style="margin:0 0 8px">Montos de lo recepcionado por lista. Esta pestaña solo la ven los roles con permiso (Usuarios → Permisos).</p>
+    <div class="subtabs" id="rftabs">${tabs.map(([k, l]) => `<button class="subtab ${RF_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
+  el("v-repfinanzas").querySelectorAll("#rftabs .subtab").forEach(b => b.onclick = () => { RF_UI.tab = b.dataset.tab; paintRepFinanzas(); });
+  if (el("dj_agr")) el("dj_agr").onchange = e => { DJ_UI.agr = e.target.value; paintRepFinanzas(); };
+}
+
 // ---------- FACTURACIÓN (subpestañas) ----------
 const FAC_UI = { tab: "activos", per: "", q: "" };
 async function renderFacturacion() {
@@ -3401,7 +3436,6 @@ function paintFacturacion() {
   if (FAC_UI.tab === "activos") {
     const list = filtQ(todos.filter(r => recPeriodoKey(r) === FAC_UI.per)).sort((a, b) => String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
     const fact = list.filter(r => r.estadoFactura === "facturado").length;
-    const total = list.reduce((a, r) => a + (Number(r.importe) || 0), 0);
     body = `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
         <label style="margin:0">Mes:</label>
@@ -3412,29 +3446,26 @@ function paintFacturacion() {
         <div class="kpi"><div class="n">${list.length}</div><div class="l">Suscriptores activos · ${escape(recPeriodoTxt(FAC_UI.per))}</div></div>
         <div class="kpi"><div class="n" style="color:var(--ok)">${fact}</div><div class="l">Facturados</div></div>
         <div class="kpi"><div class="n" style="color:var(--warn)">${list.length - fact}</div><div class="l">Por facturar</div></div>
-        <div class="kpi"><div class="n" style="font-size:22px">${money(total)}</div><div class="l">Cobrado del mes</div></div>
       </div>
-      <div style="overflow:auto"><table><thead><tr><th>#</th><th>Suscriptor</th><th>Celular</th><th>Servicio</th><th>Fecha pago</th><th style="text-align:right">Importe</th><th>Factura</th></tr></thead><tbody>
+      <div style="overflow:auto"><table><thead><tr><th>#</th><th>Suscriptor</th><th>Celular</th><th>Servicio</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
       ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td>
         <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""}</div></td>
         <td>${escape(r.clienteCelular || "—")}</td>
         <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
-        <td class="mono" style="text-align:right">${money(r.importe)}</td>
-        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">No hay suscriptores para este mes.</td></tr>`}
+        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">No hay suscriptores para este mes.</td></tr>`}
       </tbody></table></div>`;
   } else {
     const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
     body = `
       <p class="note" style="margin:0 0 10px">Facturas por emitir de los suscriptores activos (período Octubre 2026 en adelante). Al marcar <b>Facturado</b> sale de esta lista. <i>Esta sección se desarrollará a detalle más adelante.</i></p>
       <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="🔎 Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
-      <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th style="text-align:right">Importe</th><th>Factura</th></tr></thead><tbody>
+      <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
       ${list.map(r => `<tr><td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
         <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
         <td>${escape(r.clienteCelular || "—")}</td>
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
-        <td class="mono" style="text-align:right">${money(r.importe)}</td>
-        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">¡Sin facturas pendientes! 🎉</td></tr>`}
+        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted)">¡Sin facturas pendientes! 🎉</td></tr>`}
       </tbody></table></div>`;
   }
   el("v-facturacion").innerHTML = `<h1>Facturación</h1>
