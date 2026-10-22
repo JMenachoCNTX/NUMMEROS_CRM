@@ -181,10 +181,10 @@ function switchView(v, btn) {
   if (v === "asistente") renderAsistente();
   if (v === "recepcion") renderRecepcion();
   if (v === "dashboard") renderDashboard();
-  if (v === "declaraciones") renderLista("declaracion", "v-declaraciones", "Declaraciones");
+  if (v === "declaraciones") renderListaTrabajo("declaracion", "v-declaraciones", "Declaraciones");
   if (v === "tramites") renderLista("tramite", "v-tramites", "Trámites");
-  if (v === "eeff") renderLista("eeff", "v-eeff", "Estados Financieros (EEFF)");
-  if (v === "facturacion") renderLista("facturacion", "v-facturacion", "Facturación");
+  if (v === "eeff") renderListaTrabajo("eeff", "v-eeff", "Estados Financieros (EEFF)");
+  if (v === "facturacion") renderFacturacion();
   if (v === "calendario") renderCalendario();
   if (v === "arqueo") renderArqueo();
   if (v === "egresos") renderEgresos();
@@ -2665,7 +2665,7 @@ async function registrarRecepcion() {
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: (ME && ME.uid) || "", registradoPorNombre: (ME && (ME.name || ME.email)) || "", createdAt: serverTimestamp()
     };
-    const ref = doc(collection(db, "recepciones")); await setDoc(ref, rec); rec.id = ref.id;
+    const ref = doc(collection(db, "recepciones")); await setDoc(ref, rec); rec.id = ref.id; LT_DATA = null;
     let enviado = false;
     if (rec.clienteCorreo) {
       enviado = await postRecibo(rec);
@@ -3003,6 +3003,209 @@ function paintLista(tipo, viewId, titulo) {
   });
 }
 
+
+// ============================================================
+//  LISTAS DE TRABAJO (Declaraciones · EEFF · Facturación)
+//  Reglas de corte acordadas (oct-2026):
+//   - Declaraciones: DECLARACIÓN MENSUAL del período OCTUBRE 2026 en adelante
+//     (lo anterior ya se culminó) + todo lo que se recepcione desde el corte.
+//   - EEFF: todos los BALANCE recepcionados en 2026 en adelante.
+//   - Facturación: FACTURACIÓN del período OCTUBRE 2026 en adelante (suscripción activa).
+//  Estados propios de cada lista (no se mezclan con el "estado" del importador):
+//   estadoTrabajo (declaraciones/EEFF) y estadoFactura (facturación).
+// ============================================================
+const LISTA_CORTE = {
+  declaracionDesdePeriodo: "2026-10",
+  eeffDesdeFecha: "2026-01-01",
+  facturacionDesdePeriodo: "2026-10",
+  nuevosDesdeFecha: "2026-10-23"
+};
+function recNormTxt(t) { return String(t == null ? "" : t).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+// Período (AAAA-MM) al que corresponde la recepción: el mes declarado / facturado
+function recPeriodoKey(r) {
+  if (r.periodoTipo === "mes" && r.periodoMes && r.periodoAnio) return r.periodoAnio + "-" + String(r.periodoMes).padStart(2, "0");
+  const t = recNormTxt(r.mesRecepcion).replace("SETIEMBRE", "SEPTIEMBRE");
+  const mi = REC_MESES.findIndex(m => t.indexOf(m) >= 0);
+  if (mi < 0) return "";
+  let y = (t.match(/20\d{2}/) || [])[0];
+  if (!y) { const yy = t.match(/[./>\-\s](\d{2})\b/); if (yy) y = "20" + yy[1]; }
+  if (!y) {
+    const f = String(r.fechaISO || ""); const fy = Number(f.slice(0, 4)), fm = Number(f.slice(5, 7));
+    if (!fy) return "";
+    // El año que deja el período más cerca de la fecha de recepción:
+    // "DICIEMBRE" recepcionado en enero = diciembre anterior; "OCTUBRE" pagado el 30/09 = octubre del mismo año (adelantado)
+    const ref = fy * 12 + (fm - 1);
+    // Se toma el más reciente que no pase de 1 mes adelante de la recepción
+    y = [fy + 1, fy, fy - 1].find(c => c * 12 + mi <= ref + 1);
+  }
+  return y + "-" + String(mi + 1).padStart(2, "0");
+}
+function recPeriodoTxt(k) { if (!k) return "—"; const [y, m] = k.split("-"); return REC_MESES_CAP[Number(m) - 1] + " " + y; }
+function recCatDe(r) { return r.tipo || recCategoria(r.servicio || r.servicioNombre, r.detalleServicio); }
+function enListaTrabajo(r, tipo) {
+  const cat = recCatDe(r), f = String(r.fechaISO || "").slice(0, 10), per = recPeriodoKey(r);
+  const nuevo = f >= LISTA_CORTE.nuevosDesdeFecha;
+  if (tipo === "declaracion") return cat === "declaracion" && (nuevo || per >= LISTA_CORTE.declaracionDesdePeriodo);
+  if (tipo === "eeff") return cat === "eeff" && f >= LISTA_CORTE.eeffDesdeFecha;
+  if (tipo === "facturacion") return cat === "facturacion" && (nuevo || per >= LISTA_CORTE.facturacionDesdePeriodo);
+  return false;
+}
+const ESTADOS_TRABAJO = [["pendiente", "Pendiente"], ["en_proceso", "En proceso"], ["entregado", "Entregado"]];
+const ESTADOS_FACTURA = [["pendiente", "Pendiente"], ["facturado", "Facturado"]];
+const LT_UI = {}; // filtros por lista
+// Datos propios de las listas (desde 2026), se cargan una vez por sesión para no gastar lecturas
+let LT_DATA = null, LT_AT = 0;
+async function ltLoad(force) {
+  if (LT_DATA && !force && (Date.now() - LT_AT) < 10 * 60 * 1000) return;
+  const PAG = 1000; let todos = [], ultimo = null;
+  try {
+    while (todos.length < 30000) {
+      const partes = [collection(db, "recepciones"), where("fechaISO", ">=", LISTA_CORTE.eeffDesdeFecha), orderBy("fechaISO", "desc")];
+      if (ultimo) partes.push(startAfter(ultimo));
+      partes.push(limit(PAG));
+      const snap = await getDocs(query(...partes));
+      todos = todos.concat(snap.docs);
+      if (snap.docs.length < PAG) break;
+      ultimo = snap.docs[snap.docs.length - 1];
+    }
+    LT_DATA = todos.map(d => Object.assign({ id: d.id }, d.data())); LT_AT = Date.now();
+  } catch (e) { if (!LT_DATA) LT_DATA = []; alert("No se pudo cargar la lista: " + (e.code || e.message)); }
+}
+async function renderListaTrabajo(tipo, viewId, titulo) {
+  el(viewId).innerHTML = `<h1>${escape(titulo)}</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  await ltLoad();
+  paintListaTrabajo(tipo, viewId, titulo);
+}
+function ltFila(r, campo, estados, canEdit) {
+  const est = r[campo] || "pendiente";
+  const ctrl = canEdit
+    ? `<select class="mini" data-lt="${r.id}" data-campo="${campo}">${estados.map(([v, l]) => `<option value="${v}" ${v === est ? "selected" : ""}>${l}</option>`).join("")}</select>`
+    : `<span class="badge ${est === "entregado" || est === "facturado" ? "ok" : "off"}">${escape((estados.find(e => e[0] === est) || [0, est])[1])}</span>`;
+  return ctrl;
+}
+function ltBindEstados(root, repaint) {
+  root.querySelectorAll("[data-lt]").forEach(sel => sel.onchange = async () => {
+    const id = sel.dataset.lt, campo = sel.dataset.campo, val = sel.value;
+    try {
+      await setDoc(doc(db, "recepciones", id), { [campo]: val, [campo + "At"]: serverTimestamp(), [campo + "Por"]: (ME && ME.uid) || "" }, { merge: true });
+      [LT_DATA || [], RECEP].forEach(arr => { const r = arr.find(x => x.id === id); if (r) r[campo] = val; });
+      repaint();
+    } catch (e) { alert("No se pudo guardar el estado."); }
+  });
+}
+function paintListaTrabajo(tipo, viewId, titulo) {
+  const canEdit = canEditClientes();
+  const ui = LT_UI[tipo] || (LT_UI[tipo] = { q: "", est: "", per: "" });
+  const base = LT_DATA.filter(r => enListaTrabajo(r, tipo));
+  const periodos = [...new Set(base.map(r => tipo === "eeff" ? "" : recPeriodoKey(r)).filter(Boolean))].sort().reverse();
+  let list = base;
+  if (ui.per) list = list.filter(r => recPeriodoKey(r) === ui.per);
+  if (ui.est) list = list.filter(r => (r.estadoTrabajo || "pendiente") === ui.est);
+  if (ui.q) { const q = ui.q.toLowerCase(); list = list.filter(r => [r.clienteNombre, r.nit, r.detalleServicio, r.mesRecepcion, r.nroRecepcion, r.atencion].join(" ").toLowerCase().includes(q)); }
+  list = list.slice().sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
+  const cnt = k => base.filter(r => (r.estadoTrabajo || "pendiente") === k).length;
+  const rows = list.map(r => `<tr>
+      <td class="mono">${escape(r.fecha || fmtFecha(r.fechaISO))}</td>
+      <td class="mono">${escape(String(r.nroRecepcion || "—"))}</td>
+      <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.rubro ? " · " + escape(r.rubro) : ""}</div></td>
+      <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
+      <td>${escape(r.mesRecepcion || "—")}</td>
+      <td class="mono" style="text-align:right">${money(r.importe)}</td>
+      <td>${ltFila(r, "estadoTrabajo", ESTADOS_TRABAJO, canEdit)}</td></tr>`).join("");
+  const nota = tipo === "declaracion"
+    ? "Declaraciones mensuales del período <b>Octubre 2026</b> en adelante, más todo lo que se recepcione desde ahora. Lo anterior ya está culminado."
+    : "Todos los <b>Balances</b> recepcionados desde 2026. Los de años anteriores quedaron cerrados en la lista antigua.";
+  el(viewId).innerHTML = `<h1>${escape(titulo)}</h1>
+    <p class="lead">${nota}</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n">${base.length}</div><div class="l">Total</div></div>
+      <div class="kpi"><div class="n" style="color:var(--warn)">${cnt("pendiente")}</div><div class="l">Pendientes</div></div>
+      <div class="kpi"><div class="n">${cnt("en_proceso")}</div><div class="l">En proceso</div></div>
+      <div class="kpi"><div class="n" style="color:var(--ok)">${cnt("entregado")}</div><div class="l">Entregados</div></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
+      ${periodos.length ? `<select id="lt_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === ui.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("")}</select>` : ""}
+      <select id="lt_est"><option value="">Todos los estados</option>${ESTADOS_TRABAJO.map(([v, l]) => `<option value="${v}" ${v === ui.est ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <input id="lt_q" placeholder="🔎 Buscar cliente, NIT, detalle…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
+    </div>
+    <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>Período</th><th style="text-align:right">Importe</th><th>Estado</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">No hay registros con este filtro.</td></tr>`}</tbody></table></div>`;
+  const root = el(viewId), repaint = () => paintListaTrabajo(tipo, viewId, titulo);
+  if (el("lt_per")) el("lt_per").onchange = e => { ui.per = e.target.value; repaint(); };
+  el("lt_est").onchange = e => { ui.est = e.target.value; repaint(); };
+  el("lt_q").oninput = e => { ui.q = e.target.value; clearTimeout(LT_UI._t); LT_UI._t = setTimeout(() => { repaint(); const q = el("lt_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
+  ltBindEstados(root, repaint);
+}
+
+// ---------- FACTURACIÓN (subpestañas) ----------
+const FAC_UI = { tab: "activos", per: "", q: "" };
+async function renderFacturacion() {
+  el("v-facturacion").innerHTML = `<h1>Facturación</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  await ltLoad();
+  paintFacturacion();
+}
+function paintFacturacion() {
+  const canEdit = canEditClientes();
+  const todos = LT_DATA.filter(r => recCatDe(r) === "facturacion");
+  const enCorte = todos.filter(r => enListaTrabajo(r, "facturacion"));
+  const periodos = [...new Set(todos.map(recPeriodoKey).filter(Boolean))].sort().reverse();
+  if (!FAC_UI.per) {
+    const hoy = new Date(); const actual = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0");
+    FAC_UI.per = periodos.includes(actual) ? actual : (periodos.find(k => k <= actual) || periodos[0] || "");
+  }
+  const q = FAC_UI.q.toLowerCase();
+  const filtQ = l => q ? l.filter(r => [r.clienteNombre, r.nit, r.clienteCelular, r.detalleServicio, r.idcli, r.clienteId].join(" ").toLowerCase().includes(q)) : l;
+  const pendientes = enCorte.filter(r => (r.estadoFactura || "pendiente") !== "facturado");
+  let body = "";
+  if (FAC_UI.tab === "activos") {
+    const list = filtQ(todos.filter(r => recPeriodoKey(r) === FAC_UI.per)).sort((a, b) => String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
+    const fact = list.filter(r => r.estadoFactura === "facturado").length;
+    const total = list.reduce((a, r) => a + (Number(r.importe) || 0), 0);
+    body = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
+        <label style="margin:0">Mes:</label>
+        <select id="fac_per">${periodos.map(k => `<option value="${k}" ${k === FAC_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("") || `<option value="">Sin datos</option>`}</select>
+        <input id="fac_q" placeholder="🔎 Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="n">${list.length}</div><div class="l">Suscriptores activos · ${escape(recPeriodoTxt(FAC_UI.per))}</div></div>
+        <div class="kpi"><div class="n" style="color:var(--ok)">${fact}</div><div class="l">Facturados</div></div>
+        <div class="kpi"><div class="n" style="color:var(--warn)">${list.length - fact}</div><div class="l">Por facturar</div></div>
+        <div class="kpi"><div class="n" style="font-size:22px">${money(total)}</div><div class="l">Cobrado del mes</div></div>
+      </div>
+      <div style="overflow:auto"><table><thead><tr><th>#</th><th>Suscriptor</th><th>Celular</th><th>Servicio</th><th>Fecha pago</th><th style="text-align:right">Importe</th><th>Factura</th></tr></thead><tbody>
+      ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td>
+        <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""}</div></td>
+        <td>${escape(r.clienteCelular || "—")}</td>
+        <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
+        <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
+        <td class="mono" style="text-align:right">${money(r.importe)}</td>
+        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">No hay suscriptores para este mes.</td></tr>`}
+      </tbody></table></div>`;
+  } else {
+    const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
+    body = `
+      <p class="note" style="margin:0 0 10px">Facturas por emitir de los suscriptores activos (período Octubre 2026 en adelante). Al marcar <b>Facturado</b> sale de esta lista. <i>Esta sección se desarrollará a detalle más adelante.</i></p>
+      <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="🔎 Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
+      <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th style="text-align:right">Importe</th><th>Factura</th></tr></thead><tbody>
+      ${list.map(r => `<tr><td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
+        <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
+        <td>${escape(r.clienteCelular || "—")}</td>
+        <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
+        <td class="mono" style="text-align:right">${money(r.importe)}</td>
+        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">¡Sin facturas pendientes! 🎉</td></tr>`}
+      </tbody></table></div>`;
+  }
+  el("v-facturacion").innerHTML = `<h1>Facturación</h1>
+    <div class="subtabs" id="factabs">
+      <button class="subtab ${FAC_UI.tab === "activos" ? "on" : ""}" data-tab="activos">Suscriptores Activos</button>
+      <button class="subtab ${FAC_UI.tab === "pendientes" ? "on" : ""}" data-tab="pendientes">Facturas pendientes (${pendientes.length})</button>
+    </div>${body}`;
+  el("v-facturacion").querySelectorAll("#factabs .subtab").forEach(b => b.onclick = () => { FAC_UI.tab = b.dataset.tab; paintFacturacion(); });
+  if (el("fac_per")) el("fac_per").onchange = e => { FAC_UI.per = e.target.value; paintFacturacion(); };
+  if (el("fac_q")) el("fac_q").oninput = e => { FAC_UI.q = e.target.value; clearTimeout(FAC_UI._t); FAC_UI._t = setTimeout(() => { paintFacturacion(); const x = el("fac_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
+  ltBindEstados(el("v-facturacion"), paintFacturacion);
+}
 
 // ============================================================
 //  MÓDULO CALENDARIO (Operaciones) — agenda del equipo
@@ -3690,7 +3893,7 @@ async function impRun() {
       done += chunk.length;
       msg.textContent = `Importando… ${done}/${docs.length}`;
     }
-    IMP_LASTLOTE = lote; recepLoaded = false;
+    IMP_LASTLOTE = lote; recepLoaded = false; LT_DATA = null;
     msg.className = "msg ok"; msg.textContent = (borrados ? `Se reemplazaron ${borrados} registros anteriores. ` : "") + `✓ ${done} registros nuevos importados.` + (repetidos ? ` ${repetidos} ya estaban y se saltaron.` : "") + (porFecha ? ` ${porFecha} eran anteriores a la fecha elegida.` : "");
     el("imp_result").innerHTML = `<div class="formcard">
       <h3 style="margin:0 0 6px">Importación lista ✓</h3>
