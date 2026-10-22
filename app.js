@@ -181,7 +181,7 @@ function switchView(v, btn) {
   if (v === "asistente") renderAsistente();
   if (v === "recepcion") renderRecepcion();
   if (v === "dashboard") renderDashboard();
-  if (v === "declaraciones") renderListaTrabajo("declaracion", "v-declaraciones", "Declaraciones");
+  if (v === "declaraciones") renderDDJJ();
   if (v === "tramites") renderLista("tramite", "v-tramites", "Trámites");
   if (v === "eeff") renderListaTrabajo("eeff", "v-eeff", "Estados Financieros (EEFF)");
   if (v === "facturacion") renderFacturacion();
@@ -3135,6 +3135,192 @@ function paintListaTrabajo(tipo, viewId, titulo) {
   el("lt_est").onchange = e => { ui.est = e.target.value; repaint(); };
   el("lt_q").oninput = e => { ui.q = e.target.value; clearTimeout(LT_UI._t); LT_UI._t = setTimeout(() => { repaint(); const q = el("lt_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
   ltBindEstados(root, repaint);
+}
+
+// ---------- DECLARACIONES (formato BD_DDJJ) ----------
+// Cada fila = una recepción de DECLARACIÓN MENSUAL. El equipo llena RCV → Declaración → Seguimiento.
+// Los datos se guardan en la misma recepción con campos "dj_…".
+const DJ_EQUIPO_DEF = ["LUIS", "ALEJANDRA", "CARELIS", "ENRIQUE", "AILYN", "SOLEDAD", "KEVIN", "OTRO"];
+const DJ_ESTADO_RCV = ["", "Falta Factura", "Se rechazaron facturas", "Esperando Facturas Manuales", "Usuario y Contraseña Incorrecta", "Otro"];
+const DJ_RESP_CLIENTE = ["", "Esperando respuesta", "Declarar", "Facturas en el Buzón", "Enviará Facturas", "No respondió, Declarar"];
+const DJ_PAGO_IMP = ["", "SI", "NO", "No Corresponde Pagar"];
+const DJ_ESTADOS = [
+  ["pendiente", "Pendiente", "off"],
+  ["rcv", "RCV en curso", "mut"],
+  ["falta_declarar", "Falta declarar", "danger"],
+  ["terminado", "Terminado", "ok"],
+  ["mal_recepcionado", "Mal recepcionado", "danger"]
+];
+// Estado: si alguien lo fijó a mano se respeta; si no, se calcula solo con lo llenado
+function djEstado(r) {
+  if (r.dj_estado) return r.dj_estado;
+  if (r.dj_fechaDeclaracion || r.dj_declaradoPor) return "terminado";
+  if (r.dj_rcvFinalizado) return "falta_declarar";
+  if (r.dj_rcvIniciado || r.dj_rcvPor) return "rcv";
+  return "pendiente";
+}
+function djEstadoBadge(k) { const e = DJ_ESTADOS.find(x => x[0] === k) || DJ_ESTADOS[0]; return `<span class="badge ${e[2]}">${e[1]}</span>`; }
+function djYo() { const n = (ME && (ME.name || ME.email || "")) || ""; return n.split(/[\s@]/)[0].toUpperCase(); }
+function djEquipo() { const yo = djYo(); return yo && DJ_EQUIPO_DEF.indexOf(yo) < 0 ? [yo].concat(DJ_EQUIPO_DEF) : DJ_EQUIPO_DEF.slice(); }
+function djHoy() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function djFechaTxt(iso) { if (!iso) return ""; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); }
+const DJ_UI = { q: "", est: "", per: "", resp: "" };
+async function renderDDJJ() {
+  el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  await ltLoad();
+  paintDDJJ();
+}
+function paintDDJJ() {
+  const base = LT_DATA.filter(r => enListaTrabajo(r, "declaracion"));
+  const periodos = [...new Set(base.map(recPeriodoKey).filter(Boolean))].sort().reverse();
+  let list = base;
+  if (DJ_UI.per) list = list.filter(r => recPeriodoKey(r) === DJ_UI.per);
+  if (DJ_UI.est) list = list.filter(r => djEstado(r) === DJ_UI.est);
+  if (DJ_UI.resp) list = list.filter(r => r.dj_rcvPor === DJ_UI.resp || r.dj_declaradoPor === DJ_UI.resp);
+  if (DJ_UI.q) { const q = DJ_UI.q.toLowerCase(); list = list.filter(r => [r.clienteNombre, r.nit, r.clienteId, r.detalleServicio, r.mesRecepcion, r.nroRecepcion, r.rubro].join(" ").toLowerCase().includes(q)); }
+  list = list.slice().sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || "") || String(a.hora || "").localeCompare(String(b.hora || "")));
+  const cnt = k => base.filter(r => djEstado(r) === k).length;
+  const ck = v => v ? `<span style="color:var(--ok);font-weight:700">✓</span>` : `<span style="color:var(--muted)">·</span>`;
+  const rows = list.map((r, i) => `<tr class="dj-row" data-id="${r.id}" style="cursor:pointer">
+      <td class="mono">${i + 1}</td>
+      <td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
+      <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
+      <td style="font-size:12px">${escape(r.detalleServicio || "—")}<div style="color:var(--muted);font-size:11px">${escape(r.fecha || djFechaTxt(r.fechaISO))}</div></td>
+      <td>${escape(r.dj_rcvPor || "—")}</td>
+      <td style="text-align:center">${ck(r.dj_rcvIniciado)} ${ck(r.dj_rcvFinalizado)}</td>
+      <td style="font-size:12px">${escape(r.dj_estadoRcv || "")}${r.dj_respuestaCliente ? `<div style="color:var(--muted);font-size:11px">${escape(r.dj_respuestaCliente)}</div>` : ""}</td>
+      <td>${escape(r.dj_declaradoPor || "—")}<div style="color:var(--muted);font-size:11px">${escape(djFechaTxt(r.dj_fechaDeclaracion))}</div></td>
+      <td class="mono" style="text-align:right">${escape(r.dj_ivaPagar || "")}</td>
+      <td class="mono" style="text-align:right">${escape(r.dj_itPagar || "")}</td>
+      <td>${djEstadoBadge(djEstado(r))}</td>
+      <td style="font-size:12px">${escape(r.dj_pagoImpuestos || "")} ${r.dj_correoEnviado ? "✉️" : ""}</td></tr>`).join("");
+  el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>
+    <p class="lead">Declaraciones mensuales del período <b>Octubre 2026</b> en adelante (lo anterior ya está culminado). Toca una fila para llenar el <b>RCV</b>, la <b>Declaración</b> y el <b>Seguimiento</b>.</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n">${base.length}</div><div class="l">Total</div></div>
+      ${DJ_ESTADOS.map(([k, l]) => `<div class="kpi dj-kpi" data-k="${k}" style="cursor:pointer;${DJ_UI.est === k ? "outline:2px solid var(--accent)" : ""}"><div class="n" ${k === "terminado" ? 'style="color:var(--ok)"' : (k === "falta_declarar" || k === "mal_recepcionado") ? 'style="color:var(--danger)"' : ""}>${cnt(k)}</div><div class="l">${l}</div></div>`).join("")}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
+      <select id="dj_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === DJ_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("")}</select>
+      <select id="dj_est"><option value="">Todos los estados</option>${DJ_ESTADOS.map(([v, l]) => `<option value="${v}" ${v === DJ_UI.est ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="dj_resp"><option value="">Todo el equipo</option>${djEquipo().map(n => `<option ${n === DJ_UI.resp ? "selected" : ""}>${escape(n)}</option>`).join("")}</select>
+      <input id="dj_q" placeholder="🔎 Buscar cliente, NIT, ID…" value="${escape(DJ_UI.q)}" style="flex:1;min-width:200px">
+      <button class="mini" id="dj_reload">↻ Actualizar</button>
+    </div>
+    <div style="overflow:auto"><table style="font-size:13px"><thead>
+      <tr style="font-size:11px;letter-spacing:.04em"><th colspan="4" style="text-align:center;background:var(--panel2)">RECEPCIÓN</th><th colspan="3" style="text-align:center;background:var(--tint)">RCV</th><th colspan="4" style="text-align:center;background:var(--panel2)">DECLARACIÓN</th><th style="text-align:center;background:var(--tint)">SEGUIM.</th></tr>
+      <tr><th>#</th><th>Período</th><th>Cliente</th><th>Detalle / F. rec.</th><th>Realizado por</th><th>Inic. / Fin.</th><th>Estado RCV</th><th>Declarado por</th><th style="text-align:right">IVA</th><th style="text-align:right">IT</th><th>ESTADO</th><th>Pagó / ✉</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="12" style="color:var(--muted)">No hay declaraciones con este filtro.</td></tr>`}</tbody></table></div>`;
+  const re = () => paintDDJJ();
+  el("dj_per").onchange = e => { DJ_UI.per = e.target.value; re(); };
+  el("dj_est").onchange = e => { DJ_UI.est = e.target.value; re(); };
+  el("dj_resp").onchange = e => { DJ_UI.resp = e.target.value; re(); };
+  el("dj_reload").onclick = async () => { await ltLoad(true); re(); };
+  el("dj_q").oninput = e => { DJ_UI.q = e.target.value; clearTimeout(DJ_UI._t); DJ_UI._t = setTimeout(() => { re(); const q = el("dj_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
+  el("v-declaraciones").querySelectorAll(".dj-kpi").forEach(k => k.onclick = () => { DJ_UI.est = DJ_UI.est === k.dataset.k ? "" : k.dataset.k; re(); });
+  el("v-declaraciones").querySelectorAll(".dj-row").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id)));
+}
+function openDDJJ(r) {
+  if (!r) return;
+  const canEdit = canEditClientes();
+  const dis = canEdit ? "" : "disabled";
+  const eq = djEquipo();
+  const sel = (id, opts, v) => `<select id="${id}" ${dis}>${opts.map(o => `<option value="${escape(o)}" ${String(o) === String(v || "") ? "selected" : ""}>${escape(o || "—")}</option>`).join("")}</select>`;
+  const inp = (id, v, ph, t) => `<input id="${id}" type="${t || "text"}" value="${escape(v == null ? "" : String(v))}" placeholder="${ph || ""}" ${dis}>`;
+  const chk = (id, v, lbl) => `<label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="${id}" ${v ? "checked" : ""} ${dis} style="width:auto"> ${lbl}</label>`;
+  const f = (lbl, html) => `<div class="field"><label>${lbl}</label>${html}</div>`;
+  const ts = v => v ? `<span class="note" style="margin-left:4px">(${escape(v)})</span>` : "";
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:860px;max-width:96vw;max-height:94vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
+      <div><h3 style="margin:0">${escape(r.clienteNombre || "—")}</h3>
+        <div class="note" style="margin:2px 0 0">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
+      <button class="mini" id="dj_x">✕</button></div>
+    <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? '<button class="mini" id="dj_vercred">🔑 Ver accesos del cliente (SIN)</button>' : ""}</div>
+    <div class="fs">1) RCV</div>
+    <div class="grid3">
+      ${f("RCV realizado por", sel("dj_rcvPor", [""].concat(eq), r.dj_rcvPor))}
+      <div class="field"><label>&nbsp;</label>${chk("dj_rcvIniciado", r.dj_rcvIniciado, "RCV iniciado" + ts(r.dj_rcvIniciadoAt))}${chk("dj_rcvFinalizado", r.dj_rcvFinalizado, "RCV finalizado" + ts(r.dj_rcvFinalizadoAt))}</div>
+      <div class="field"><label>&nbsp;</label>${chk("dj_rcvMulta", r.dj_rcvMulta, "Multa fuera de plazo RCV")}</div>
+      ${f("Cant. facturas", inp("dj_cantFacturas", r.dj_cantFacturas, "Ej. 12"))}
+      ${f("Total compras netas", inp("dj_totalCompras", r.dj_totalCompras, "0,00"))}
+      ${f("Total ventas", inp("dj_totalVentas", r.dj_totalVentas, "0,00"))}
+      ${f("¿Cuánto le falta?", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
+      ${f("Crédito fiscal", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
+      ${f("Estado RCV", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
+      ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
+    </div>
+    ${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}
+    <div class="fs" style="margin-top:6px">2) Declaración</div>
+    <div class="grid3">
+      ${f("Declarado por", sel("dj_declaradoPor", [""].concat(eq), r.dj_declaradoPor))}
+      ${f("Fecha de declaración", inp("dj_fechaDeclaracion", r.dj_fechaDeclaracion, "", "date"))}
+      ${f("Compensación del IUE", inp("dj_compIUE", r.dj_compIUE, "0,00"))}
+      ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
+      ${f("IVA a pagar", inp("dj_ivaPagar", r.dj_ivaPagar, "0,00"))}
+      ${f("IT a pagar", inp("dj_itPagar", r.dj_itPagar, "0,00"))}
+      <div class="field"><label>&nbsp;</label>${chk("dj_multaIVA", r.dj_multaIVA, "Multa fuera de plazo IVA")}${chk("dj_multaIT", r.dj_multaIT, "Multa fuera de plazo IT")}</div>
+      ${f("ESTADO", `<select id="dj_estado" ${dis}><option value="">Automático (${escape((DJ_ESTADOS.find(e => e[0] === djEstado(Object.assign({}, r, { dj_estado: "" }))) || [])[1] || "")})</option>${DJ_ESTADOS.map(([k, l]) => `<option value="${k}" ${r.dj_estado === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+    </div>
+    <div class="fs" style="margin-top:6px">3) Seguimiento</div>
+    <div class="grid3">
+      ${f("¿El cliente pagó impuestos?", sel("dj_pagoImpuestos", DJ_PAGO_IMP, r.dj_pagoImpuestos))}
+      ${f("Fecha que pagó impuestos", inp("dj_fechaPagoImp", r.dj_fechaPagoImp, "", "date"))}
+      <div class="field"><label>&nbsp;</label>${chk("dj_correoEnviado", r.dj_correoEnviado, "Correo enviado al cliente" + ts([r.dj_correoFecha, r.dj_correoPor].filter(Boolean).join(" · ")))}</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;align-items:center">
+      <span class="msg" id="dj_msg" style="margin:0 auto 0 0"></span>
+      <button class="btn sec" id="dj_close" style="border:1px solid var(--line)">Cerrar</button>
+      ${canEdit ? '<button class="btn" id="dj_save">Guardar</button>' : ""}
+    </div></div>`;
+  document.body.appendChild(bg);
+  const $ = id => bg.querySelector("#" + id);
+  const close = () => bg.remove();
+  bg.onclick = e => { if (e.target === bg) close(); };
+  $("dj_x").onclick = close; $("dj_close").onclick = close;
+  // Atajos: al marcar RCV o poner fecha, se completa el responsable con quien está usando el panel
+  if (canEdit) {
+    const yo = djYo();
+    ["dj_rcvIniciado", "dj_rcvFinalizado"].forEach(id => $(id).onchange = () => { if ($(id).checked && !$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo; });
+    $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo; };
+    $("dj_declaradoPor").onchange = () => { if ($("dj_declaradoPor").value && !$("dj_fechaDeclaracion").value) $("dj_fechaDeclaracion").value = djHoy(); };
+  }
+  if ($("dj_vercred")) $("dj_vercred").onclick = () => {
+    const box = $("dj_cred"); box.textContent = "Buscando en la Base de Datos…";
+    bdEnsureLoaded(ok => {
+      if (!ok) { box.textContent = "No se pudo abrir la Base de Datos."; return; }
+      const nit = String(r.nit || "").replace(/\D/g, "");
+      const c = BD.find(x => String(bdV(x, "nit")).replace(/\D/g, "") === nit && nit);
+      if (!c) { box.textContent = "Este NIT no está en la Base de Datos de clientes."; return; }
+      const items = [["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["Contraseña SIAT", bdV(c, "passSiat")], ["Correo", bdV(c, "correo")], ["Celular", bdV(c, "celular")]].filter(x => x[1]);
+      box.innerHTML = items.map(([l, v], i) => `<span style="display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><span style="color:var(--muted)">${l}:</span> <b class="mono">${escape(v)}</b> <button class="mini dj-copy" data-i="${i}" title="Copiar">📋</button></span>`).join("") || "El cliente no tiene accesos guardados.";
+      box.querySelectorAll(".dj-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(items[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+    });
+  };
+  if ($("dj_save")) $("dj_save").onclick = async () => {
+    const v = id => $(id).value.trim(), c = id => !!$(id).checked;
+    const ahora = new Date().toLocaleString("es-BO");
+    const d = {
+      dj_rcvPor: v("dj_rcvPor"), dj_rcvIniciado: c("dj_rcvIniciado"), dj_rcvFinalizado: c("dj_rcvFinalizado"), dj_rcvMulta: c("dj_rcvMulta"),
+      dj_cantFacturas: v("dj_cantFacturas"), dj_totalCompras: v("dj_totalCompras"), dj_totalVentas: v("dj_totalVentas"), dj_cuantoFalta: v("dj_cuantoFalta"),
+      dj_creditoFiscal: v("dj_creditoFiscal"), dj_estadoRcv: v("dj_estadoRcv"), dj_respuestaCliente: v("dj_respuestaCliente"), dj_comentario: v("dj_comentario"),
+      dj_declaradoPor: v("dj_declaradoPor"), dj_fechaDeclaracion: v("dj_fechaDeclaracion"), dj_compIUE: v("dj_compIUE"), dj_creditoSigMes: v("dj_creditoSigMes"),
+      dj_ivaPagar: v("dj_ivaPagar"), dj_itPagar: v("dj_itPagar"), dj_multaIVA: c("dj_multaIVA"), dj_multaIT: c("dj_multaIT"), dj_estado: v("dj_estado"),
+      dj_pagoImpuestos: v("dj_pagoImpuestos"), dj_fechaPagoImp: v("dj_fechaPagoImp"), dj_correoEnviado: c("dj_correoEnviado"),
+      dj_editadoPor: (ME && (ME.name || ME.email)) || "", dj_editadoAt: serverTimestamp()
+    };
+    // Fechas automáticas (como las columnas "Fecha de Inicio" de la hoja)
+    if (d.dj_rcvIniciado && !r.dj_rcvIniciadoAt) d.dj_rcvIniciadoAt = ahora;
+    if (d.dj_rcvFinalizado && !r.dj_rcvFinalizadoAt) d.dj_rcvFinalizadoAt = ahora;
+    if (d.dj_correoEnviado && !r.dj_correoEnviado) { d.dj_correoFecha = ahora; d.dj_correoPor = djYo(); }
+    const m = $("dj_msg"); m.className = "msg"; m.textContent = "Guardando…";
+    try {
+      await setDoc(doc(db, "recepciones", r.id), d, { merge: true });
+      Object.assign(r, d, { dj_editadoAt: new Date().toISOString() });
+      close(); paintDDJJ();
+    } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+  };
 }
 
 // ---------- FACTURACIÓN (subpestañas) ----------
