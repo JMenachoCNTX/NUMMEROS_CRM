@@ -18,7 +18,7 @@
 
 var EMPRESA = {
   nombre:    "CONTAX",
-  direccion: "Urbanización El Palmar Calle Zafiro Nro. S/N Zona Sur - 6to Anillo Av. Bolivia",
+  direccion: "Santa Cruz - Bolivia",
   contacto:  "690-21969",
   correo:    "info@contaxbolivia.com",
   navy:      "#16233f"
@@ -190,7 +190,7 @@ function buildOrdenHTML(d, empresaNombre) {
     '</div>' +
   '</div>' +
   '<div class="disc">' + esc(DISCLAIMER) + '</div>' +
-  '<div class="foot"><span>Dir.: ' + esc(EMPRESA.direccion) + '</span><span>Contacto: ' + esc(EMPRESA.contacto) + '</span><span>Correo: ' + esc(EMPRESA.correo) + '</span></div>' +
+  '<div class="foot"><span>' + esc(EMPRESA.direccion) + '</span><span>Contacto: ' + esc(EMPRESA.contacto) + '</span><span>Correo: ' + esc(EMPRESA.correo) + '</span></div>' +
   '</body></html>';
 }
 

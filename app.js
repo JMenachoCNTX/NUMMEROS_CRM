@@ -3,10 +3,10 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "29";
+const APP_VERSION = "30";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 if (!window.APP_CONFIG || !window.APP_CONFIG.firebase) {
   document.body.innerHTML = '<div style="color:#fff;font-family:sans-serif;padding:40px">Falta config.js con los datos de Firebase.</div>';
@@ -2182,28 +2182,65 @@ async function panelAI(cfg, system, user) {
 // ============================================================
 //  MÓDULO OPERACIONES — Recepción · Dashboard · Listas
 // ============================================================
+// ============================================================
+//  CACHÉ LOCAL DE RECEPCIONES (para no gastar la cuota diaria de Firebase)
+//  - La 1ª vez en cada computadora descarga todo y lo guarda en el navegador (IndexedDB).
+//  - Después solo pide a Firebase lo que cambió (campo "_upd" = fecha de la última modificación).
+//  - Cada 3 días hace una descarga completa para limpiar lo que se haya borrado en otra computadora.
+// ============================================================
+const RC = { docs: null, lastSync: 0, fullAt: 0, netAt: 0, loading: null };
+function rcIdb() {
+  return new Promise((res, rej) => {
+    try { const r = indexedDB.open("nummeros-cache", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+    catch (e) { rej(e); }
+  });
+}
+async function rcIdbGet(k) { try { const db_ = await rcIdb(); return await new Promise(res => { const t = db_.transaction("kv").objectStore("kv").get(k); t.onsuccess = () => res(t.result); t.onerror = () => res(null); }); } catch (e) { return null; } }
+async function rcIdbSet(k, v) { try { const db_ = await rcIdb(); await new Promise(res => { const t = db_.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = res; }); } catch (e) {} }
+function rcLimpio(id, d) { const o = { id: id }; for (const k in d) { const v = d[k]; o[k] = (v && typeof v.toMillis === "function") ? v.toMillis() : v; } return o; }
+let rcGuardarT = null;
+function rcGuardar() { clearTimeout(rcGuardarT); rcGuardarT = setTimeout(() => rcIdbSet("recepciones", { docs: RC.docs, lastSync: RC.lastSync, fullAt: RC.fullAt, uid: ME && ME.uid }), 400); }
+// Actualiza/borra en la copia local (para que lo propio se vea al instante)
+function rcPoner(id, datos) { if (!RC.docs) return; const i = RC.docs.findIndex(x => x.id === id); const n = rcLimpio(id, datos); if (i >= 0) RC.docs[i] = Object.assign(RC.docs[i], n); else RC.docs.push(n); rcGuardar(); }
+function rcQuitar(ids) { if (!RC.docs) return; const s_ = new Set(ids); RC.docs = RC.docs.filter(x => !s_.has(x.id)); rcGuardar(); }
+async function recSync(forzarTodo) {
+  if (RC.loading) return RC.loading;
+  RC.loading = (async () => {
+    if (!RC.docs) {
+      const c = await rcIdbGet("recepciones");
+      if (c && Array.isArray(c.docs) && (!c.uid || !ME || c.uid === ME.uid)) { RC.docs = c.docs; RC.lastSync = c.lastSync || 0; RC.fullAt = c.fullAt || 0; }
+    }
+    const ahora = Date.now();
+    const completo = forzarTodo || !RC.docs || (ahora - RC.fullAt) > 3 * 86400000;
+    if (completo) {
+      const PAG = 1000; let todos = [], ultimo = null;
+      while (true) {
+        const partes = [collection(db, "recepciones"), orderBy(documentId())];
+        if (ultimo) partes.push(startAfter(ultimo));
+        partes.push(limit(PAG));
+        const snap = await getDocs(query(...partes));
+        todos = todos.concat(snap.docs);
+        if (snap.docs.length < PAG) break;
+        ultimo = snap.docs[snap.docs.length - 1];
+      }
+      RC.docs = todos.map(d => rcLimpio(d.id, d.data()));
+      RC.fullAt = ahora; RC.lastSync = ahora; RC.netAt = ahora; rcGuardar();
+    } else if (ahora - RC.netAt > 45000) {
+      // Solo lo modificado desde la última vez (margen de 10 min por diferencias de reloj)
+      const snap = await getDocs(query(collection(db, "recepciones"), where("_upd", ">", RC.lastSync - 600000)));
+      snap.docs.forEach(d => { const n = rcLimpio(d.id, d.data()); const i = RC.docs.findIndex(x => x.id === d.id); if (i >= 0) RC.docs[i] = n; else RC.docs.push(n); });
+      RC.lastSync = ahora; RC.netAt = ahora; rcGuardar();
+    }
+    return RC.docs;
+  })();
+  try { return await RC.loading; } finally { RC.loading = null; }
+}
 let RECEP = [], recepLoaded = false, recFilterMes = "", recFlash = "", recGestion = String(new Date().getFullYear()), recLoadedGestion = null, recepError = "";
 async function recepLoad(gestion) {
   gestion = gestion || recGestion || String(new Date().getFullYear());
   try {
-    // Carga por páginas de 1000 hasta traer TODO (antes se cortaba en 3000)
-    const filtros = [];
-    if (gestion !== "todas") {
-      const a = gestion + "-01-01", b = (Number(gestion) + 1) + "-01-01";
-      filtros.push(where("fechaISO", ">=", a), where("fechaISO", "<", b));
-    }
-    const PAG = 1000, TOPE = gestion === "todas" ? 20000 : 15000;
-    let todos = [], ultimo = null;
-    while (todos.length < TOPE) {
-      const partes = [collection(db, "recepciones"), ...filtros, orderBy("fechaISO", "desc")];
-      if (ultimo) partes.push(startAfter(ultimo));
-      partes.push(limit(PAG));
-      const snap = await getDocs(query(...partes));
-      todos = todos.concat(snap.docs);
-      if (snap.docs.length < PAG) break;
-      ultimo = snap.docs[snap.docs.length - 1];
-    }
-    RECEP = todos.map(d => Object.assign({ id: d.id }, d.data()));
+    const todos = await recSync();
+    RECEP = gestion === "todas" ? todos.slice() : todos.filter(r => String(r.fechaISO || "").slice(0, 4) === String(gestion));
     RECEP.sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
     recLoadedGestion = gestion; recepLoaded = true; recepError = "";
   } catch (e) { recepError = e.code || e.message; recepLoaded = true; /* conserva lo que ya había */ }
@@ -2373,7 +2410,7 @@ function comprobanteHTML(r) {
   <div class="tot">Total: <b>${money2(r.importe)}</b><br>Forma de Pago: <b>${escape(r.tipoPago || "")}</b><br>Atención: <b>${escape(r.atencion || "")}</b>${r.comentarios ? `<br><span style="color:#55617a;font-size:11px">${escape(r.comentarios)}</span>` : ""}</div>${comp}
   </div>
   <div class="disc">"CONTAX no asume responsabilidad alguna por declaraciones presentadas fuera de plazo o multas derivadas de la falta de entrega oportuna de documentación por parte del cliente. Es responsabilidad del cliente garantizar la entrega correcta y a tiempo de toda la documentación necesaria."</div>
-  <div class="foot"><span>Dir.: Urbanización El Palmar Calle Zafiro Nro. S/N Zona Sur - 6to Anillo Av. Bolivia</span><span>Contacto: 690-21969</span><span>Correo: info@contaxbolivia.com</span></div>
+  <div class="foot"><span>Santa Cruz - Bolivia</span><span>Contacto: 690-21969</span><span>Correo: info@contaxbolivia.com</span></div>
   </body></html>`;
 }
 function verComprobante(r) {
@@ -2711,11 +2748,12 @@ async function registrarRecepcion() {
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: (ME && ME.uid) || "", registradoPorNombre: (ME && (ME.name || ME.email)) || "", createdAt: serverTimestamp()
     };
-    const ref = doc(collection(db, "recepciones")); await setDoc(ref, rec); rec.id = ref.id; LT_DATA = null;
+    rec._upd = Date.now();
+    const ref = doc(collection(db, "recepciones")); await setDoc(ref, rec); rec.id = ref.id; rcPoner(ref.id, rec); LT_DATA = null;
     let enviado = false;
     if (rec.clienteCorreo) {
       enviado = await postRecibo(rec);
-      if (enviado) { try { await setDoc(doc(db, "recepciones", ref.id), { reciboEnviado: true }, { merge: true }); } catch (e) {} rec.reciboEnviado = true; }
+      if (enviado) { try { await setDoc(doc(db, "recepciones", ref.id), { reciboEnviado: true, _upd: Date.now() }, { merge: true }); } catch (e) {} rec.reciboEnviado = true; }
     }
     // Solo se reactiva si el usuario lo eligió en la pregunta
     let reactivado = false;
@@ -2765,13 +2803,13 @@ async function enviarReciboDe(rec) {
   if (!rec) return;
   if (!rec.clienteCorreo) { alert("Esta recepción no tiene correo del cliente."); return; }
   const ok = await postRecibo(rec);
-  if (ok) { try { await setDoc(doc(db, "recepciones", rec.id), { reciboEnviado: true }, { merge: true }); } catch (e) {} await recepLoad(); paintRecepcion(); alert("Orden de Recepción enviada (si la URL de recibos está configurada)."); }
+  if (ok) { try { await setDoc(doc(db, "recepciones", rec.id), { reciboEnviado: true, _upd: Date.now() }, { merge: true }); rcPoner(rec.id, { reciboEnviado: true }); } catch (e) {} await recepLoad(); paintRecepcion(); alert("Orden de Recepción enviada (si la URL de recibos está configurada)."); }
   else alert("No se pudo enviar. Configura la URL de recibos en Configuración.");
 }
 async function delRecepcion(rec) {
   if (!rec) return;
   if (!confirm(`¿Eliminar la recepción N° ${rec.nroRecepcion} de "${rec.clienteNombre}" por ${money(rec.importe)}? No se puede deshacer.`)) return;
-  try { await deleteDoc(doc(db, "recepciones", rec.id)); await recepLoad(); paintRecepcion(); } catch (e) { alert("No se pudo eliminar."); }
+  try { await deleteDoc(doc(db, "recepciones", rec.id)); rcQuitar([rec.id]); await recepLoad(); paintRecepcion(); } catch (e) { alert("No se pudo eliminar."); }
 }
 
 // ============================================================
@@ -3044,7 +3082,7 @@ function paintLista(tipo, viewId, titulo) {
     <table><thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Importe</th><th>Estado</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="5" style="color:var(--muted)">Nada por aquí todavía. Se llena cuando registres pagos de este tipo en Recepción (el tipo se define en Tarifas).</td></tr>`}</tbody></table>`;
   el(viewId).querySelectorAll("[data-estado]").forEach(sel => sel.onchange = async () => {
-    try { await setDoc(doc(db, "recepciones", sel.dataset.estado), { estado: sel.value }, { merge: true }); const r = RECEP.find(x => x.id === sel.dataset.estado); if (r) r.estado = sel.value; paintLista(tipo, viewId, titulo); }
+    try { await setDoc(doc(db, "recepciones", sel.dataset.estado), { estado: sel.value, _upd: Date.now() }, { merge: true }); rcPoner(sel.dataset.estado, { estado: sel.value }); const r = RECEP.find(x => x.id === sel.dataset.estado); if (r) r.estado = sel.value; paintLista(tipo, viewId, titulo); }
     catch (e) { alert("No se pudo guardar el estado."); }
   });
 }
@@ -3111,19 +3149,9 @@ const LT_UI = {}; // filtros por lista
 // Datos propios de las listas (desde 2026), se cargan una vez por sesión para no gastar lecturas
 let LT_DATA = null, LT_AT = 0;
 async function ltLoad(force) {
-  if (LT_DATA && !force && (Date.now() - LT_AT) < 10 * 60 * 1000) return;
-  const PAG = 1000; let todos = [], ultimo = null;
   try {
-    while (todos.length < 30000) {
-      const partes = [collection(db, "recepciones"), where("fechaISO", ">=", LISTA_CORTE.eeffDesdeFecha), orderBy("fechaISO", "desc")];
-      if (ultimo) partes.push(startAfter(ultimo));
-      partes.push(limit(PAG));
-      const snap = await getDocs(query(...partes));
-      todos = todos.concat(snap.docs);
-      if (snap.docs.length < PAG) break;
-      ultimo = snap.docs[snap.docs.length - 1];
-    }
-    LT_DATA = todos.map(d => Object.assign({ id: d.id }, d.data())); LT_AT = Date.now();
+    const todos = await recSync();
+    LT_DATA = todos.filter(r => String(r.fechaISO || "") >= LISTA_CORTE.eeffDesdeFecha); LT_AT = Date.now();
   } catch (e) { if (!LT_DATA) LT_DATA = []; alert("No se pudo cargar la lista: " + (e.code || e.message)); }
 }
 async function renderListaTrabajo(tipo, viewId, titulo) {
@@ -3142,7 +3170,8 @@ function ltBindEstados(root, repaint) {
   root.querySelectorAll("[data-lt]").forEach(sel => sel.onchange = async () => {
     const id = sel.dataset.lt, campo = sel.dataset.campo, val = sel.value;
     try {
-      await setDoc(doc(db, "recepciones", id), { [campo]: val, [campo + "At"]: serverTimestamp(), [campo + "Por"]: (ME && ME.uid) || "" }, { merge: true });
+      await setDoc(doc(db, "recepciones", id), { [campo]: val, [campo + "At"]: serverTimestamp(), [campo + "Por"]: (ME && ME.uid) || "", _upd: Date.now() }, { merge: true });
+      rcPoner(id, { [campo]: val });
       [LT_DATA || [], RECEP].forEach(arr => { const r = arr.find(x => x.id === id); if (r) r[campo] = val; });
       repaint();
     } catch (e) { alert("No se pudo guardar el estado."); }
@@ -3453,8 +3482,9 @@ function openDDJJ(r, alGuardar) {
     if (d.dj_correoEnviado && !r.dj_correoEnviado) { d.dj_correoFecha = ahora; d.dj_correoPor = djYo(); }
     const m = $("dj_msg"); m.className = "msg"; m.textContent = "Guardando…";
     try {
+      d._upd = Date.now();
       await setDoc(doc(db, "recepciones", r.id), d, { merge: true });
-      Object.assign(r, d, { dj_editadoAt: new Date().toISOString() });
+      Object.assign(r, d, { dj_editadoAt: Date.now() }); rcPoner(r.id, Object.assign({}, d, { dj_editadoAt: Date.now() }));
       close(); (alGuardar || paintDDJJ)();
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
@@ -3473,8 +3503,7 @@ async function renderFicha() {
 async function fiCargar(nit) {
   FI_UI.nit = nit; FI_UI.recs = []; FI_UI.cargando = true; paintFicha();
   try {
-    const snap = await getDocs(query(collection(db, "recepciones"), where("nit", "==", nit)));
-    FI_UI.recs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    FI_UI.recs = (await recSync()).filter(r => fiNit(r.nit) === nit);
     const anios = [...new Set(FI_UI.recs.map(r => (recPeriodoKey(r) || String(r.fechaISO || "")).slice(0, 4)).filter(Boolean))].sort();
     if (anios.length && anios.indexOf(FI_UI.anio) < 0) FI_UI.anio = anios[anios.length - 1];
   } catch (e) { alert("No se pudo cargar el historial: " + (e.code || e.message)); }
@@ -4186,7 +4215,7 @@ function arqRenderResult() {
     const r = ARQ_RESULT[Number(b.dataset.arqok)]; if (!r || !r.chosen) return;
     b.disabled = true; b.textContent = "Guardando…";
     try {
-      await setDoc(doc(db, "recepciones", r.chosen), { conciliado: true, conciliadoFechaBanco: r.fec || "", conciliadoGlosa: r.desc || "", conciliadoPorUid: ME.uid, conciliadoAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, "recepciones", r.chosen), { _upd: Date.now(), conciliado: true, conciliadoFechaBanco: r.fec || "", conciliadoGlosa: r.desc || "", conciliadoPorUid: ME.uid, conciliadoAt: serverTimestamp() }, { merge: true });
       const p = RECEP.find(x => x.id === r.chosen); if (p) p.conciliado = true;
       r.estado = "ok"; b.textContent = "✓ Conciliado"; b.classList.add("ok");
     } catch (e) { b.disabled = false; b.textContent = "Marcar conciliado"; alert("No se pudo guardar: " + (e.code || e.message)); }
@@ -4419,20 +4448,22 @@ async function impRun() {
     msg.textContent = "Revisando lo que hay en el sistema…";
     let aBorrar = [];
     try {
-      const snap = await getDocs(collection(db, "recepciones"));
-      aBorrar = snap.docs.filter(d => anios.includes(String((d.data() || {}).fechaISO || "").slice(0, 4)));
+      const todos = await recSync(true);
+      aBorrar = todos.filter(d => anios.includes(String(d.fechaISO || "").slice(0, 4)));
     } catch (e) { msg.className = "msg err"; msg.textContent = "No se pudo leer el sistema: " + (e.code || e.message); btn.disabled = false; return; }
     if (!confirm(`Vas a BORRAR ${aBorrar.length} recepciones de la gestión ${anios.join(", ")} y subir ${docs.length} del archivo.\n\nAntes se descargará un respaldo (.json) de lo borrado.\n\n¿Continuar?`)) { msg.textContent = "Cancelado. No se cambió nada."; btn.disabled = false; return; }
     // Respaldo
     try {
-      const data = aBorrar.map(d => Object.assign({ _id: d.id }, d.data()));
+      const data = aBorrar.map(d => Object.assign({ _id: d.id }, d));
       const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `respaldo-recepciones-${anios.join("-")}-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove();
     } catch (e) {}
     try {
       const CHd = 20;
       for (let i = 0; i < aBorrar.length; i += CHd) {
-        await Promise.all(aBorrar.slice(i, i + CHd).map(d => deleteDoc(doc(db, "recepciones", d.id))));
+        const lote_ = aBorrar.slice(i, i + CHd);
+        await Promise.all(lote_.map(d => deleteDoc(doc(db, "recepciones", d.id))));
+        rcQuitar(lote_.map(d => d.id));
         borrados += Math.min(CHd, aBorrar.length - i);
         msg.textContent = `Borrando lo anterior… ${borrados}/${aBorrar.length}`;
       }
@@ -4440,8 +4471,7 @@ async function impRun() {
   } else if (el("imp_dedup") && el("imp_dedup").checked && docs.length) {
     msg.textContent = "Revisando qué registros ya existen en el sistema…";
     try {
-      const snap = await getDocs(collection(db, "recepciones"));
-      const existentes = new Set(snap.docs.map(d => impClave(d.data() || {})));
+      const existentes = new Set((await recSync()).map(d => impClave(d)));
       const vistos = new Set();
       for (let i = docs.length - 1; i >= 0; i--) {
         const k = impClave(docs[i]);
@@ -4454,7 +4484,7 @@ async function impRun() {
     const CH = 20;
     for (let i = 0; i < docs.length; i += CH) {
       const chunk = docs.slice(i, i + CH);
-      await Promise.all(chunk.map(d => setDoc(doc(collection(db, "recepciones")), d)));
+      await Promise.all(chunk.map(async d => { d._upd = Date.now(); const ref_ = doc(collection(db, "recepciones")); await setDoc(ref_, d); rcPoner(ref_.id, d); }));
       done += chunk.length;
       msg.textContent = `Importando… ${done}/${docs.length}`;
     }
@@ -4495,12 +4525,12 @@ function impClave(r) {
 async function impUndo(lote, n) {
   const msg = el("imp_undomsg"); msg.className = "msg"; msg.textContent = "Deshaciendo…";
   try {
-    const snap = await getDocs(collection(db, "recepciones"));
-    const ids = snap.docs.filter(d => (d.data() || {}).importLote === lote).map(d => d.id);
+    const ids = (await recSync()).filter(d => d.importLote === lote).map(d => d.id);
     let done = 0;
     const CH = 20;
     for (let i = 0; i < ids.length; i += CH) {
       await Promise.all(ids.slice(i, i + CH).map(id => deleteDoc(doc(db, "recepciones", id))));
+      rcQuitar(ids.slice(i, i + CH));
       done += Math.min(CH, ids.length - i);
       msg.textContent = `Deshaciendo… ${done}/${ids.length}`;
     }
