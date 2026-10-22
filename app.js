@@ -3505,8 +3505,11 @@ async function impOnFile(e) {
     }
     rows = rows.filter(r => r && r.some(c => String(c).trim() !== ""));
     if (rows.length < 2) { msg.className = "msg err"; msg.textContent = "El archivo no tiene filas suficientes."; return; }
-    IMP_HEADERS = rows[0].map(h => String(h).trim());
-    IMP_ROWS = rows.slice(1);
+    // La fila de títulos es la primera con 3 o más celdas llenas (salta títulos grandes tipo "Historial de…")
+    let hi = rows.findIndex(r => r.filter(c => String(c).trim() !== "").length >= 3);
+    if (hi < 0) hi = 0;
+    IMP_HEADERS = rows[hi].map(h => String(h).trim());
+    IMP_ROWS = rows.slice(hi + 1);
     IMP_MAP = {};
     IMP_HEADERS.forEach((h, i) => {
       const n = h.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -3520,11 +3523,12 @@ async function impOnFile(e) {
       else if (IMP_MAP.rubro == null && /rubro|presta\s*servicio/.test(n)) IMP_MAP.rubro = i;
       else if (IMP_MAP.celular == null && /celular|telefono|cel|whatsapp|movil/.test(n)) IMP_MAP.celular = i;
       else if (IMP_MAP.correo == null && /correo|email|mail/.test(n)) IMP_MAP.correo = i;
-      else if (IMP_MAP.detalle == null && /detalle|tipo\s*de\s*serv/.test(n)) IMP_MAP.detalle = i;
+      else if (IMP_MAP.detalle == null && /detalle/.test(n)) IMP_MAP.detalle = i;
       else if (IMP_MAP.servicio == null && /servicio|concepto|descrip/.test(n)) IMP_MAP.servicio = i;
       else if (IMP_MAP.mespago == null && /mes\s*de\s*pago|mes\s*pago/.test(n)) IMP_MAP.mespago = i;
       else if (IMP_MAP.mesrec == null && /\bmes\b|mes\s*recep|mes\s*declar/.test(n)) IMP_MAP.mesrec = i;
-      else if (IMP_MAP.anio == null && /a.?o|year|gestion/.test(n)) IMP_MAP.anio = i;
+      else if (IMP_MAP.mespago == null && IMP_MAP.mesrec != null && /^mes$/.test(n)) IMP_MAP.mespago = i; // 2da columna "MES" = mes de pago
+      else if (IMP_MAP.anio == null && /^a.?o$|year|gestion/.test(n)) IMP_MAP.anio = i;
       else if (IMP_MAP.importe == null && /importe|monto|total|precio|cobro/.test(n)) IMP_MAP.importe = i;
       else if (IMP_MAP.metodo == null && /metodo|forma|tipo\s*de\s*pago|transfer/.test(n)) IMP_MAP.metodo = i;
       else if (IMP_MAP.atencion == null && /atenci|atendi|responsable/.test(n)) IMP_MAP.atencion = i;
@@ -3548,6 +3552,10 @@ function impRenderCfg() {
       </div>
       <div style="overflow:auto;margin:6px 0 12px"><table style="font-size:11.5px"><thead><tr>${IMP_HEADERS.map(h => `<th>${escape(h)}</th>`).join("")}</tr></thead><tbody>${sample}</tbody></table></div>
       <p class="note" style="margin:0 0 10px">Vista previa de las primeras filas. La importación <b>no</b> envía recibos por correo; solo guarda el historial.</p>
+      <div class="grid2" style="margin:0 0 10px">
+        <div class="field"><label>Importar solo desde esta fecha (opcional)</label><input type="date" id="imp_desde"></div>
+        <div class="field"><label>Evitar duplicados</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="imp_dedup" checked style="width:auto"> Saltar las filas que ya están en el sistema (misma fecha, hora, NIT y N° recepción)</label></div>
+      </div>
       <button class="btn" id="imp_run">Importar ${IMP_ROWS.length} filas</button>
       <div class="msg" id="imp_runmsg"></div>
     </div>`;
@@ -3612,6 +3620,25 @@ async function impRun() {
   if (!docs.length) { msg.className = "msg err"; msg.textContent = "No hay filas válidas para importar."; return; }
   const btn = el("imp_run"); btn.disabled = true;
   msg.className = "msg"; let done = 0;
+  // Filtro por fecha "desde"
+  const desde = (el("imp_desde") && el("imp_desde").value) || "";
+  let porFecha = 0;
+  if (desde) { const antes = docs.length; for (let i = docs.length - 1; i >= 0; i--) { if (!docs[i].fechaISO || docs[i].fechaISO.slice(0, 10) < desde) docs.splice(i, 1); } porFecha = antes - docs.length; }
+  // Evitar duplicados: compara con lo que ya está en Firebase
+  let repetidos = 0;
+  if (el("imp_dedup") && el("imp_dedup").checked && docs.length) {
+    msg.textContent = "Revisando qué registros ya existen en el sistema…";
+    try {
+      const snap = await getDocs(collection(db, "recepciones"));
+      const existentes = new Set(snap.docs.map(d => impClave(d.data() || {})));
+      const vistos = new Set();
+      for (let i = docs.length - 1; i >= 0; i--) {
+        const k = impClave(docs[i]);
+        if (existentes.has(k) || vistos.has(k)) { docs.splice(i, 1); repetidos++; } else vistos.add(k);
+      }
+    } catch (e) { msg.className = "msg err"; msg.textContent = "No se pudo revisar duplicados: " + (e.code || e.message); btn.disabled = false; return; }
+  }
+  if (!docs.length) { msg.className = "msg ok"; msg.textContent = `No hay nada nuevo que importar (${repetidos} ya estaban en el sistema${porFecha ? `, ${porFecha} fuera de la fecha elegida` : ""}).`; btn.disabled = false; return; }
   try {
     const CH = 20;
     for (let i = 0; i < docs.length; i += CH) {
@@ -3621,7 +3648,7 @@ async function impRun() {
       msg.textContent = `Importando… ${done}/${docs.length}`;
     }
     IMP_LASTLOTE = lote; recepLoaded = false;
-    msg.className = "msg ok"; msg.textContent = `✓ ${done} registros importados correctamente.`;
+    msg.className = "msg ok"; msg.textContent = `✓ ${done} registros nuevos importados.` + (repetidos ? ` ${repetidos} ya estaban y se saltaron.` : "") + (porFecha ? ` ${porFecha} eran anteriores a la fecha elegida.` : "");
     el("imp_result").innerHTML = `<div class="formcard">
       <h3 style="margin:0 0 6px">Importación lista ✓</h3>
       <p class="note" style="margin:0 0 10px">Se importaron <b>${done}</b> registros al destino elegido. Ya aparecen en Recepción, Dashboard y las listas.
@@ -3632,6 +3659,15 @@ async function impRun() {
     el("imp_undo").onclick = () => impUndo(lote, done);
   } catch (e) { msg.className = "msg err"; msg.textContent = "Error al importar: " + (e.code || e.message) + ` (se guardaron ${done}).`; }
   btn.disabled = false;
+}
+
+// Clave para detectar si una recepción ya existe
+function impClave(r) {
+  const f = String(r.fechaISO || "").slice(0, 10);
+  const h = String(r.hora || "").trim().replace(/^0(\d:)/, "$1");
+  const nit = String(r.nit || "").replace(/\D/g, "");
+  const nro = String(r.nroRecepcion || "").trim();
+  return [f, h, nit, nro].join("|");
 }
 
 async function impUndo(lote, n) {
