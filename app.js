@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "24";
+const APP_VERSION = "25";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3169,6 +3169,18 @@ function djEstado(r) {
   if (r.dj_rcvIniciado || r.dj_rcvPor) return "rcv";
   return "pendiente";
 }
+// Calculadora tributaria (régimen general): IVA 13% (F200) e IT 3% (F400) compensable con IUE
+function djCalcular(d) {
+  const n = x => { const v = arqNum(x); return isNaN(v) ? 0 : v; };
+  const r2 = x => Math.round(x * 100) / 100;
+  const ventas = n(d.ventas), compras = n(d.compras), cfAnterior = n(d.cfAnterior), iue = n(d.iue);
+  const debito = r2(ventas * 0.13), credito = r2(compras * 0.13);
+  const difIva = r2(debito - credito - cfAnterior);           // > 0 a pagar ; < 0 saldo a favor
+  const ivaPagar = difIva > 0 ? difIva : 0, cfSiguiente = difIva < 0 ? r2(-difIva) : 0;
+  const itBruto = r2(ventas * 0.03);
+  const itPagar = r2(Math.max(0, itBruto - iue)), iueSobrante = r2(Math.max(0, iue - itBruto));
+  return { hayDatos: String(d.ventas || "").trim() !== "" || String(d.compras || "").trim() !== "", ventas, compras, cfAnterior, iue, debito, credito, difIva, ivaPagar, cfSiguiente, itBruto, itPagar, iueSobrante, total: r2(ivaPagar + itPagar) };
+}
 function djEstadoBadge(k) { const e = DJ_ESTADOS.find(x => x[0] === k) || DJ_ESTADOS[0]; return `<span class="badge ${e[2]}">${e[1]}</span>`; }
 function djYo() { const n = (ME && (ME.name || ME.email || "")) || ""; return n.split(/[\s@]/)[0].toUpperCase(); }
 function djEquipo() { const yo = djYo(); return yo && DJ_EQUIPO_DEF.indexOf(yo) < 0 ? [yo].concat(DJ_EQUIPO_DEF) : DJ_EQUIPO_DEF.slice(); }
@@ -3300,12 +3312,13 @@ function openDDJJ(r) {
       ${f("Total compras netas", inp("dj_totalCompras", r.dj_totalCompras, "0,00"))}
       ${f("Total ventas", inp("dj_totalVentas", r.dj_totalVentas, "0,00"))}
       ${f("¿Cuánto le falta?", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
-      ${f("Crédito fiscal", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
+      ${f("Crédito fiscal (mes anterior)", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
       ${f("Estado RCV", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
       ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
     </div>
     ${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}
     <div class="fs" style="margin-top:6px">2) Declaración</div>
+    <div id="dj_calc" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:13px"></div>
     <div class="grid3">
       ${f("Declarado por", sel("dj_declaradoPor", [""].concat(eq), r.dj_declaradoPor))}
       ${f("Fecha de declaración", inp("dj_fechaDeclaracion", r.dj_fechaDeclaracion, "", "date"))}
@@ -3352,6 +3365,31 @@ function openDDJJ(r) {
       box.querySelectorAll(".dj-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(items[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
     });
   })();
+  // ---- Calculadora tributaria (IVA 13% / IT 3%) ----
+  // Si no hay crédito fiscal anterior, se toma el "crédito fiscal siguiente mes" de la declaración anterior del mismo NIT
+  if (!r.dj_creditoFiscal && canEdit) {
+    const pk = recPeriodoKey(r), nit = String(r.nit || "").replace(/\D/g, "");
+    const prev = (LT_DATA || []).filter(x => x.id !== r.id && String(x.nit || "").replace(/\D/g, "") === nit && nit && recPeriodoKey(x) && recPeriodoKey(x) < pk && x.dj_creditoSigMes)
+      .sort((a, b) => recPeriodoKey(b).localeCompare(recPeriodoKey(a)))[0];
+    if (prev) { $("dj_creditoFiscal").value = prev.dj_creditoSigMes; $("dj_creditoFiscal").title = "Tomado de " + recPeriodoTxt(recPeriodoKey(prev)); }
+  }
+  const pintarCalc = (aplicar) => {
+    const c = djCalcular({ ventas: $("dj_totalVentas").value, compras: $("dj_totalCompras").value, cfAnterior: $("dj_creditoFiscal").value, iue: $("dj_compIUE").value });
+    const fx = n => (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const lin = (l, v, b) => `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:var(--muted)">${l}</span><span class="mono" ${b ? 'style="font-weight:700"' : ""}>${v}</span></div>`;
+    $("dj_calc").innerHTML = !c.hayDatos ? `🧮 <b>Calculadora:</b> <span class="note">llena <b>Total ventas</b> y <b>Total compras</b> en el RCV y aquí se calculan el IVA y el IT.</span>` : `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>🧮 Calculadora tributaria</b>${canEdit ? '<button class="mini" id="dj_aplicar" type="button">Pasar resultados ↓</button>' : ""}</div>
+      <div class="grid3" style="gap:4px 18px">
+        <div>${lin("Débito fiscal (13% ventas)", fx(c.debito))}${lin("Crédito fiscal (13% compras)", fx(c.credito))}${lin("Crédito fiscal anterior", fx(c.cfAnterior))}${lin("IVA: " + (c.ivaPagar > 0 ? "saldo en contra" : "saldo a favor"), fx(Math.abs(c.difIva)), 1)}</div>
+        <div>${lin("IT (3% ventas)", fx(c.itBruto))}${lin("IUE a compensar", fx(c.iue))}${lin("IT: " + (c.itPagar > 0 ? "saldo en contra" : "compensado"), fx(c.itPagar), 1)}${c.iueSobrante > 0 ? lin("IUE que sobra (próximo mes)", fx(c.iueSobrante)) : ""}</div>
+        <div>${lin("Formulario 200 (IVA)", fx(c.ivaPagar))}${lin("Formulario 400 (IT)", fx(c.itPagar))}${lin("Crédito fiscal siguiente mes", fx(c.cfSiguiente))}${lin("TOTAL A PAGAR", "Bs " + fx(c.total), 1)}</div>
+      </div>`;
+    const aplicar1 = () => { $("dj_ivaPagar").value = fx(c.ivaPagar); $("dj_itPagar").value = fx(c.itPagar); $("dj_creditoSigMes").value = fx(c.cfSiguiente); };
+    if ($("dj_aplicar")) $("dj_aplicar").onclick = () => { aplicar1(); $("dj_aplicar").textContent = "✓ Pasado"; };
+    if (aplicar && c.hayDatos && canEdit) aplicar1();
+  };
+  ["dj_totalVentas", "dj_totalCompras", "dj_creditoFiscal", "dj_compIUE"].forEach(id => $(id).oninput = () => pintarCalc(true));
+  pintarCalc(false);
   if ($("dj_save")) $("dj_save").onclick = async () => {
     const v = id => $(id).value.trim(), c = id => !!$(id).checked;
     const ahora = new Date().toLocaleString("es-BO");
