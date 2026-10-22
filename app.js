@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "28";
+const APP_VERSION = "29";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -60,7 +60,7 @@ el("loginBtn").onclick = async () => {
   catch (e) { msg.className = "msg err"; msg.textContent = traducir(e.code); }
   finally { el("loginBtn").disabled = false; }
 };
-function traducir(c) { return ({ "auth/invalid-credential": "Correo o contraseña incorrectos.", "auth/user-not-found": "No existe esa cuenta.", "auth/wrong-password": "Contraseña incorrecta.", "auth/invalid-email": "Correo no válido." })[c] || ("Error: " + c); }
+function traducir(c) { return ({ "auth/too-many-requests": "Demasiados intentos fallidos. Espera unos minutos o pide al administrador que te restablezca la contraseña.", "auth/network-request-failed": "Sin conexión. Revisa tu internet.", "auth/user-disabled": "Esta cuenta está deshabilitada en Firebase.", "auth/quota-exceeded": "Se alcanzó el límite diario de Firebase. Intenta después de las 3:00 a.m.", "auth/invalid-credential": "Correo o contraseña incorrectos.", "auth/user-not-found": "No existe esa cuenta.", "auth/wrong-password": "Contraseña incorrecta.", "auth/invalid-email": "Correo no válido." })[c] || ("Error: " + c); }
 el("logoutBtn").onclick = () =>signOut(auth);
 el("agentLogout").onclick = () =>signOut(auth);
 
@@ -128,9 +128,20 @@ function buildNav() {
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { el("login").classList.remove("hidden"); el("app").classList.add("hidden"); el("agentOnly").classList.add("hidden"); return; }
-  let snap;
-  try { snap = await getDoc(doc(db, "users", user.uid)); } catch (e) { snap = null; }
+  let snap, errPerfil = null;
+  try { snap = await getDoc(doc(db, "users", user.uid)); } catch (e) { snap = null; errPerfil = e; }
   el("login").classList.add("hidden");
+  // 0) No se pudo LEER el perfil (no es que no exista): mostramos la causa real
+  if (errPerfil) {
+    el("app").classList.add("hidden"); el("agentOnly").classList.remove("hidden");
+    const r = el("agentReason"), code = String(errPerfil.code || errPerfil.message || errPerfil);
+    if (r) r.innerHTML = /resource-exhausted|quota/i.test(code)
+      ? `<b>El sistema alcanzó el límite diario gratuito de Firebase</b> (cuota de lecturas/escrituras). No es problema de tu cuenta ni de tu contraseña.<br><br>Se restablece solo a las <b>3:00 a.m.</b> (hora de Bolivia), o el administrador puede activar el plan de pago por uso en Firebase.<br><br><span style="color:var(--muted);font-size:12px">Código: ${escape(code)}</span>`
+      : /unavailable|network|offline/i.test(code)
+      ? `No hay conexión con el servidor. Revisa tu internet y vuelve a intentar.<br><br><span style="color:var(--muted);font-size:12px">Código: ${escape(code)}</span>`
+      : `No se pudo leer tu perfil en el sistema.<br><br><span style="color:var(--muted);font-size:12px">Código: ${escape(code)}</span><br>Envía esta pantalla al administrador.`;
+    return;
+  }
   // 1) La cuenta existe en Firebase pero NO tiene perfil en el sistema
   if (!snap || !snap.exists()) {
     el("app").classList.add("hidden"); el("agentOnly").classList.remove("hidden");
