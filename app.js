@@ -3439,8 +3439,10 @@ const IMP_DESTINOS = [
   ["eeff", "Estados Financieros (EEFF)"]
 ];
 const IMP_CAMPOS = [
+  ["nro", "Nro (correlativo)"],
   ["fecha", "Fecha"],
   ["hora", "Hora"],
+  ["fechapago", "Fecha de pago"],
   ["nrorec", "N° Recepción"],
   ["nrocom", "N° Comprobante / Recibo"],
   ["cliente", "Cliente / Razón Social"],
@@ -3499,7 +3501,7 @@ async function impOnFile(e) {
     if (/\.(xlsx|xls)$/i.test(file.name)) {
       const XLSX = await arqLoadXLSX();
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
     } else {
       rows = arqParseCSV(await file.text());
     }
@@ -3513,7 +3515,9 @@ async function impOnFile(e) {
     IMP_MAP = {};
     IMP_HEADERS.forEach((h, i) => {
       const n = h.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      if (IMP_MAP.nrorec == null && /n.?\s*recep|nro.?\s*recep|numero\s*recep/.test(n)) IMP_MAP.nrorec = i;
+      if (IMP_MAP.nro == null && /^(nro|n°|no|numero|#)$/.test(n)) IMP_MAP.nro = i;
+      else if (IMP_MAP.fechapago == null && /fecha\s*(de\s*)?pago/.test(n)) IMP_MAP.fechapago = i;
+      else if (IMP_MAP.nrorec == null && /n.?\s*recep|nro.?\s*recep|numero\s*recep/.test(n)) IMP_MAP.nrorec = i;
       else if (IMP_MAP.nrocom == null && /comprob|recibo/.test(n)) IMP_MAP.nrocom = i;
       else if (IMP_MAP.fecha == null && /fecha|^dia$|date/.test(n)) IMP_MAP.fecha = i;
       else if (IMP_MAP.hora == null && /hora/.test(n)) IMP_MAP.hora = i;
@@ -3554,7 +3558,8 @@ function impRenderCfg() {
       <p class="note" style="margin:0 0 10px">Vista previa de las primeras filas. La importación <b>no</b> envía recibos por correo; solo guarda el historial.</p>
       <div class="grid2" style="margin:0 0 10px">
         <div class="field"><label>Importar solo desde esta fecha (opcional)</label><input type="date" id="imp_desde"></div>
-        <div class="field"><label>Evitar duplicados</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="imp_dedup" checked style="width:auto"> Saltar las filas que ya están en el sistema (misma fecha, hora, NIT y N° recepción)</label></div>
+        <div class="field"><label>Modo</label><select id="imp_modo"><option value="agregar">Agregar a lo que ya hay</option><option value="reemplazar">REEMPLAZAR: borrar la(s) gestión(es) del archivo y subir este archivo</option></select></div>
+        <div class="field"><label>Evitar duplicados (solo en modo Agregar)</label><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="imp_dedup" checked style="width:auto"> Saltar las filas que ya están en el sistema (misma fecha, hora, NIT y N° recepción)</label></div>
       </div>
       <button class="btn" id="imp_run">Importar ${IMP_ROWS.length} filas</button>
       <div class="msg" id="imp_runmsg"></div>
@@ -3569,7 +3574,19 @@ async function impRun() {
   const tipo = el("imp_destino").value;
   const estadoDef = el("imp_estado").value;
   const lote = "imp-" + Date.now();
-  const get = (r, k) => (IMP_MAP[k] != null && IMP_MAP[k] >= 0) ? String(r[IMP_MAP[k]] == null ? "" : r[IMP_MAP[k]]).trim() : "";
+  const get = (r, k) => {
+    if (IMP_MAP[k] == null || IMP_MAP[k] < 0) return "";
+    const v = r[IMP_MAP[k]];
+    if (v == null) return "";
+    if (typeof v === "number") {
+      if (k === "fecha" || k === "fechapago") return impSerialFecha(v);
+      if (k === "hora") return impSerialHora(v);
+      if (k === "importe") return String(v);
+      return String(v);
+    }
+    return String(v).trim();
+  };
+  const modo = (el("imp_modo") && el("imp_modo").value) || "agregar";
   // Construir documentos
   const docs = [];
   IMP_ROWS.forEach(r => {
@@ -3584,6 +3601,7 @@ async function impRun() {
     const nit = get(r, "nit");
     const fechaTxt = get(r, "fecha");
     docs.push({
+      nro: get(r, "nro"),
       nroRecepcion: get(r, "nrorec"),
       nroComprobante: get(r, "nrocom"),
       fechaISO: arqDate(fechaTxt) || "",
@@ -3602,6 +3620,7 @@ async function impRun() {
       mesRecepcion: get(r, "mesrec"),
       anio: get(r, "anio"),
       mesPago: get(r, "mespago"),
+      fechaPago: arqDate(get(r, "fechapago")) || "",
       importe: arqNum(impTxt) || 0,
       metodoPago: metodo,
       tipoPago: metodo,
@@ -3625,8 +3644,32 @@ async function impRun() {
   let porFecha = 0;
   if (desde) { const antes = docs.length; for (let i = docs.length - 1; i >= 0; i--) { if (!docs[i].fechaISO || docs[i].fechaISO.slice(0, 10) < desde) docs.splice(i, 1); } porFecha = antes - docs.length; }
   // Evitar duplicados: compara con lo que ya está en Firebase
-  let repetidos = 0;
-  if (el("imp_dedup") && el("imp_dedup").checked && docs.length) {
+  let repetidos = 0, borrados = 0;
+  if (modo === "reemplazar" && docs.length) {
+    const anios = [...new Set(docs.map(d => (d.fechaISO || "").slice(0, 4)).filter(Boolean))].sort();
+    if (!anios.length) { msg.className = "msg err"; msg.textContent = "No se reconocen las fechas del archivo; no se puede reemplazar."; btn.disabled = false; return; }
+    msg.textContent = "Revisando lo que hay en el sistema…";
+    let aBorrar = [];
+    try {
+      const snap = await getDocs(collection(db, "recepciones"));
+      aBorrar = snap.docs.filter(d => anios.includes(String((d.data() || {}).fechaISO || "").slice(0, 4)));
+    } catch (e) { msg.className = "msg err"; msg.textContent = "No se pudo leer el sistema: " + (e.code || e.message); btn.disabled = false; return; }
+    if (!confirm(`Vas a BORRAR ${aBorrar.length} recepciones de la gestión ${anios.join(", ")} y subir ${docs.length} del archivo.\n\nAntes se descargará un respaldo (.json) de lo borrado.\n\n¿Continuar?`)) { msg.textContent = "Cancelado. No se cambió nada."; btn.disabled = false; return; }
+    // Respaldo
+    try {
+      const data = aBorrar.map(d => Object.assign({ _id: d.id }, d.data()));
+      const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `respaldo-recepciones-${anios.join("-")}-${new Date().toISOString().slice(0, 10)}.json`; document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {}
+    try {
+      const CHd = 20;
+      for (let i = 0; i < aBorrar.length; i += CHd) {
+        await Promise.all(aBorrar.slice(i, i + CHd).map(d => deleteDoc(doc(db, "recepciones", d.id))));
+        borrados += Math.min(CHd, aBorrar.length - i);
+        msg.textContent = `Borrando lo anterior… ${borrados}/${aBorrar.length}`;
+      }
+    } catch (e) { msg.className = "msg err"; msg.textContent = `Error al borrar (${borrados} borrados): ` + (e.code || e.message) + ". Tienes el respaldo descargado."; btn.disabled = false; return; }
+  } else if (el("imp_dedup") && el("imp_dedup").checked && docs.length) {
     msg.textContent = "Revisando qué registros ya existen en el sistema…";
     try {
       const snap = await getDocs(collection(db, "recepciones"));
@@ -3648,7 +3691,7 @@ async function impRun() {
       msg.textContent = `Importando… ${done}/${docs.length}`;
     }
     IMP_LASTLOTE = lote; recepLoaded = false;
-    msg.className = "msg ok"; msg.textContent = `✓ ${done} registros nuevos importados.` + (repetidos ? ` ${repetidos} ya estaban y se saltaron.` : "") + (porFecha ? ` ${porFecha} eran anteriores a la fecha elegida.` : "");
+    msg.className = "msg ok"; msg.textContent = (borrados ? `Se reemplazaron ${borrados} registros anteriores. ` : "") + `✓ ${done} registros nuevos importados.` + (repetidos ? ` ${repetidos} ya estaban y se saltaron.` : "") + (porFecha ? ` ${porFecha} eran anteriores a la fecha elegida.` : "");
     el("imp_result").innerHTML = `<div class="formcard">
       <h3 style="margin:0 0 6px">Importación lista ✓</h3>
       <p class="note" style="margin:0 0 10px">Se importaron <b>${done}</b> registros al destino elegido. Ya aparecen en Recepción, Dashboard y las listas.
@@ -3661,6 +3704,17 @@ async function impRun() {
   btn.disabled = false;
 }
 
+// Fechas/horas que vienen de Excel como número de serie
+function impSerialFecha(n) {
+  const d = new Date(Math.round((Math.floor(n) - 25569) * 86400000));
+  const y = d.getUTCFullYear(), m = String(d.getUTCMonth() + 1).padStart(2, "0"), dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${dd}/${m}/${y}`;
+}
+function impSerialHora(n) {
+  let s = Math.round((n - Math.floor(n)) * 86400); if (s >= 86400) s = 0;
+  const h = Math.floor(s / 3600), mi = String(Math.floor((s % 3600) / 60)).padStart(2, "0"), se = String(s % 60).padStart(2, "0");
+  return `${h}:${mi}:${se}`;
+}
 // Clave para detectar si una recepción ya existe
 function impClave(r) {
   const f = String(r.fechaISO || "").slice(0, 10);
