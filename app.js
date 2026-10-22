@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "25";
+const APP_VERSION = "26";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -67,7 +67,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 // ---------- Roles, secciones y permisos del portal ----------
 // Secciones del menú (apartados) y las pestañas (views) que contienen
 const NAV_SECTIONS = [
-  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "tarifas", "calendario"] },
+  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario"] },
   { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "arqueo", "egresos", "repfinanzas"] },
   { key: "listas",   label: "LISTAS",          views: ["declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
@@ -75,7 +75,7 @@ const NAV_SECTIONS = [
   { key: "admin",    label: "ADMINISTRACIÓN",  views: ["asistente", "config", "users", "importar"] }
 ];
 const VIEW_LABELS = {
-  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
+  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
   recepcion: "Recepción", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
   declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
@@ -89,9 +89,9 @@ const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", editor: "Editor"
 const DEFAULT_ROLE_VIEWS = {
   admin: ALL_VIEWS.slice(),
   supervisor: ALL_VIEWS.slice(),
-  editor: ["inicio", "basedatos", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
+  editor: ["inicio", "basedatos", "ficha", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
   cajero: ["inicio", "basedatos", "recepcion", "arqueo", "egresos", "calendario", "asistente"],
-  lector: ["inicio", "dashboard", "basedatos", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
+  lector: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
 };
 let ROLE_VIEWS = null; // se carga de config/app.rolePerms; si no, usa los defaults
 function roleViewsFor(role) {
@@ -177,6 +177,7 @@ function switchView(v, btn) {
   if (v === "inicio") renderInicio();
   if (v === "clientes") renderClientes();
   if (v === "basedatos") renderBaseDatos();
+  if (v === "ficha") renderFicha();
   if (v === "tarifas") renderTarifas();
   if (v === "asistente") renderAsistente();
   if (v === "recepcion") renderRecepcion();
@@ -3285,7 +3286,7 @@ function paintDDJJ() {
   el("v-declaraciones").querySelectorAll(".dj-kpi").forEach(k => k.onclick = () => { DJ_UI.est = DJ_UI.est === k.dataset.k ? "" : k.dataset.k; re(); });
   el("v-declaraciones").querySelectorAll(".dj-row").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id)));
 }
-function openDDJJ(r) {
+function openDDJJ(r, alGuardar) {
   if (!r) return;
   const canEdit = canEditClientes();
   const dis = canEdit ? "" : "disabled";
@@ -3410,9 +3411,114 @@ function openDDJJ(r) {
     try {
       await setDoc(doc(db, "recepciones", r.id), d, { merge: true });
       Object.assign(r, d, { dj_editadoAt: new Date().toISOString() });
-      close(); paintDDJJ();
+      close(); (alGuardar || paintDDJJ)();
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
+}
+
+// ---------- FICHA DEL CLIENTE (antes "HistorialClientes" en Sheets) ----------
+const FI_UI = { nit: "", anio: String(new Date().getFullYear()), recs: [], cargando: false };
+function fiNit(v) { return String(v == null ? "" : v).replace(/\D/g, ""); }
+async function renderFicha() {
+  el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1><p class="lead"><span class="cx-spin"></span> Cargando clientes…</p>`;
+  bdEnsureLoaded(ok => {
+    if (!ok) { el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1><p class="lead">No se pudo abrir la Base de Datos de clientes.</p>`; return; }
+    paintFicha();
+  });
+}
+async function fiCargar(nit) {
+  FI_UI.nit = nit; FI_UI.recs = []; FI_UI.cargando = true; paintFicha();
+  try {
+    const snap = await getDocs(query(collection(db, "recepciones"), where("nit", "==", nit)));
+    FI_UI.recs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    const anios = [...new Set(FI_UI.recs.map(r => (recPeriodoKey(r) || String(r.fechaISO || "")).slice(0, 4)).filter(Boolean))].sort();
+    if (anios.length && anios.indexOf(FI_UI.anio) < 0) FI_UI.anio = anios[anios.length - 1];
+  } catch (e) { alert("No se pudo cargar el historial: " + (e.code || e.message)); }
+  FI_UI.cargando = false; paintFicha();
+}
+function paintFicha() {
+  const canEdit = canEditClientes();
+  const opts = BD.map(c => `${bdV(c, "nombre") || bdV(c, "razon")} — NIT ${bdV(c, "nit")}${bdV(c, "codigoId") ? " — ID " + bdV(c, "codigoId") : ""}`);
+  const c = FI_UI.nit ? BD.find(x => fiNit(bdV(x, "nit")) === FI_UI.nit) : null;
+  const buscador = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+      <input id="fi_q" list="fi_list" placeholder="🔎 Escribe nombre, NIT o ID del cliente…" style="flex:1;min-width:260px" value="${c ? escape(opts[BD.indexOf(c)]) : ""}">
+      <datalist id="fi_list">${opts.map(o => `<option value="${escape(o)}">`).join("")}</datalist>
+      ${FI_UI.nit ? `<button class="mini" id="fi_reload">↻ Actualizar</button>` : ""}
+    </div>`;
+  if (!FI_UI.nit) {
+    el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1><p class="lead">Busca un cliente para ver sus datos, sus declaraciones mes a mes y todo lo que ha recepcionado.</p>${buscador}`;
+    fiBind(); return;
+  }
+  if (FI_UI.cargando) { el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1>${buscador}<p class="lead"><span class="cx-spin"></span> Cargando historial…</p>`; fiBind(); return; }
+  const recs = FI_UI.recs;
+  const uno = recs[0] || {};
+  const dato = (l, v) => `<div style="display:flex;gap:8px;padding:2px 0"><span style="color:var(--muted);flex:0 0 150px">${l}</span><b style="flex:1">${escape(v || "—")}</b></div>`;
+  const secretos = canEdit && c ? [["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["Contraseña SIAT", bdV(c, "passSiat")]].filter(x => x[1]) : [];
+  // ---- Declaraciones del año: 12 meses ----
+  const decl = recs.filter(r => recCatDe(r) === "declaracion");
+  const anios = [...new Set(recs.map(r => (recPeriodoKey(r) || String(r.fechaISO || "")).slice(0, 4)).filter(Boolean)).add(String(new Date().getFullYear()))].sort().reverse();
+  const hoyKey = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0");
+  const activo = c ? bdIsActivo(c) : false;
+  let sv = 0, sc = 0;
+  const filasMes = REC_MESES_CAP.map((mes, i) => {
+    const key = FI_UI.anio + "-" + String(i + 1).padStart(2, "0");
+    const rs = decl.filter(r => recPeriodoKey(r) === key);
+    if (!rs.length) {
+      const atrasado = key < hoyKey;
+      return `<tr><td class="mono">${i + 1}</td><td><b>${mes}</b></td><td colspan="8">${atrasado ? `<span class="badge ${activo ? "danger" : "off"}">No recepcionado</span>` : `<span class="note">—</span>`}</td></tr>`;
+    }
+    return rs.map(r => {
+      const n = x => { const v = arqNum(x); return isNaN(v) ? 0 : v; };
+      sv += n(r.dj_totalVentas); sc += n(r.dj_totalCompras);
+      return `<tr class="fi-dj" data-id="${r.id}" style="cursor:pointer"><td class="mono">${i + 1}</td><td><b>${mes}</b><div class="note" style="margin:0">Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))}</div></td>
+        <td style="font-size:12px">${escape(r.detalleServicio || "—")}</td>
+        <td>${escape(r.dj_rcvPor || "—")}</td><td>${escape(r.dj_declaradoPor || "—")}<div class="note" style="margin:0">${escape(djFechaTxt(r.dj_fechaDeclaracion))}</div></td>
+        <td class="mono" style="text-align:right">${escape(r.dj_totalVentas || "")}</td><td class="mono" style="text-align:right">${escape(r.dj_totalCompras || "")}</td>
+        <td class="mono" style="text-align:right">${escape(r.dj_ivaPagar || "")}</td><td class="mono" style="text-align:right">${escape(r.dj_itPagar || "")}</td>
+        <td>${(r.origen === "importado" && !Object.keys(r).some(k => k.indexOf("dj_") === 0) && !enListaTrabajo(r, "declaracion")) ? `<span class="badge ok">Recepcionado</span>` : djEstadoBadge(djEstado(r))}</td></tr>`;
+    }).join("");
+  }).join("");
+  const util = Math.round((sv - sc) * 100) / 100, prov = util > 0 ? Math.round(util * 25) / 100 : 0;
+  const fx = n => (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // ---- Otros servicios ----
+  const otros = recs.filter(r => recCatDe(r) !== "declaracion").sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
+  el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1>${buscador}
+    <div class="grid2" style="gap:16px;align-items:start">
+      <div class="formcard" style="max-width:none;margin:0">
+        <h3 style="margin:0 0 8px">${escape(c ? (bdV(c, "nombre") || bdV(c, "razon")) : (uno.clienteNombre || "—"))} ${c ? `<span class="badge ${bdEstadoInfo(c).cls}" style="vertical-align:middle">${escape(bdEstadoInfo(c).raw || "—")}</span>` : ""}</h3>
+        ${dato("Código de ID", c ? bdV(c, "codigoId") : uno.clienteId)}${dato("NIT", FI_UI.nit)}${dato("Celular", c ? bdV(c, "celular") : uno.clienteCelular)}${dato("Correo", c ? bdV(c, "correo") : uno.clienteCorreo)}
+        ${dato("Tipo de contribuyente", c && bdV(c, "tipo"))}${dato("Brinda servicios a", (c && bdV(c, "brinda")) || uno.rubro)}${dato("Fecha apertura NIT", c && bdV(c, "fechaNit"))}
+        ${!c ? `<p class="note">Este NIT no está en la Base de Datos de clientes; se muestran los datos de sus recepciones.</p>` : ""}
+      </div>
+      <div>
+        ${secretos.length ? `<div class="formcard" style="max-width:none;margin:0 0 14px"><h3 style="margin:0 0 8px">🔑 Accesos SIN</h3>${secretos.map(([l, v], i) => `<div style="display:flex;gap:8px;align-items:center;padding:2px 0"><span style="color:var(--muted);flex:0 0 130px">${l}</span><b class="mono" style="flex:1">${escape(v)}</b><button class="mini fi-copy" data-i="${i}">📋</button></div>`).join("")}</div>` : ""}
+        <div class="kpis" style="margin:0;grid-template-columns:repeat(2,1fr)">
+          <div class="kpi"><div class="n" style="font-size:22px">${fx(util)}</div><div class="l">Utilidad / Pérdida ${escape(FI_UI.anio)}</div></div>
+          <div class="kpi"><div class="n" style="font-size:22px">${fx(prov)}</div><div class="l">Prov. IUE (25%)</div></div>
+        </div>
+        <p class="note" style="margin:6px 0 0">Estimado con las ventas y compras registradas en el RCV del año.</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin:20px 0 8px"><h3 style="margin:0 auto 0 0">Detalle de Declaraciones Juradas Mensuales</h3>
+      <select id="fi_anio">${anios.map(a => `<option ${a === FI_UI.anio ? "selected" : ""}>${a}</option>`).join("")}</select></div>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Nro.</th><th>Mes</th><th>Detalle</th><th>RCV por</th><th>Declarado por</th><th style="text-align:right">Ventas</th><th style="text-align:right">Compras</th><th style="text-align:right">IVA</th><th style="text-align:right">IT</th><th>Estado</th></tr></thead>
+    <tbody>${filasMes}</tbody>
+    <tfoot><tr><td></td><td><b>TOTAL</b></td><td colspan="3"></td><td class="mono" style="text-align:right"><b>${fx(sv)}</b></td><td class="mono" style="text-align:right"><b>${fx(sc)}</b></td><td colspan="3"></td></tr></tfoot></table></div>
+    <p class="note">Toca un mes para abrir su declaración. Los meses anteriores a octubre 2026 vienen de la importación y solo muestran que se recepcionaron.</p>
+    <h3 style="margin:20px 0 8px">Otros servicios recepcionados</h3>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Servicio</th><th>Detalle</th><th>Período / Gestión</th><th>Atención</th></tr></thead><tbody>
+    ${otros.map(r => `<tr><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td>${escape(r.servicio || r.servicioNombre || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td>${escape(r.mesRecepcion || "—")}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="5" class="note">Sin otros servicios.</td></tr>`}
+    </tbody></table></div>`;
+  fiBind();
+  if (el("fi_anio")) el("fi_anio").onchange = e => { FI_UI.anio = e.target.value; paintFicha(); };
+  el("v-ficha").querySelectorAll(".fi-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(secretos[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+  el("v-ficha").querySelectorAll(".fi-dj").forEach(tr => tr.onclick = () => openDDJJ(FI_UI.recs.find(x => x.id === tr.dataset.id), () => { LT_DATA = null; paintFicha(); }));
+}
+function fiBind() {
+  const q = el("fi_q"); if (!q) return;
+  const pick = () => { const m = q.value.match(/NIT\s+(\d+)/); const soloNum = fiNit(q.value); const nit = m ? m[1] : (soloNum.length >= 6 && soloNum === q.value.trim() ? soloNum : ""); if (nit && nit !== FI_UI.nit) fiCargar(nit); };
+  q.onchange = pick; q.onkeydown = e => { if (e.key === "Enter") pick(); };
+  if (el("fi_reload")) el("fi_reload").onclick = () => fiCargar(FI_UI.nit);
 }
 
 // ---------- FINANZAS · Reportes financieros (con importes; solo para quien tenga permiso) ----------
