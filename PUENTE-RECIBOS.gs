@@ -1,5 +1,5 @@
 /**********************************************************************
- * NUMMEROS by CONTAX — PUENTE DE RECIBOS (Orden de Recepción)  ·  v2
+ * NUMMEROS by CONTAX — PUENTE DE RECIBOS (Orden de Recepción)  ·  v3 (correo con diseño y logos)
  * --------------------------------------------------------------------
  * Genera la "Orden de Recepción" en PDF (igual al formato de CONTAX)
  * y la envía al correo del cliente desde la cuenta de Gmail de CONTAX.
@@ -40,6 +40,12 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// Logos para el correo (PNG publicados en el panel; Gmail no muestra SVG)
+var LOGOS = {
+  contax:   "https://nummerospanel.contaxbolivia.com/marca/correo/contax-logo.png",
+  nummeros: "https://nummerospanel.contaxbolivia.com/marca/correo/nummeros-logo.png"
+};
+
 function enviarRecibo(d) {
   var para = (d.to || "").trim();
   if (!para) throw new Error("sin_correo");
@@ -49,13 +55,65 @@ function enviarRecibo(d) {
                       .getAs("application/pdf")
                       .setName("Orden-Recepcion-" + (d.nroRecepcion || "CONTAX") + ".pdf");
   var asunto = "Orden de Recepción N° " + (d.nroRecepcion || "") + " — " + empresaNombre;
+  // Texto simple (respaldo para correos que no muestran diseño)
   var cuerpo =
       "Estimado/a " + (d.nombre || "cliente") + ",\n\n" +
       "Adjuntamos su Orden de Recepción.\n" +
       "Servicio: " + (d.tipoServicio || "") + (d.detalleServicio ? " — " + d.detalleServicio : "") + "\n" +
       "Mes: " + (d.mes || "") + "   ·   Importe: " + money(d.importe) + "   ·   Forma de pago: " + (d.formaPago || "") + "\n\n" +
       "Gracias por confiar en " + empresaNombre + ".\n\n— " + empresaNombre;
-  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, attachments: [blob] });
+  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, htmlBody: buildCorreoHTML(d, empresaNombre), attachments: [blob] });
+}
+
+// Correo con diseño: logo CONTAX, resumen del servicio, aviso y pie "Sistema NUMMEROS by CONTAX"
+function buildCorreoHTML(d, empresaNombre) {
+  var navy = EMPRESA.navy, gris = "#55617a", linea = "#e4e7ee";
+  var fila = function (k, v, fuerte) {
+    if (!v) return "";
+    return '<tr><td style="padding:9px 0;border-bottom:1px solid ' + linea + ';color:' + gris + ';font-size:13px;width:42%">' + esc(k) + '</td>' +
+           '<td style="padding:9px 0;border-bottom:1px solid ' + linea + ';color:#1f2a3a;font-size:14px;text-align:right;' + (fuerte ? 'font-weight:700' : '') + '">' + esc(v) + '</td></tr>';
+  };
+  var servicio = (d.tipoServicio || "") + (d.detalleServicio ? " — " + d.detalleServicio : "");
+  return '' +
+  '<!doctype html><html><body style="margin:0;padding:0;background:#eef1f5">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f5;padding:24px 10px"><tr><td align="center">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:\'Century Gothic\',Helvetica,Arial,sans-serif">' +
+    // Logo
+    '<tr><td align="center" style="padding:28px 24px 18px"><img src="' + LOGOS.contax + '" width="210" alt="' + esc(empresaNombre) + '" style="display:block;width:210px;max-width:70%;height:auto;border:0"></td></tr>' +
+    // Banda de título
+    '<tr><td style="background:' + navy + ';padding:16px 24px;text-align:center">' +
+      '<div style="color:#cdd4e2;font-size:11px;letter-spacing:.18em;text-transform:uppercase">Orden de Recepción</div>' +
+      '<div style="color:#ffffff;font-size:26px;font-weight:700;margin-top:2px">N° ' + esc(d.nroRecepcion || "") + '</div>' +
+    '</td></tr>' +
+    // Saludo
+    '<tr><td style="padding:24px 28px 6px;color:#1f2a3a;font-size:15px;line-height:1.55">' +
+      'Estimado/a <b>' + esc(d.nombre || "cliente") + '</b>,<br>' +
+      (/DEUDOR/i.test(d.formaPago || "") ? 'Registramos su solicitud de servicio (pago pendiente).' : 'Recibimos su pago correctamente.') +
+      ' Adjuntamos su <b>Orden de Recepción</b> en PDF con el detalle completo.' +
+    '</td></tr>' +
+    // Resumen
+    '<tr><td style="padding:10px 28px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' +
+      fila("Servicio", servicio) +
+      fila("Mes / período", d.mes) +
+      fila("Fecha", [d.fecha, d.hora].filter(Boolean).join(" · ")) +
+      fila("Forma de pago", d.formaPago) +
+      fila("Atendido por", d.atencion) +
+      fila("Importe", money(d.importe), true) +
+    '</table></td></tr>' +
+    // Aviso
+    '<tr><td style="padding:18px 28px 6px"><div style="background:#f4f6f9;border-left:3px solid ' + navy + ';border-radius:6px;padding:12px 14px;color:' + gris + ';font-size:11.5px;line-height:1.55;font-style:italic">' + esc(DISCLAIMER) + '</div></td></tr>' +
+    // Gracias
+    '<tr><td style="padding:16px 28px 22px;color:#1f2a3a;font-size:14px;line-height:1.5">Gracias por confiar en <b>' + esc(empresaNombre) + '</b>.<br><span style="color:' + gris + ';font-size:13px">Si tiene alguna consulta, escríbanos por WhatsApp al ' + esc(EMPRESA.contacto) + '.</span></td></tr>' +
+    // Pie CONTAX
+    '<tr><td style="background:' + navy + ';padding:14px 24px;color:#cdd4e2;font-size:11px;line-height:1.6;text-align:center">' +
+      esc(EMPRESA.direccion) + '<br>Contacto: ' + esc(EMPRESA.contacto) + ' · ' + esc(EMPRESA.correo) +
+    '</td></tr>' +
+  '</table>' +
+  // Firma NUMMEROS
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px"><tr><td align="center" style="padding:16px 10px 6px;font-family:Helvetica,Arial,sans-serif;color:#8a94a6;font-size:11px">' +
+    'Sistema de gestión desarrollado por<br><img src="' + LOGOS.nummeros + '" width="120" alt="NUMMEROS" style="display:inline-block;width:120px;height:auto;margin-top:6px;border:0"><br><span style="font-size:10px">NUMMEROS by CONTAX</span>' +
+  '</td></tr></table>' +
+  '</td></tr></table></body></html>';
 }
 
 function buildOrdenHTML(d, empresaNombre) {

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "27";
+const APP_VERSION = "28";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2228,7 +2228,10 @@ function recDetallesPorCat(cat, L) {
   const map = { declaracion: "detallesDeclaracion", tramite: "detallesTramite", eeff: "detallesBalance", facturacion: "detallesFacturacion" };
   const key = map[cat];
   const arr = (key && L[key] && L[key].length) ? L[key] : (key ? REC_SEED[key] : []);
-  return (arr || []).concat((L.detalles && L.detalles.length) ? L.detalles : []);
+  const vistos = new Set();
+  return (arr || []).concat((L.detalles && L.detalles.length) ? L.detalles : []).filter(x => {
+    const k = recNormTxt(x).replace(/\s+/g, " ").trim(); if (!k || vistos.has(k)) return false; vistos.add(k); return true;
+  });
 }
 const REC_MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 function recMesesOpts() {
@@ -2615,6 +2618,24 @@ async function recReactivarSiInactivo(cli) {
   }
   return false;
 }
+// Ventana: el cliente está inactivo → ¿activar y registrar, registrar sin activar o volver?
+function recPreguntarActivar(cli) {
+  return new Promise(res => {
+    const bg = document.createElement("div");
+    bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;display:flex;align-items:center;justify-content:center;padding:20px";
+    bg.innerHTML = `<div style="background:var(--panel);border:2px solid var(--danger);border-radius:14px;padding:24px;width:470px;max-width:96vw">
+      <h3 style="margin:0 0 8px;color:var(--danger)">⚠ El cliente no está ACTIVO</h3>
+      <p style="margin:0 0 6px"><b>${escape(bdV(cli, "nombre") || bdV(cli, "razon"))}</b> figura como <b style="color:var(--danger)">${escape(bdV(cli, "estado"))}</b> en la Base de Datos.</p>
+      <p class="note" style="margin:0 0 16px">Si no lo activas, <b>no aparecerá en Facturación</b> ni en los controles de clientes activos. ¿Estás seguro de registrar sin activarlo?</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn" data-r="activar" style="background:#2E7D5B;border-color:#2E7D5B;color:#fff">✓ Activar y registrar</button>
+        <button class="btn sec" data-r="sin" style="border:1px solid var(--line)">Registrar sin activar</button>
+        <button class="mini" data-r="cancelar">Volver al formulario</button>
+      </div></div>`;
+    document.body.appendChild(bg);
+    bg.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { bg.remove(); res(b.dataset.r); });
+  });
+}
 // Pinta el estado del cliente seleccionado en el formulario, con botón para reactivar
 function recPintarEstado() {
   const box = el("r_estado_box"); if (!box) return;
@@ -2623,13 +2644,17 @@ function recPintarEstado() {
   const est = info.raw || "—";
   const cls = info.cls === "ok" ? "ok" : (info.cls === "danger" ? "danger" : "off");
   const baja = esBaja(est);
-  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
-    <span style="color:var(--muted)">Estado:</span> <span class="badge ${cls}">${escape(est)}</span>
-    ${baja ? `<button type="button" class="mini" id="r_setactivo" title="Cambiar a ACTIVO en la Base de Datos">Marcar ACTIVO</button>` : ""}</div>`;
+  box.innerHTML = baja
+    ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;background:rgba(180,69,60,.10);border:1.5px solid var(--danger);border-radius:10px;padding:9px 12px">
+        <span style="color:var(--danger);font-weight:700">⚠ Cliente: ${escape(est)}</span>
+        <span style="color:var(--danger);font-size:12px;flex:1;min-width:180px">Si vuelve a trabajar con nosotros, actívalo para que aparezca en Facturación y en los controles.</span>
+        <button type="button" class="btn" id="r_setactivo" style="background:#2E7D5B;border-color:#2E7D5B;color:#fff;padding:7px 14px;font-size:13px" title="Cambiar a ACTIVO en la Base de Datos">✓ Marcar ACTIVO</button></div>`
+    : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+    <span style="color:var(--muted)">Estado:</span> <span class="badge ${cls}">${escape(est)}</span></div>`;
   if (el("r_setactivo")) el("r_setactivo").onclick = async () => {
     const b = el("r_setactivo"); b.disabled = true; b.textContent = "…";
     const ok = await recReactivarSiInactivo(recCli);
-    if (ok) recPintarEstado(); else { b.disabled = false; b.textContent = "Marcar ACTIVO"; }
+    if (ok) recPintarEstado(); else { b.disabled = false; b.textContent = "✓ Marcar ACTIVO"; }
   };
 }
 async function registrarRecepcion() {
@@ -2639,6 +2664,13 @@ async function registrarRecepcion() {
   const servicio = el("r_serv").value;
   if (!nombre) { msg.className = "msg err"; msg.textContent = "Elige o escribe el cliente."; return; }
   if (isNaN(total) || total < 0) { msg.className = "msg err"; msg.textContent = "Pon un total válido."; return; }
+  // Cliente dado de baja: preguntar antes de registrar
+  let activarAlRegistrar = false;
+  if (recCli && esBaja(bdV(recCli, "estado"))) {
+    const resp = await recPreguntarActivar(recCli);
+    if (resp === "cancelar") return;
+    activarAlRegistrar = resp === "activar";
+  }
   const btn = el("r_save"); btn.disabled = true; btn.textContent = "Registrando…";
   try {
     const nroRec = await recNextNum("nextRecep", 7048);
@@ -2674,9 +2706,9 @@ async function registrarRecepcion() {
       enviado = await postRecibo(rec);
       if (enviado) { try { await setDoc(doc(db, "recepciones", ref.id), { reciboEnviado: true }, { merge: true }); } catch (e) {} rec.reciboEnviado = true; }
     }
-    // Si el cliente estaba dado de baja en la BD, al pagar lo reactivamos a ACTIVO
+    // Solo se reactiva si el usuario lo eligió en la pregunta
     let reactivado = false;
-    try { reactivado = await recReactivarSiInactivo(recCli); } catch (e) {}
+    if (activarAlRegistrar) { try { reactivado = await recReactivarSiInactivo(recCli); } catch (e) {} }
     // Inserción inmediata en la lista (no dependemos de releer todo)
     RECEP.unshift(Object.assign({}, rec));
     recFlash = (reactivado ? `✓ Cliente reactivado a ACTIVO. ` : "") + `✓ Recepción N° ${nroRec} registrada` + (rec.clienteCorreo ? (enviado ? " y Orden enviada al correo." : " (no se pudo enviar el PDF; revisa la URL de recibos en Configuración).") : " (el cliente no tiene correo: no se envió PDF).") + ` — míralo en la pestaña "Lista".`;
