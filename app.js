@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "26";
+const APP_VERSION = "27";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -69,7 +69,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 const NAV_SECTIONS = [
   { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario"] },
   { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "arqueo", "egresos", "repfinanzas"] },
-  { key: "listas",   label: "LISTAS",          views: ["declaraciones", "tramites", "eeff", "facturacion"] },
+  { key: "listas",   label: "LISTAS",          views: ["control", "declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
   { key: "reportes", label: "REPORTES",        views: ["presence", "historial", "reports"] },
   { key: "admin",    label: "ADMINISTRACIÓN",  views: ["asistente", "config", "users", "importar"] }
@@ -77,7 +77,7 @@ const NAV_SECTIONS = [
 const VIEW_LABELS = {
   inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
   recepcion: "Recepción", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
-  declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
+  control: "Control del mes", declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
   presence: "Presencia", historial: "Historial", reports: "Reportes",
   asistente: "Asistente IA", config: "Configuración", users: "Usuarios", importar: "Importar"
@@ -89,9 +89,9 @@ const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", editor: "Editor"
 const DEFAULT_ROLE_VIEWS = {
   admin: ALL_VIEWS.slice(),
   supervisor: ALL_VIEWS.slice(),
-  editor: ["inicio", "basedatos", "ficha", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
+  editor: ["inicio", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
   cajero: ["inicio", "basedatos", "recepcion", "arqueo", "egresos", "calendario", "asistente"],
-  lector: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
+  lector: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
 };
 let ROLE_VIEWS = null; // se carga de config/app.rolePerms; si no, usa los defaults
 function roleViewsFor(role) {
@@ -182,6 +182,7 @@ function switchView(v, btn) {
   if (v === "asistente") renderAsistente();
   if (v === "recepcion") renderRecepcion();
   if (v === "dashboard") renderDashboard();
+  if (v === "control") renderControl();
   if (v === "declaraciones") renderDDJJ();
   if (v === "tramites") renderLista("tramite", "v-tramites", "Trámites");
   if (v === "eeff") renderListaTrabajo("eeff", "v-eeff", "Estados Financieros (EEFF)");
@@ -3519,6 +3520,111 @@ function fiBind() {
   const pick = () => { const m = q.value.match(/NIT\s+(\d+)/); const soloNum = fiNit(q.value); const nit = m ? m[1] : (soloNum.length >= 6 && soloNum === q.value.trim() ? soloNum : ""); if (nit && nit !== FI_UI.nit) fiCargar(nit); };
   q.onchange = pick; q.onkeydown = e => { if (e.key === "Enter") pick(); };
   if (el("fi_reload")) el("fi_reload").onclick = () => fiCargar(FI_UI.nit);
+}
+
+// ---------- CONTROL DEL MES (antes hoja "Consultas") ----------
+// Cruza los clientes ACTIVOS de la Base de Datos con las declaraciones recepcionadas del período elegido.
+const CM_UI = { per: "", tab: "resumen", q: "" };
+// Vencimiento SIN según último dígito del NIT: 0→13, 1→14 … 9→22 del mes siguiente al período
+function cmVencimiento(nit, perKey) {
+  const d = fiNit(nit).slice(-1); if (d === "" || !perKey) return null;
+  let [y, m] = perKey.split("-").map(Number); m += 1; if (m > 12) { m = 1; y += 1; }
+  return { dia: 13 + Number(d), iso: `${y}-${String(m).padStart(2, "0")}-${String(13 + Number(d)).padStart(2, "0")}` };
+}
+function cmPlataforma(t) {
+  const u = recNormTxt(t); const o = [];
+  if (/YANGO/.test(u)) o.push("YANGO"); if (/PEDIDOS/.test(u)) o.push("PEDIDOSYA"); if (/TADA/.test(u)) o.push("TADA");
+  return o.length ? o : ["OTROS"];
+}
+async function renderControl() {
+  el("v-control").innerHTML = `<h1>Control del mes</h1><p class="lead"><span class="cx-spin"></span> Cargando clientes y recepciones…</p>`;
+  await ltLoad();
+  bdEnsureLoaded(ok => { if (!ok) { el("v-control").innerHTML = `<h1>Control del mes</h1><p class="lead">No se pudo abrir la Base de Datos de clientes.</p>`; return; } paintControl(); });
+}
+function paintControl() {
+  const decl = LT_DATA.filter(r => recCatDe(r) === "declaracion");
+  const periodos = [...new Set(decl.map(recPeriodoKey).filter(Boolean))].sort().reverse();
+  const hoy = djHoy(), hoyKey = hoy.slice(0, 7);
+  if (!CM_UI.per || periodos.indexOf(CM_UI.per) < 0) {
+    // Por defecto: el mes que toca declarar (el anterior al actual), desde la migración (oct-2026) en adelante
+    const desde = periodos.filter(k => k >= LISTA_CORTE.declaracionDesdePeriodo);
+    CM_UI.per = desde.find(k => k < hoyKey) || desde[desde.length - 1] || periodos[0] || "";
+  }
+  const delPer = decl.filter(r => recPeriodoKey(r) === CM_UI.per);
+  const nitsRec = new Set(delPer.map(r => fiNit(r.nit)).filter(Boolean));
+  const activos = BD.filter(bdIsActivo);
+  const noRec = activos.filter(c => !nitsRec.has(fiNit(bdV(c, "nit"))));
+  const recActivos = activos.length - noRec.length;
+  const enCorte = CM_UI.per >= LISTA_CORTE.declaracionDesdePeriodo || delPer.some(r => r.origen !== "importado");
+  const pend = delPer.filter(r => djEstado(r) !== "terminado");
+  // Por plataforma
+  const plat = {};
+  activos.forEach(c => cmPlataforma(bdV(c, "brinda")).forEach(p => { plat[p] = plat[p] || { act: 0, no: 0 }; plat[p].act++; }));
+  noRec.forEach(c => cmPlataforma(bdV(c, "brinda")).forEach(p => { plat[p].no++; }));
+  // Por persona
+  const cuenta = campo => { const o = {}; delPer.forEach(r => { const k = String(r[campo] || "").trim().toUpperCase(); if (k) o[k] = (o[k] || 0) + 1; }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const q = CM_UI.q.toLowerCase();
+  const tabs = [["resumen", "Resumen"], ["norec", `No recepcionados (${noRec.length})`], ["pend", `Pendientes y vencimientos (${enCorte ? pend.length : "—"})`], ["persona", "Por persona"], ["lista", `Lista de recepción (${delPer.length})`]];
+  let body = "";
+  if (CM_UI.tab === "resumen") {
+    body = `<div class="kpis">
+      <div class="kpi"><div class="n">${activos.length}</div><div class="l">Clientes activos</div></div>
+      <div class="kpi"><div class="n" style="color:var(--ok)">${recActivos}</div><div class="l">Activos que recepcionaron</div></div>
+      <div class="kpi cm-go" data-tab="norec" style="cursor:pointer"><div class="n" style="color:var(--danger)">${noRec.length}</div><div class="l">Activos sin recepcionar</div></div>
+      <div class="kpi"><div class="n">${delPer.length}</div><div class="l">Total recepción del período</div></div>
+      <div class="kpi cm-go" data-tab="pend" style="cursor:pointer"><div class="n" style="color:var(--warn)">${enCorte ? pend.length : "—"}</div><div class="l">Faltantes a declarar</div></div>
+    </div>
+    <h3 style="margin:0 0 8px">Por plataforma</h3>
+    <table style="max-width:560px"><thead><tr><th>Plataforma</th><th style="text-align:right">Activos</th><th style="text-align:right">Sin recepcionar</th></tr></thead><tbody>
+      ${Object.keys(plat).sort((a, b) => plat[b].act - plat[a].act).map(k => `<tr><td><b>${k}</b></td><td class="mono" style="text-align:right">${plat[k].act}</td><td class="mono" style="text-align:right;color:var(--danger)">${plat[k].no}</td></tr>`).join("")}
+    </tbody></table>
+    <p class="note">"Activos" = clientes con estado ACTIVO en la Base de Datos. Un cliente que trabaja para varias plataformas cuenta en cada una.</p>`;
+  } else if (CM_UI.tab === "norec") {
+    const list = noRec.filter(c => !q || [bdV(c, "nombre"), bdV(c, "razon"), bdV(c, "nit"), bdV(c, "celular"), bdV(c, "codigoId")].join(" ").toLowerCase().includes(q))
+      .sort((a, b) => (bdV(a, "nombre") || bdV(a, "razon")).localeCompare(bdV(b, "nombre") || bdV(b, "razon")));
+    const wa = cel => { const d = fiNit(cel); return d ? `https://wa.me/${d.length === 8 ? "591" + d : d}` : ""; };
+    body = `<p class="note" style="margin:0 0 10px">Clientes ACTIVOS que todavía no recepcionaron su declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>. Toca el celular para escribirles por WhatsApp.</p>
+      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="🔎 Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button></div>
+      <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
+      ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))}</td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
+      </tbody></table></div>`;
+    body += `<script type="text/plain" id="cm_cels">${escape(list.map(c => bdV(c, "celular")).filter(Boolean).join("\n"))}</script>`;
+  } else if (CM_UI.tab === "pend") {
+    if (!enCorte) body = `<p class="lead">Este período es anterior a la migración (octubre 2026); su seguimiento quedó en la hoja antigua.</p>`;
+    else {
+      const list = pend.map(r => Object.assign({ _v: cmVencimiento(r.nit, CM_UI.per) }, r)).filter(r => !q || [r.clienteNombre, r.nit].join(" ").toLowerCase().includes(q))
+        .sort((a, b) => ((a._v && a._v.iso) || "9").localeCompare((b._v && b._v.iso) || "9"));
+      const dias = iso => Math.round((new Date(iso + "T00:00:00") - new Date(hoy + "T00:00:00")) / 86400000);
+      body = `<p class="note" style="margin:0 0 10px">Declaraciones de <b>${escape(recPeriodoTxt(CM_UI.per))}</b> recepcionadas que aún no están <b>Terminadas</b>, ordenadas por fecha de vencimiento (último dígito del NIT). Toca una fila para abrirla.</p>
+        <div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="🔎 Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
+        <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Vence</th><th>Cliente</th><th>NIT</th><th>Estado</th><th>RCV por</th><th>Estado RCV</th></tr></thead><tbody>
+        ${list.map(r => { const v = r._v, dd = v ? dias(v.iso) : null; const col = dd == null ? "" : dd < 0 ? "var(--danger)" : dd <= 3 ? "var(--warn)" : "var(--txt)";
+          return `<tr class="cm-dj" data-id="${r.id}" style="cursor:pointer"><td class="mono" style="color:${col};font-weight:700">${v ? djFechaTxt(v.iso) : "—"}<div class="note" style="margin:0;color:${col}">${dd == null ? "" : dd < 0 ? "Vencido hace " + (-dd) + " d" : dd === 0 ? "Vence hoy" : "Faltan " + dd + " d"}</div></td>
+          <td><b>${escape(r.clienteNombre || "—")}</b></td><td class="mono">${escape(String(r.nit || ""))}</td><td>${djEstadoBadge(djEstado(r))}</td><td>${escape(r.dj_rcvPor || "—")}</td><td style="font-size:12px">${escape(r.dj_estadoRcv || "")}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">Sin pendientes. 🎉</td></tr>`}
+        </tbody></table></div>`;
+    }
+  } else if (CM_UI.tab === "persona") {
+    const tabla = (tit, arr) => `<div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 8px">${tit}</h3><table><tbody>${arr.map(([k, n]) => `<tr><td><b>${escape(k)}</b></td><td class="mono" style="text-align:right">${n}</td></tr>`).join("") || `<tr><td class="note">Sin datos</td></tr>`}</tbody></table></div>`;
+    body = `<div class="grid3" style="gap:14px;align-items:start">${tabla("Recepción (atención)", cuenta("atencion"))}${tabla("RCV realizado por", cuenta("dj_rcvPor"))}${tabla("Declarado por", cuenta("dj_declaradoPor"))}</div>`;
+  } else {
+    const list = delPer.filter(r => !q || [r.clienteNombre, r.nit, r.atencion, r.detalleServicio].join(" ").toLowerCase().includes(q)).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
+    body = `<div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="🔎 Buscar por cliente, NIT o persona…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
+      <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Fecha rec.</th><th>Cliente</th><th>Presta servicios a</th><th>Tipo de servicio</th><th>NIT</th><th>Atención</th></tr></thead><tbody>
+      ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td><b>${escape(r.clienteNombre || "—")}</b></td><td>${escape(r.rubro || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td class="mono">${escape(String(r.nit || ""))}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Sin recepciones.</td></tr>`}
+      </tbody></table></div>`;
+  }
+  el("v-control").innerHTML = `<h1>Control del mes</h1>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px"><label style="margin:0">Período a declarar:</label>
+      <select id="cm_per">${periodos.map(k => `<option value="${k}" ${k === CM_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("") || `<option>Sin datos</option>`}</select>
+      <button class="mini" id="cm_reload">↻ Actualizar</button></div>
+    <div class="subtabs" id="cmtabs">${tabs.map(([k, l]) => `<button class="subtab ${CM_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
+  const V = el("v-control");
+  V.querySelectorAll("#cmtabs .subtab, .cm-go").forEach(b => b.onclick = () => { CM_UI.tab = b.dataset.tab; CM_UI.q = ""; paintControl(); });
+  el("cm_per").onchange = e => { CM_UI.per = e.target.value; paintControl(); };
+  el("cm_reload").onclick = async () => { await ltLoad(true); paintControl(); };
+  if (el("cm_q")) el("cm_q").oninput = e => { CM_UI.q = e.target.value; clearTimeout(CM_UI._t); CM_UI._t = setTimeout(() => { paintControl(); const x = el("cm_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
+  if (el("cm_copycel")) el("cm_copycel").onclick = () => { try { navigator.clipboard.writeText(el("cm_cels").textContent); el("cm_copycel").textContent = "✓ Copiados"; } catch (e) {} };
+  V.querySelectorAll(".cm-dj").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id), paintControl));
 }
 
 // ---------- FINANZAS · Reportes financieros (con importes; solo para quien tenga permiso) ----------
