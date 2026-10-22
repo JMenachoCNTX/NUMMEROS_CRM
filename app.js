@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "22";
+const APP_VERSION = "23";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3016,7 +3016,8 @@ function paintLista(tipo, viewId, titulo) {
 // ============================================================
 const LISTA_CORTE = {
   declaracionDesdePeriodo: "2026-10",
-  eeffDesdeFecha: "2026-01-01",
+  eeffDesdeFecha: "2026-01-01", // desde cuándo se cargan datos para las listas
+  eeffDesdeGestion: "2026",     // EEFF: gestión (año del balance) desde la cual se lista
   facturacionDesdePeriodo: "2026-10",
   nuevosDesdeFecha: "2026-10-23"
 };
@@ -3040,13 +3041,21 @@ function recPeriodoKey(r) {
   }
   return y + "-" + String(mi + 1).padStart(2, "0");
 }
+// Gestión (año) del balance: la que se pone en "Mes" al recepcionar (ej.: "2026" o "Gestión 2026")
+function recGestionEEFF(r) {
+  if (r.periodoTipo === "gestion" && r.periodoAnio) return String(r.periodoAnio);
+  const m = String(r.mesRecepcion || "").match(/(20\d{2})/);
+  return m ? m[1] : "";
+}
 function recPeriodoTxt(k) { if (!k) return "—"; const [y, m] = k.split("-"); return REC_MESES_CAP[Number(m) - 1] + " " + y; }
 function recCatDe(r) { return r.tipo || recCategoria(r.servicio || r.servicioNombre, r.detalleServicio); }
 function enListaTrabajo(r, tipo) {
   const cat = recCatDe(r), f = String(r.fechaISO || "").slice(0, 10), per = recPeriodoKey(r);
-  const nuevo = f >= LISTA_CORTE.nuevosDesdeFecha;
+  // "Nuevo" = registrado en el panel (no viene de la importación) o recepcionado desde el corte:
+  // entra a la lista SEA DEL PERÍODO QUE SEA (ej.: alguien que recién paga enero 2025).
+  const nuevo = r.origen !== "importado" || f >= LISTA_CORTE.nuevosDesdeFecha;
   if (tipo === "declaracion") return cat === "declaracion" && (nuevo || per >= LISTA_CORTE.declaracionDesdePeriodo);
-  if (tipo === "eeff") return cat === "eeff" && f >= LISTA_CORTE.eeffDesdeFecha;
+  if (tipo === "eeff") { const g = recGestionEEFF(r); return cat === "eeff" && (nuevo || (g && g >= LISTA_CORTE.eeffDesdeGestion)); }
   if (tipo === "facturacion") return cat === "facturacion" && (nuevo || per >= LISTA_CORTE.facturacionDesdePeriodo);
   return false;
 }
@@ -3097,9 +3106,11 @@ function paintListaTrabajo(tipo, viewId, titulo) {
   const canEdit = canEditClientes();
   const ui = LT_UI[tipo] || (LT_UI[tipo] = { q: "", est: "", per: "" });
   const base = LT_DATA.filter(r => enListaTrabajo(r, tipo));
-  const periodos = [...new Set(base.map(r => tipo === "eeff" ? "" : recPeriodoKey(r)).filter(Boolean))].sort().reverse();
+  const perDe = r => tipo === "eeff" ? recGestionEEFF(r) : recPeriodoKey(r);
+  const perTxt = k => tipo === "eeff" ? (k ? "Gestión " + k : "—") : recPeriodoTxt(k);
+  const periodos = [...new Set(base.map(perDe).filter(Boolean))].sort().reverse();
   let list = base;
-  if (ui.per) list = list.filter(r => recPeriodoKey(r) === ui.per);
+  if (ui.per) list = list.filter(r => perDe(r) === ui.per);
   if (ui.est) list = list.filter(r => (r.estadoTrabajo || "pendiente") === ui.est);
   if (ui.q) { const q = ui.q.toLowerCase(); list = list.filter(r => [r.clienteNombre, r.nit, r.detalleServicio, r.mesRecepcion, r.nroRecepcion, r.atencion].join(" ").toLowerCase().includes(q)); }
   list = list.slice().sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
@@ -3109,12 +3120,12 @@ function paintListaTrabajo(tipo, viewId, titulo) {
       <td class="mono">${escape(String(r.nroRecepcion || "—"))}</td>
       <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.rubro ? " · " + escape(r.rubro) : ""}</div></td>
       <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
-      <td>${escape(r.mesRecepcion || "—")}</td>
+      <td>${escape(perTxt(perDe(r)))}</td>
       <td class="mono" style="text-align:right">${money(r.importe)}</td>
       <td>${ltFila(r, "estadoTrabajo", ESTADOS_TRABAJO, canEdit)}</td></tr>`).join("");
   const nota = tipo === "declaracion"
     ? "Declaraciones mensuales del período <b>Octubre 2026</b> en adelante, más todo lo que se recepcione desde ahora. Lo anterior ya está culminado."
-    : "Todos los <b>Balances</b> recepcionados desde 2026. Los de años anteriores quedaron cerrados en la lista antigua.";
+    : "Estados financieros de la <b>gestión 2026</b> en adelante, más todo balance que se recepcione desde ahora aunque sea de una gestión anterior (ej.: alguien que recién hace su gestión 2024).";
   el(viewId).innerHTML = `<h1>${escape(titulo)}</h1>
     <p class="lead">${nota}</p>
     <div class="kpis">
@@ -3124,11 +3135,11 @@ function paintListaTrabajo(tipo, viewId, titulo) {
       <div class="kpi"><div class="n" style="color:var(--ok)">${cnt("entregado")}</div><div class="l">Entregados</div></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
-      ${periodos.length ? `<select id="lt_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === ui.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("")}</select>` : ""}
+      ${periodos.length ? `<select id="lt_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === ui.per ? "selected" : ""}>${perTxt(k)}</option>`).join("")}</select>` : ""}
       <select id="lt_est"><option value="">Todos los estados</option>${ESTADOS_TRABAJO.map(([v, l]) => `<option value="${v}" ${v === ui.est ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input id="lt_q" placeholder="🔎 Buscar cliente, NIT, detalle…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
     </div>
-    <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>Período</th><th style="text-align:right">Importe</th><th>Estado</th></tr></thead>
+    <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>${tipo === "eeff" ? "Gestión" : "Período"}</th><th style="text-align:right">Importe</th><th>Estado</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">No hay registros con este filtro.</td></tr>`}</tbody></table></div>`;
   const root = el(viewId), repaint = () => paintListaTrabajo(tipo, viewId, titulo);
   if (el("lt_per")) el("lt_per").onchange = e => { ui.per = e.target.value; repaint(); };
@@ -3164,7 +3175,42 @@ function djYo() { const n = (ME && (ME.name || ME.email || "")) || ""; return n.
 function djEquipo() { const yo = djYo(); return yo && DJ_EQUIPO_DEF.indexOf(yo) < 0 ? [yo].concat(DJ_EQUIPO_DEF) : DJ_EQUIPO_DEF.slice(); }
 function djHoy() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function djFechaTxt(iso) { if (!iso) return ""; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); }
-const DJ_UI = { q: "", est: "", per: "", resp: "" };
+const DJ_UI = { q: "", est: "", per: "", resp: "", tab: "lista", agr: "periodo" };
+// Agrupa estados para el resumen: En proceso = RCV en curso + Falta declarar; Entregado = Terminado
+function djGrupo(k) { return k === "terminado" ? "entregado" : (k === "rcv" || k === "falta_declarar") ? "en_proceso" : k === "mal_recepcionado" ? "mal" : "pendiente"; }
+function djResumenHTML(base) {
+  const tot = l => {
+    const o = { n: l.length, bs: 0, pendiente: 0, en_proceso: 0, entregado: 0, mal: 0 };
+    l.forEach(r => { o.bs += Number(r.importe) || 0; o[djGrupo(djEstado(r))]++; });
+    return o;
+  };
+  const T = tot(base);
+  const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+  const keyDe = r => DJ_UI.agr === "periodo" ? recPeriodoKey(r) : String(r.fechaISO || "").slice(0, 7);
+  const grupos = {};
+  base.forEach(r => { const k = keyDe(r) || "sin"; (grupos[k] = grupos[k] || []).push(r); });
+  const keys = Object.keys(grupos).sort().reverse();
+  const fila = (lbl, o) => `<tr><td><b>${lbl}</b></td><td class="mono" style="text-align:right">${o.n}</td><td class="mono" style="text-align:right">${money(o.bs)}</td>
+    <td class="mono" style="text-align:right;color:var(--warn)">${o.pendiente}</td><td class="mono" style="text-align:right">${o.en_proceso}</td>
+    <td class="mono" style="text-align:right;color:var(--ok)">${o.entregado}</td><td class="mono" style="text-align:right;color:var(--danger)">${o.mal || ""}</td>
+    <td style="min-width:120px"><div style="height:8px;background:var(--panel2);border-radius:20px;overflow:hidden"><i style="display:block;height:100%;width:${o.n ? Math.round(o.entregado / o.n * 100) : 0}%;background:var(--ok)"></i></div><div class="note" style="margin:2px 0 0">${pct(o.entregado, o.n)} entregado</div></td></tr>`;
+  return `
+    <p class="lead">Declaraciones recepcionadas desde la migración a Firebase (período Octubre 2026 en adelante y todo lo nuevo).</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n">${T.n}</div><div class="l">Recepcionadas para declarar</div></div>
+      <div class="kpi"><div class="n" style="font-size:22px">${money(T.bs)}</div><div class="l">Total recepcionado</div></div>
+      <div class="kpi"><div class="n" style="color:var(--warn)">${T.pendiente}</div><div class="l">Pendientes</div></div>
+      <div class="kpi"><div class="n">${T.en_proceso}</div><div class="l">En proceso</div></div>
+      <div class="kpi"><div class="n" style="color:var(--ok)">${T.entregado}</div><div class="l">Entregados</div></div>
+      ${T.mal ? `<div class="kpi"><div class="n" style="color:var(--danger)">${T.mal}</div><div class="l">Mal recepcionados</div></div>` : ""}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><h3 style="margin:0 auto 0 0">Por mes</h3>
+      <select id="dj_agr"><option value="periodo" ${DJ_UI.agr === "periodo" ? "selected" : ""}>Por período a declarar</option><option value="recepcion" ${DJ_UI.agr === "recepcion" ? "selected" : ""}>Por mes en que se recepcionó</option></select></div>
+    <div style="overflow:auto"><table><thead><tr><th>Mes</th><th style="text-align:right">Recepcionadas</th><th style="text-align:right">Total Bs</th><th style="text-align:right">Pendientes</th><th style="text-align:right">En proceso</th><th style="text-align:right">Entregados</th><th style="text-align:right">Mal rec.</th><th>Avance</th></tr></thead>
+    <tbody>${keys.map(k => fila(k === "sin" ? "Sin mes" : recPeriodoTxt(k), tot(grupos[k]))).join("") || `<tr><td colspan="8" class="note">Sin datos todavía.</td></tr>`}</tbody>
+    ${keys.length > 1 ? `<tfoot>${fila("TOTAL", T)}</tfoot>` : ""}</table></div>
+    <p class="note">En proceso = RCV en curso + Falta declarar · Entregado = Terminado.</p>`;
+}
 async function renderDDJJ() {
   el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
   await ltLoad();
@@ -3194,8 +3240,16 @@ function paintDDJJ() {
       <td class="mono" style="text-align:right">${escape(r.dj_itPagar || "")}</td>
       <td>${djEstadoBadge(djEstado(r))}</td>
       <td style="font-size:12px">${escape(r.dj_pagoImpuestos || "")} ${r.dj_correoEnviado ? "✉️" : ""}</td></tr>`).join("");
-  el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>
-    <p class="lead">Declaraciones mensuales del período <b>Octubre 2026</b> en adelante (lo anterior ya está culminado). Toca una fila para llenar el <b>RCV</b>, la <b>Declaración</b> y el <b>Seguimiento</b>.</p>
+  const tabs = `<div class="subtabs" id="djtabs"><button class="subtab ${DJ_UI.tab === "lista" ? "on" : ""}" data-tab="lista">Lista de trabajo</button><button class="subtab ${DJ_UI.tab === "resumen" ? "on" : ""}" data-tab="resumen">Resumen</button></div>`;
+  const bindTabs = () => el("v-declaraciones").querySelectorAll("#djtabs .subtab").forEach(b => b.onclick = () => { DJ_UI.tab = b.dataset.tab; paintDDJJ(); });
+  if (DJ_UI.tab === "resumen") {
+    el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>${tabs}${djResumenHTML(base)}`;
+    bindTabs();
+    el("dj_agr").onchange = e => { DJ_UI.agr = e.target.value; paintDDJJ(); };
+    return;
+  }
+  el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>${tabs}
+    <p class="lead">Declaraciones del período <b>Octubre 2026</b> en adelante, más <b>toda declaración que se recepcione desde ahora</b>, sea del mes que sea (lo anterior ya está culminado). Toca una fila para llenar el <b>RCV</b>, la <b>Declaración</b> y el <b>Seguimiento</b>.</p>
     <div class="kpis">
       <div class="kpi"><div class="n">${base.length}</div><div class="l">Total</div></div>
       ${DJ_ESTADOS.map(([k, l]) => `<div class="kpi dj-kpi" data-k="${k}" style="cursor:pointer;${DJ_UI.est === k ? "outline:2px solid var(--accent)" : ""}"><div class="n" ${k === "terminado" ? 'style="color:var(--ok)"' : (k === "falta_declarar" || k === "mal_recepcionado") ? 'style="color:var(--danger)"' : ""}>${cnt(k)}</div><div class="l">${l}</div></div>`).join("")}
@@ -3212,6 +3266,7 @@ function paintDDJJ() {
       <tr><th>#</th><th>Período</th><th>Cliente</th><th>Detalle / F. rec.</th><th>Realizado por</th><th>Inic. / Fin.</th><th>Estado RCV</th><th>Declarado por</th><th style="text-align:right">IVA</th><th style="text-align:right">IT</th><th>ESTADO</th><th>Pagó / ✉</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="12" style="color:var(--muted)">No hay declaraciones con este filtro.</td></tr>`}</tbody></table></div>`;
   const re = () => paintDDJJ();
+  bindTabs();
   el("dj_per").onchange = e => { DJ_UI.per = e.target.value; re(); };
   el("dj_est").onchange = e => { DJ_UI.est = e.target.value; re(); };
   el("dj_resp").onchange = e => { DJ_UI.resp = e.target.value; re(); };
