@@ -1,0 +1,41 @@
+===============================================================
+ NUMMEROS by CONTAX — PANEL v22  ·  Marca oficial aplicada
+===============================================================
+
+Se reemplazaron TODAS las imágenes del panel por los recursos
+OFICIALES de la marca NUMMEROS (carpeta "marca").
+
+1) LOGOS OFICIALES (vectoriales, nítidos en cualquier tamaño)
+   • Login e Inicio: logotipo "firma" (NUMMEROS + by CONTAX), en verde
+     sobre fondo claro y en blanco en modo oscuro.
+   • Menú lateral: logotipo horizontal en blanco.
+   • Pantalla de agente: logotipo firma.
+   • Favicon (pestaña del navegador) e icono de app: los oficiales.
+
+2) FOTOS DE MARCA EN EL LOGIN
+   El login (y el portal del cliente) ahora muestran, a la derecha, una
+   FOTO de la marca NUMMEROS (los "clásicos": Arquímedes, Euclides,
+   Pitágoras) elegida AL AZAR en cada visita, con el degradado verde
+   encima para que el texto se lea bien. Así rotan todas las fotos.
+
+IMPORTANTE AL SUBIR A GITHUB
+----------------------------
+ Debes subir TAMBIÉN la carpeta "marca" completa al repositorio del panel
+ (CRM.Contax), al mismo nivel que index.html. Si no subes esa carpeta,
+ los logos y las fotos no aparecerán (saldrán rotos).
+ Estructura esperada:
+   /index.html
+   /app.js
+   /config.js
+   /cliente.html
+   /marca/logos/...        (logos SVG)
+   /marca/clasicos/...     (fotos JPG)
+   /marca/iconos/...       (favicon e iconos)
+
+ARCHIVOS
+--------
+ - index.html, app.js, config.js, cliente.html  → Panel v22
+ - marca/ (carpeta completa)                     → recursos de marca
+ - LEEME-v22.txt
+Sin cambios en las reglas de Firestore.
+===============================================================
