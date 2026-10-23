@@ -36,11 +36,11 @@ var PAS_DEF = {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-23";
+var PAS_TERMINOS_VERSION = "2026-10-23b";
 var PAS_TERMINOS = {
   declaracion: [
     "Cada pago cubre una sola declaración (un mes). Los meses atrasados se pagan uno por uno, con la tarifa de su plan.",
-    "Recepción: del 25 al 30 de cada mes (precio normal) y del 1 al 5 del mes siguiente (recepción tardía). Pasado el día 5 no se reciben solicitudes de ese mes.",
+    "Precio normal: pagando hasta el último día del mes que se declara (también puedes pagarlo por adelantado). Si pagas después de ese mes, se cobra la tarifa de recepción tardía.",
     "No hay hora ni fecha fija de entrega: presentamos tu declaración antes de su vencimiento, que depende del último dígito de tu NIT (del día 13 al 22).",
     "Las facturas manuales deben dejarse a tiempo en nuestro buzón (Av. Alemana, 7mo anillo). Las electrónicas las tomamos del portal de Impuestos Nacionales.",
     "Plan Estándar: hasta 100 facturas al mes. Plan Premium: de 101 a 200. Más de 200 facturas requiere el Plan Personalizado.",
@@ -51,7 +51,7 @@ var PAS_TERMINOS = {
   eeff: [
     "El servicio corresponde a los estados financieros de la gestión indicada (un año).",
     "Incluye: balance general, estado de resultados, flujo de efectivo, evolución del patrimonio, notas, cuadro de activos fijos y balance de sumas y saldos; presentación del Formulario 500 (IUE) y envío digital con el Formulario 605.",
-    "El precio corresponde al cupo disponible al momento de tu pago; cuando un cupo se llena, el precio sube al siguiente.",
+    "El precio corresponde a la fase habilitada al momento de tu pago; cuando se llenan los cupos de una fase, el precio sube a la siguiente fase.",
     "Debes entregarnos a tiempo toda la información y documentación que te solicitemos.",
     "El IUE que resulte a pagar lo pagas tú directamente.",
     "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
@@ -114,6 +114,7 @@ function pasConfigPublica() {
     periodoDeclDefault: pasPeriodoDeclDefault_(c, hoy),
     periodosDecl: pasPeriodosDecl_(c, hoy),
     eeff: pasCupoActual_(c),
+    ufv: pasUfv_(), multasEeff: { f500: 50, f605: 100 },
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION
   };
@@ -224,22 +225,52 @@ function pasHoy_() {
   return { anio: Number(Utilities.formatDate(n, tz, "yyyy")), mes: Number(Utilities.formatDate(n, tz, "M")), dia: Number(Utilities.formatDate(n, tz, "d")),
            fecha: Utilities.formatDate(n, tz, "dd/MM/yyyy"), hora: Utilities.formatDate(n, tz, "H:mm:ss"), iso: Utilities.formatDate(n, tz, "yyyy-MM-dd") };
 }
-// Mes que toca declarar: desde el día 25 es el mes actual; antes, el mes anterior
+// Mes que toca declarar: del 6 a fin de mes es el mes actual (se presenta el mes siguiente);
+// del 1 al 5 es el mes anterior (recepción tardía).
 function pasPeriodoDeclDefault_(c, hoy) {
   var a = hoy.anio, m = hoy.mes;
-  if (hoy.dia < Number(c.diaDesde)) { m -= 1; if (m < 1) { m = 12; a -= 1; } }
+  if (hoy.dia <= Number(c.diaCierre || 5)) { m -= 1; if (m < 1) { m = 12; a -= 1; } }
   return { anio: a, mes: m, texto: PAS_MESES[m - 1] + " " + a };
 }
-// Recepción de declaraciones: del 25 a fin de mes (en fecha) · del 1 al 5 (tardía) · del 6 al 24 cerrada
+// Precio en fecha si se paga hasta el último día del mes que se declara (incluye pagar por adelantado);
+// después de ese mes es recepción tardía.
+function pasDeclEnFecha_(anio, mes, hoy) { return (hoy.anio * 12 + hoy.mes) <= (Number(anio) * 12 + Number(mes)); }
+function pasPeriodoInfo_(anio, mes, hoy) {
+  var sig = mes === 12 ? 1 : mes + 1;
+  var enF = pasDeclEnFecha_(anio, mes, hoy), adel = enF && hoy.anio === Number(anio) && hoy.mes === Number(mes) && hoy.dia < 25;
+  return { anio: anio, mes: mes, texto: PAS_MESES[mes - 1] + " " + anio, enFecha: enF, adelantado: adel,
+           seDeclara: PAS_MESES[sig - 1], estado: adel ? "adelantado" : (enF ? "en fecha" : "atrasado") };
+}
+// Estado de la recepción (solo informativo: ya no bloquea el pago)
 function pasVentana_(c, hoy) {
   if (hoy.dia >= Number(c.diaDesde)) return { abierta: true, tipo: "enFecha" };
   if (hoy.dia <= Number(c.diaCierre)) return { abierta: true, tipo: "tardia" };
-  return { abierta: false, tipo: "cerrada", abreDia: Number(c.diaDesde), abreMes: PAS_MESES[hoy.mes - 1] };
+  return { abierta: true, tipo: "adelantado", abreDia: Number(c.diaDesde), abreMes: PAS_MESES[hoy.mes - 1] };
 }
+// El mes actual (aunque sea por adelantado) y los 12 meses anteriores
 function pasPeriodosDecl_(c, hoy) {
-  var d = pasPeriodoDeclDefault_(c, hoy), out = [], a = d.anio, m = d.mes;
-  for (var i = 0; i < 12; i++) { out.push({ anio: a, mes: m, texto: PAS_MESES[m - 1] + " " + a }); m -= 1; if (m < 1) { m = 12; a -= 1; } }
+  var out = [], a = hoy.anio, m = hoy.mes;
+  for (var i = 0; i < 13; i++) { out.push(pasPeriodoInfo_(a, m, hoy)); m -= 1; if (m < 1) { m = 12; a -= 1; } }
   return out;
+}
+// ---------------- UFV del día (Banco Central de Bolivia) ----------------
+// Se lee de la portada del BCB y se guarda 6 horas; si el BCB no responde se usa el último valor conocido.
+function pasUfv_() {
+  var cache = CacheService.getScriptCache(), props = PropertiesService.getScriptProperties();
+  var c = cache.get("ufv_hoy"); if (c) return JSON.parse(c);
+  var r = null;
+  try {
+    var html = UrlFetchApp.fetch("https://www.bcb.gob.bo/", { muteHttpExceptions: true, followRedirects: true }).getContentText();
+    var mm = html.match(/Bs\/UFV<\/div>[\s\S]{0,300}?bcb-quote-value">\s*([\d.,]+)/) || html.match(/UFV[\s\S]{0,400}?(\d,\d{5})/);
+    if (mm) {
+      var v = Number(mm[1].replace(/\./g, "").replace(",", "."));
+      if (v > 1 && v < 20) r = { valor: v, fecha: pasHoy_().fecha, fuente: "BCB" };
+    }
+  } catch (e) {}
+  if (r) { props.setProperty("ufv_ultimo", JSON.stringify(r)); cache.put("ufv_hoy", JSON.stringify(r), 21600); return r; }
+  var u = props.getProperty("ufv_ultimo");
+  if (u) { r = JSON.parse(u); r.fuente = "último valor conocido"; cache.put("ufv_hoy", JSON.stringify(r), 3600); return r; }
+  return { valor: 3.36231, fecha: "23/10/2026", fuente: "referencial" };
 }
 function pasCupoActual_(c) {
   var g = String(c.eeffGestion || PAS_DEF.eeffGestion);
@@ -256,18 +287,16 @@ function pasCupoActual_(c) {
 function pasCotizar(d) {
   var c = pasCfg(), hoy = pasHoy_(), s = d.servicio;
   if (s === "decl") {
-    var ven = pasVentana_(c, hoy);
-    if (!ven.abierta) return { ok: false, cerrada: true, error: "La recepción de declaraciones está cerrada. Abre el " + ven.abreDia + " de " + ven.abreMes + "." };
     var def = pasPeriodoDeclDefault_(c, hoy);
     var anio = Number(d.anio) || def.anio, mes = Number(d.mes) || def.mes;
-    if (anio * 12 + mes > def.anio * 12 + def.mes) return { ok: false, error: "Ese mes todavía no se puede declarar." };
+    if (anio * 12 + mes > hoy.anio * 12 + hoy.mes) return { ok: false, error: "Ese mes todavía no se puede declarar." };
     var texto = PAS_MESES[mes - 1] + " " + anio;
     var cli = d.nit ? pasClienteCache_(String(d.nit).replace(/\D/g, "")) : null;
     var repartidor = cli ? pasEsRepartidor_(cli) : true;
     var tiposFact = { elec: "Facturas ELECTRÓNICAS", man: "Facturas MANUALES", mix: "Facturas MIXTAS (Electrónicas y Manuales)" };
     var plan = d.plan || (d.opcion === "sin" ? "basico" : "estandar");
     var tf = d.tipoFact || (d.opcion !== "sin" ? d.opcion : "");
-    var monto, det, planTxt, enFecha = ven.tipo === "enFecha";
+    var monto, det, planTxt, enFecha = pasDeclEnFecha_(anio, mes, hoy);
     if (plan === "basico") { monto = Number(c.precios.sinMov); det = "DDJJ - Sin Movimiento"; planTxt = "Plan Básico"; }
     else {
       if (!tiposFact[tf]) return { ok: false, error: "Elige qué facturas tuviste." };
@@ -290,7 +319,7 @@ function pasCotizar(d) {
     var e = pasCupoActual_(c);
     if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + e.gestion + ". Escríbenos por WhatsApp." };
     return { ok: true, monto: e.actual.precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: e.actual.n,
-             periodo: { tipo: "gestion", mes: "", anio: e.gestion, texto: "Gestión " + e.gestion }, resumen: "Estados financieros gestión " + e.gestion + " · Cupo " + e.actual.n };
+             periodo: { tipo: "gestion", mes: "", anio: e.gestion, texto: "Gestión " + e.gestion }, resumen: "Estados financieros gestión " + e.gestion + " · Fase " + e.actual.n };
   }
   if (s === "fact") {
     var t = PAS_MESES[hoy.mes - 1] + " " + hoy.anio;

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "38";
+const APP_VERSION = "39";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4008,13 +4008,13 @@ function paintPasarela() {
         <p class="note" style="margin:0">Nombre del titular o últimos dígitos de la cuenta. Si el comprobante no las tiene, el pago queda en revisión.</p>
         <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600"><input type="checkbox" id="pa_activo" ${c.activo ? "checked" : ""} ${dis} style="width:auto"> Pasarela activa (los clientes pueden pagar)</label>
       </div>
-      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · cupos</h3>
-        <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin cupos)")}</div>
-        <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cuando se llena un cupo, el precio pasa al siguiente.</p>
-        <table style="font-size:13px"><thead><tr><th>Cupo</th><th>Precio (Bs)</th><th>Cupos</th><th>Ocupados</th><th></th></tr></thead><tbody>
+      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · fases</h3>
+        <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin fases)")}</div>
+        <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cuando se llenan los cupos de una fase, el precio pasa a la siguiente fase.</p>
+        <table style="font-size:13px"><thead><tr><th>Fase</th><th>Precio (Bs)</th><th>Cupos</th><th>Ocupados</th><th></th></tr></thead><tbody>
         ${PA_UI.cupos.map((x, i) => { const cap = Number(x.capacidad) || 0, ocup = Math.max(0, Math.min(cap, usadosEeff - acum)); acum += cap; return `<tr><td><b>${i + 1}</b></td><td><input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:90px" ${dis}></td><td><input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:80px" ${dis}></td><td class="mono">${ocup} / ${cap}</td><td>${admin ? `<button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>`; }).join("")}
         </tbody></table>
-        ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar cupo</button>` : ""}
+        ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar fase</button>` : ""}
       </div></div>
       ${admin ? `<div style="margin-top:14px"><button class="btn" id="pa_save">Guardar configuración</button> <span class="msg" id="pa_msg"></span></div>` : ""}`;
   } else {
