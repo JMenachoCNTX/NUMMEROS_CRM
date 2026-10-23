@@ -34,6 +34,37 @@ var PAS_DEF = {
   campos: {}
 };
 
+// ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
+// Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
+var PAS_TERMINOS_VERSION = "2026-10-23";
+var PAS_TERMINOS = {
+  declaracion: [
+    "Cada pago cubre una sola declaración (un mes). Los meses atrasados se pagan uno por uno, con la tarifa de su plan.",
+    "Recepción: del 25 al 30 de cada mes (precio normal) y del 1 al 5 del mes siguiente (recepción tardía). Pasado el día 5 no se reciben solicitudes de ese mes.",
+    "No hay hora ni fecha fija de entrega: presentamos tu declaración antes de su vencimiento, que depende del último dígito de tu NIT (del día 13 al 22).",
+    "Las facturas manuales deben dejarse a tiempo en nuestro buzón (Av. Alemana, 7mo anillo). Las electrónicas las tomamos del portal de Impuestos Nacionales.",
+    "Plan Estándar: hasta 100 facturas al mes. Plan Premium: de 101 a 200. Más de 200 facturas requiere el Plan Personalizado.",
+    "Los impuestos que resulten (IVA e IT) los pagas tú directamente; te enviamos el QR de pago por WhatsApp junto con los formularios.",
+    "Las multas por meses atrasados o por entregar la documentación fuera de tiempo corren por tu cuenta.",
+    "CONTAX no se responsabiliza por facturas que no sean válidas para tu actividad registrada."
+  ],
+  eeff: [
+    "El servicio corresponde a los estados financieros de la gestión indicada (un año).",
+    "Incluye: balance general, estado de resultados, flujo de efectivo, evolución del patrimonio, notas, cuadro de activos fijos y balance de sumas y saldos; presentación del Formulario 500 (IUE) y envío digital con el Formulario 605.",
+    "El precio corresponde al cupo disponible al momento de tu pago; cuando un cupo se llena, el precio sube al siguiente.",
+    "Debes entregarnos a tiempo toda la información y documentación que te solicitemos.",
+    "El IUE que resulte a pagar lo pagas tú directamente.",
+    "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
+  ],
+  facturacion: [
+    "La suscripción cubre la emisión de tus facturas pendientes durante el mes pagado. No incluye la declaración mensual.",
+    "Repartidores de Yango: emitimos tu factura semanal por el importe autorizado por la aplicación y la dejamos lista antes del jueves (la verificación cierra el jueves a las 18:00).",
+    "Si la aplicación no autoriza tu pago de la semana (por ejemplo, por no cumplir el mínimo de horas), esa semana no se emite factura.",
+    "Repartidores de PedidosYa: emitimos aproximadamente dos facturas al mes. Otros clientes: emitimos las facturas que nos solicites.",
+    "Debes mantener al día tus datos y tu acceso a Impuestos Nacionales para poder emitir."
+  ]
+};
+
 // ---------------- Entrada (la llama doPost de PUENTE-RECIBOS.gs) ----------------
 function pasarelaHandle(d) {
   try { return pasarelaHandle_(d); }
@@ -83,7 +114,8 @@ function pasConfigPublica() {
     periodoDeclDefault: pasPeriodoDeclDefault_(c, hoy),
     periodosDecl: pasPeriodosDecl_(c, hoy),
     eeff: pasCupoActual_(c),
-    periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio }
+    periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
+    terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION
   };
 }
 
@@ -92,6 +124,7 @@ function pasBuscar(nitRaw) {
   var nit = String(nitRaw || "").replace(/\D/g, "");
   if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
   var cli = pasClienteCache_(nit);
+  if (cli && !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp para ayudarte." };
   if (!cli) return { ok: false, error: "No encontramos ese NIT. Revisa el número o escríbenos por WhatsApp para registrarte." };
   return {
     ok: true,
@@ -103,25 +136,70 @@ function pasBuscar(nitRaw) {
     }
   };
 }
+// Nombres de columnas de la Base de Datos: vienen como "2. NIT", "20. Estado Usuario", etc.
+// Se traduce cada encabezado a una clave interna (misma lógica que el panel).
+function pasClave_(h) {
+  var raw = String(h || "").trim().replace(/^\s*\d+\s*[.\-)]\s*/, "");
+  var n = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  if (n.indexOf("estado") >= 0 && n.indexOf("usuario") >= 0) return "estado";
+  if (n.indexOf("matricula") >= 0) return "estMat";
+  if (n.indexOf("apertura") >= 0 && n.indexOf("nit") >= 0) return "fechaNit";
+  if (n.indexOf("correo") >= 0 && n.indexOf("seprec") >= 0) return "";
+  if (n.indexOf("correo") >= 0) return "correo";
+  if (n.indexOf("tipo") >= 0 && n.indexOf("contribuy") >= 0) return "tipo";
+  if (n.indexOf("brinda") >= 0) return "brinda";
+  if (n.indexOf("actividad principal") >= 0) return "actP";
+  if (n.indexOf("celular") >= 0 || n.indexOf("telefono") >= 0) return "celular";
+  if (n.indexOf("codigo") >= 0) return "codigoId";
+  if (n.indexOf("razon") >= 0) return "razon";
+  if (n === "nombre") return "nombre";
+  if (n === "nit") return "nit";
+  return "";
+}
+function pasCamposBD_() {
+  var app = pasCfgApp(), campos = {};
+  (app.bdHeader || []).forEach(function (h) { var k = pasClave_(h); if (k && !campos[k]) campos[k] = h; });
+  var guardados = (app.pasarela && app.pasarela.campos) || {};
+  for (var k in guardados) if (!campos[k]) campos[k] = guardados[k];
+  var def = { nit: "2. NIT", nombre: "NOMBRE", razon: "3. Nombre o Razón Social", codigoId: "1. Codigo de ID", celular: "Celular", correo: "5. Correo Electrónico",
+              tipo: "6. Tipo de Contribuyente", brinda: "9. Brinda Servicios A", actP: "7. Actividad Principal", fechaNit: "10. Fecha Apertura NIT",
+              estMat: "14. Estado de La Matricula SEPREC", estado: "20. Estado Usuario" };
+  for (var d in def) if (!campos[d]) campos[d] = def[d];
+  return campos;
+}
 function pasClientePorNit_(nit) {
-  var c = pasCfg();
-  var campos = c.campos || {};
-  var hNit = campos.nit || "NIT";
-  var docs = fsQuery_("bdclientes", [[hNit, "EQUAL", nit]], 1);
-  if (!docs.length) docs = fsQuery_("bdclientes", [[hNit, "EQUAL", Number(nit)]], 1);
+  var campos = pasCamposBD_();
+  var docs = [];
+  [campos.nit, "2. NIT", "NIT"].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).some(function (h) {
+    docs = fsQuery_("bdclientes", [[h, "EQUAL", nit]], 2);
+    if (!docs.length && /^\d+$/.test(nit)) docs = fsQuery_("bdclientes", [[h, "EQUAL", Number(nit)]], 2);
+    if (docs.length) { campos.nit = h; return true; }
+    return false;
+  });
   if (!docs.length) return null;
-  var r = docs[0].data;
-  var v = function (k, def) { var h = campos[k] || def; var x = h ? r[h] : ""; return x == null ? "" : String(x).trim(); };
+  // Si hay varios con el mismo NIT, se prefiere el que no está de baja
+  var elegido = docs.filter(function (d) { return !/inactiv|negra|solicitad|baja/i.test(String(d.data[campos.estado] || "")); })[0] || docs[0];
+  var r = elegido.data;
+  var v = function (k) { var h = campos[k]; var x = h ? r[h] : ""; x = x == null ? "" : String(x).trim(); return /^(sn|s\/n|-|n\/a)$/i.test(x) ? "" : x; };
   return {
-    docId: docs[0].id,
-    nombre: v("nombre", "NOMBRE") || v("razon", "Nombre o Razón Social"),
-    codigoId: v("codigoId", "Codigo de ID"),
-    celular: v("celular", "Celular"), correo: v("correo", "Correo Electrónico"),
-    tipo: v("tipo", "Tipo de Contribuyente"), brinda: v("brinda", "Brinda Servicios A"),
-    actP: v("actP", "Actividad Principal"), fechaNit: v("fechaNit", "Fecha Apertura NIT"),
-    estMat: v("estMat", "Estado de La Matricula SEPREC"), estado: v("estado", "Estado Usuario")
+    docId: elegido.id, campoEstado: campos.estado,
+    nombre: v("nombre") || v("razon"),
+    codigoId: v("codigoId"), celular: v("celular"), correo: /@/.test(v("correo")) ? v("correo") : "",
+    tipo: v("tipo"), brinda: v("brinda"), actP: v("actP"), fechaNit: v("fechaNit"), estMat: v("estMat"), estado: v("estado")
   };
 }
+// Estado del cliente: quiénes pueden pagar por la pasarela
+function pasGrupoEstado_(estado) {
+  var u = String(estado || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  if (u === "ACTIVO") return "activo";
+  if (u.indexOf("LISTA NEGRA") >= 0) return "lista_negra";
+  if (u.indexOf("SOLICITAD") >= 0) return "nit_baja";
+  if (u.indexOf("SUSCRIP") >= 0 && u.indexOf("INACTIV") >= 0) return "susc_inact";
+  if (u.indexOf("SUSCRIP") >= 0 || u.indexOf("FACTURACION") >= 0) return "facturacion";
+  if (u.indexOf("INACTIV") >= 0) return "inactivo";
+  return u ? "otro" : "activo";
+}
+function pasPermitido_(cli) { var g = pasGrupoEstado_(cli.estado); return g !== "lista_negra" && g !== "nit_baja"; }
 // Repartidores de cualquier flota de delivery tienen tarifa preferencial (Manual CONTAX)
 function pasEsRepartidor_(cli) {
   return /YANGO|PEDIDOS|TADA|DELIVERY|MTG|MILTHAGOR|PARTNER|REPARTID|FLOTA|UBER|INDRIVE/i.test(String((cli && (cli.brinda + " " + cli.actP)) || ""));
@@ -130,7 +208,7 @@ function pasClienteCache_(nit) {
   var k = "cli_" + nit, c = pasCache_(k);
   if (c) return c;
   var cli = pasClientePorNit_(nit);
-  if (cli) pasCachePut_(k, cli, 600);
+  if (cli) { cli.nitBuscado = nit; pasCachePut_(k, cli, 600); }
   return cli;
 }
 function pasOcultar_(v, tipo) {
@@ -229,9 +307,10 @@ function pasQR_(monto) {
 // ---------------- Verificar comprobante con IA ----------------
 function pasVerificar(d) {
   var cli = pasClienteCache_(String(d.nit || "").replace(/\D/g, ""));
-  if (!cli) return { ok: false, error: "No encontramos tu NIT." };
+  if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
   var cot = pasCotizar(d);
   if (!cot.ok) return cot;
+  if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
   var img = String(d.imagen || "");
   if (img.indexOf("data:") !== 0) return { ok: false, error: "Sube la imagen del comprobante." };
   if (img.length > 3500000) return { ok: false, error: "La imagen es muy pesada. Toma una captura más pequeña." };
@@ -310,7 +389,7 @@ function pasConfirmar(token) {
   try {
     if (pasCache_("hecho_" + token)) return pasCache_("hecho_" + token);
     var cli = pasClienteCache_(v.nit);
-    if (!cli) return { ok: false, error: "No encontramos tu NIT." };
+    if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
     var x = v.x || {}, cot = v.cot, hoy = pasHoy_();
     var nro = String(x.nroOperacion || "").replace(/\s/g, "");
     if (v.aprobado && nro && fsQuery_("recepciones", [["compNroOperacion", "EQUAL", nro]], 1).length) { v.aprobado = false; v.motivos = ["Comprobante ya usado"]; }
@@ -333,10 +412,12 @@ function pasConfirmar(token) {
       tipo: cot.tipo, estado: "pendiente", estadoDeuda: "sin_deuda",
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: "", registradoPorNombre: "Pasarela (cliente)", origen: "pasarela",
+      terminosAceptados: { servicio: cot.tipo, version: PAS_TERMINOS_VERSION, fecha: hoy.iso + " " + hoy.hora },
       pasarela: { estado: estadoPas, motivos: v.motivos, montoEsperado: cot.monto, montoLeido: pasNum_(x.importe), leido: x, cupo: cot.cupo || "" },
       _upd: Date.now()
     };
     fsCreate_("recepciones", rec);
+    if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {
       try {
@@ -345,6 +426,7 @@ function pasConfirmar(token) {
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
           tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: "QR", atencion: "PASARELA", comentarios: "",
+          terminos: PAS_TERMINOS[cot.tipo] || [], terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
         });
         enviado = true;
@@ -354,6 +436,18 @@ function pasConfirmar(token) {
     pasCachePut_("hecho_" + token, out, 1800);
     return out;
   } finally { lock.releaseLock(); }
+}
+// Cliente Inactivo que paga y se aprueba → vuelve a ACTIVO, y queda en Movimientos como hecho por la pasarela
+function pasReactivar_(cli, cot) {
+  var g = pasGrupoEstado_(cli.estado);
+  if (g !== "inactivo" && g !== "susc_inact") return;
+  var nuevo = (g === "susc_inact" && cot.tipo === "facturacion") ? "SUSCRIPCIÓN FACTURACIÓN" : "ACTIVO";
+  var campo = cli.campoEstado || "20. Estado Usuario";
+  var f = {}; f[campo] = { stringValue: nuevo };
+  fsReq_(fsBase_() + "/bdclientes/" + cli.docId + "?updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(campo)), "patch", { fields: f });
+  fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "cambio_estado", nombre: cli.nombre, estadoAnterior: cli.estado, estadoNuevo: nuevo,
+                       porUid: "pasarela", porNombre: "Pasarela de pagos", detalle: "Reactivado al pagar " + cot.resumen });
+  CacheService.getScriptCache().remove("cli_" + String(cli.nitBuscado || ""));
 }
 function pasGuardarDrive_(dataUrl, nombre) {
   var it = DriveApp.getFoldersByName(PAS.carpetaDrive);

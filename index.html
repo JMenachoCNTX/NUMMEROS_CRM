@@ -181,6 +181,27 @@ tbody tr:hover{background:var(--panel2)}
 #agentOnly{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 #agentOnly .brand img{width:46px;margin:0 auto 8px}
 .brandword-dark{font-weight:800;letter-spacing:.12em;color:var(--txt);font-size:20px}
+/* Menú contraído: solo íconos. Al pasar el cursor se despliega encima (sin anclarse) */
+.sb-brand .iso{display:none;height:26px;width:26px}
+@media(min-width:901px){
+  .layout.sbhide{grid-template-columns:68px 1fr}
+  .layout.sbhide .sb{opacity:1;pointer-events:auto;position:fixed;left:0;top:0;bottom:0;height:100vh;width:68px;z-index:70;transition:width .22s cubic-bezier(.4,0,.2,1),box-shadow .22s ease}
+  .layout.sbhide .sb:hover{width:260px;box-shadow:10px 0 34px rgba(0,0,0,.38)}
+  .layout.sbhide .sb nav.tabs{overflow-x:hidden}
+  .layout.sbhide .sb nav.tabs button{white-space:nowrap}
+  .layout.sbhide .sb:not(:hover) nav.tabs button span,
+  .layout.sbhide .sb:not(:hover) .sb-brand > img:not(.iso),
+  .layout.sbhide .sb:not(:hover) .sb-brand .ver,
+  .layout.sbhide .sb:not(:hover) .who,
+  .layout.sbhide .sb:not(:hover) #logoutBtn{display:none}
+  .layout.sbhide .sb:not(:hover) .sb-brand .iso{display:block}
+  .layout.sbhide .sb:not(:hover) .sb-brand{justify-content:center;padding:20px 0 14px}
+  .layout.sbhide .sb:not(:hover) .navgroup{font-size:0;height:1px;background:rgba(255,255,255,.12);margin:10px 8px}
+  .layout.sbhide .sb:not(:hover) nav.tabs{padding:6px 10px}
+  .layout.sbhide .sb:not(:hover) nav.tabs button{justify-content:center;padding:10px 0}
+  .layout.sbhide .sb:not(:hover) nav.tabs button:hover{transform:none}
+  .layout.sbhide .sb:not(:hover) .sb-foot{justify-content:center;padding:12px 0}
+}
 @media(max-width:900px){
   .layout{grid-template-columns:1fr}
   .layout.sbhide{grid-template-columns:1fr}
@@ -209,7 +230,7 @@ tbody tr:hover{background:var(--panel2)}
       <input id="password" type="password" placeholder="Tu contraseña / PIN" autocomplete="current-password" />
       <button class="btn block" id="loginBtn">Entrar</button>
       <div class="msg" id="loginMsg"></div>
-      <span class="ver" style="margin-top:18px">v35</span>
+      <span class="ver" style="margin-top:18px">v36</span>
     </div>
     <div class="loginhero">
       <div class="mark"><div class="numm-logo-light"></div></div>
@@ -236,7 +257,8 @@ tbody tr:hover{background:var(--panel2)}
     <aside class="sb">
       <div class="sb-brand">
         <img src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS by CONTAX">
-        <span class="ver" style="margin-left:auto">v35</span>
+        <img class="iso" src="marca/logos/nummeros-isotipo-blanco.svg" alt="NUMMEROS">
+        <span class="ver" style="margin-left:auto">v36</span>
       </div>
       <nav class="tabs">
       <div class="navgroup" data-sec="portal">PORTAL</div>
@@ -332,7 +354,7 @@ tbody tr:hover{background:var(--panel2)}
   </div>
 </div>
 
-<script src="config.js?v=35"></script>
-<script type="module" src="app.js?v=35"></script>
+<script src="config.js?v=36"></script>
+<script type="module" src="app.js?v=36"></script>
 </body>
 </html>

@@ -183,25 +183,25 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
           [["elec", "Electrónicas"], ["man", "Manuales"], ["mix", "Ambas"]].map(function (t) { return '<button data-tf="' + t[0] + '" class="' + (S.tipoFact === t[0] ? "sel" : "") + '">' + t[1] + "</button>"; }).join("") + "</div>" +
           (S.tipoFact === "man" || S.tipoFact === "mix" ? '<div class="aviso ok">Deja tus facturas manuales en nuestro <b>buzón de la Av. Alemana, 7mo anillo</b> (abierto a toda hora).</div>' : "") : "") +
         avisoFecha() + info("Ver todos los planes", INFO.planes) + errHtml() +
-        '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Pagar " + bs(S.cot.monto) : "Elige tu plan") + '</button><button class="link" id="bVolver">Volver</button></div>';
+        terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Pagar " + bs(S.cot.monto) : "Elige tu plan") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "eeff") {
       var E = S.cfg.eeff;
       var esRepE = !S.cli || S.cli.repartidor !== false;
       if (!esRepE) {
         h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
           info("¿Qué incluye?", INFO.eeff, true) + errHtml() +
-          '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
+          terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
       } else
       h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + "</b></div></div>" +
         '<p class="l" style="margin:4px 0 0">Precio según cupo</p>' +
         E.cupos.map(function (c) { var act = E.actual && c.n === E.actual.n, lleno = c.libres <= 0;
           return '<div class="cupo' + (act ? " act" : "") + (lleno ? " lleno" : "") + '"><div style="display:flex;justify-content:space-between;align-items:center"><span><b>Cupo ' + c.n + '</b> <span class="chico" style="font-weight:700;margin-left:6px;color:' + (lleno ? "#B42318" : act ? "#235347" : "#557363") + '">' + (lleno ? "LLENO" : act ? "DISPONIBLE" : "SIGUIENTE") + '</span></span><span class="precio" style="color:' + (act ? "#163832" : "#557363") + '">Bs ' + esc(c.precio) + '</span></div><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><p class="chico suave">' + (lleno ? c.capacidad + " de " + c.capacidad + " cupos ocupados" : act ? "Quedan " + c.libres + " de " + c.capacidad + " · tu precio actual" : "Se habilita cuando se llene el cupo anterior") + "</p></div>"; }).join("") +
         '<p class="chico suave">Cuando se llena un cupo, el precio pasa automáticamente al siguiente. ¡Aprovecha temprano y paga menos!</p>' + info("¿Qué incluye?", INFO.eeff) + errHtml() +
-        '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Reservar mi cupo · Pagar " + bs(S.cot.monto) : "Calculando…") + '</button><button class="link" id="bVolver">Volver</button></div>';
+        terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Reservar mi cupo · Pagar " + bs(S.cot.monto) : "Calculando…") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "fact") {
       h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' +
         '<div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + info("¿Qué incluye?", INFO.fact, true) + errHtml() +
-        '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
+        terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "pago") {
       var q = S.cot;
       h = '<div class="pila"><h2>Paga con QR</h2><div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
@@ -228,6 +228,15 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     }
     main.innerHTML = h;
     enlazar();
+  }
+  // Términos y condiciones del servicio elegido: hay que aceptarlos antes de ver el QR
+  function terminosHtml() {
+    var k = { decl: "declaracion", eeff: "eeff", fact: "facturacion" }[S.serv];
+    var t = S.cfg && S.cfg.terminos && S.cfg.terminos[k];
+    if (!t || !t.length) { S.acepta = true; return ""; }
+    return '<details class="info"' + (S.acepta ? "" : " open") + '><summary>Términos y condiciones del servicio</summary><div class="c"><ul>' +
+      t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico suave">Te los enviamos también en el correo de tu Orden de Recepción.</p></div></details>' +
+      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:20px"><input type="checkbox" id="chkTer"' + (S.acepta ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:#235347"> <span>Leí y acepto los términos y condiciones de este servicio.</span></label>';
   }
   function avisoFecha() {
     if (S.plan !== "estandar") return "";
@@ -275,13 +284,14 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
-      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.per = S.cfg.periodoDeclDefault; S.img = ""; ir("opcion");
+      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.per = S.cfg.periodoDeclDefault; S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
     document.querySelectorAll("[data-plan]").forEach(function (b) { b.onclick = function () { S.plan = b.dataset.plan; if (S.plan === "basico") S.tipoFact = ""; cotizar(); }; });
     document.querySelectorAll("[data-tf]").forEach(function (b) { b.onclick = function () { S.tipoFact = b.dataset.tf; cotizar(); }; });
     if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.plan) cotizar(); else pintar(); };
-    if ($("bPagar")) $("bPagar").onclick = function () { if (S.cot && S.cot.ok) ir("pago"); };
+    if ($("chkTer")) $("chkTer").onchange = function () { S.acepta = this.checked; pintar(); };
+    if ($("bPagar")) $("bPagar").onclick = function () { if (S.cot && S.cot.ok && S.acepta) ir("pago"); };
     if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? "datos" : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
@@ -289,7 +299,7 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     };
     if ($("bVerif")) $("bVerif").onclick = function () {
       cargando("Leyendo tu comprobante con IA… (unos segundos)");
-      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img };
+      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img, aceptaTerminos: S.acepta === true };
       if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
       api(d).then(function (r) { if (!r.ok) { S.error = r.error; ir("pago"); return; } S.ver = r; ir("verif"); });
     };

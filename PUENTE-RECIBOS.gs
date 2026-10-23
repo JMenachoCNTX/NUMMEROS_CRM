@@ -105,6 +105,10 @@ function buildCorreoHTML(d, empresaNombre) {
       fila("Atendido por", d.atencion) +
       fila("Importe", money(d.importe), true) +
     '</table></td></tr>' +
+    // Términos y condiciones aceptados (pagos por la pasarela)
+    ((d.terminos && d.terminos.length) ? '<tr><td style="padding:18px 28px 0"><div style="border:1px solid ' + linea + ';border-radius:8px;padding:12px 16px">' +
+      '<div style="color:#1f2a3a;font-size:13px;font-weight:700;margin-bottom:6px">' + esc(d.terminosTitulo || "Términos y condiciones") + '</div>' +
+      '<ul style="margin:0;padding-left:18px;color:' + gris + ';font-size:12px;line-height:1.55">' + d.terminos.map(function (t) { return '<li style="margin:3px 0">' + esc(t) + '</li>'; }).join("") + '</ul></div></td></tr>' : '') +
     // Aviso
     '<tr><td style="padding:18px 28px 6px"><div style="background:#f4f6f9;border-left:3px solid ' + navy + ';border-radius:6px;padding:12px 14px;color:' + gris + ';font-size:11.5px;line-height:1.55;font-style:italic">' + esc(DISCLAIMER) + '</div></td></tr>' +
     // Gracias

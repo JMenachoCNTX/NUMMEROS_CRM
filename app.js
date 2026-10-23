@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "35";
+const APP_VERSION = "36";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -33,7 +33,19 @@ function initTheme() { const b = el("themeBtn"); if (!b) return; const dark = ()
 function initSidebar() {
   const b = el("sbToggle"); const lay = document.querySelector(".layout"); if (!b || !lay) return;
   try { if (localStorage.getItem("cx-sb") === "hide") lay.classList.add("sbhide"); } catch (e) {}
-  b.onclick = () => { const h = lay.classList.toggle("sbhide"); try { localStorage.setItem("cx-sb", h ? "hide" : "show"); } catch (e) {} };
+  const guardar = h => { try { localStorage.setItem("cx-sb", h ? "hide" : "show"); } catch (e) {} };
+  b.onclick = (ev) => { ev.stopPropagation(); const h = lay.classList.toggle("sbhide"); guardar(h); };
+  // Tooltip con el nombre de cada pestaña (útil cuando el menú está contraído)
+  document.querySelectorAll("nav.tabs button").forEach(x => { const t = x.querySelector("span"); if (t && !x.title) x.title = t.textContent.trim(); });
+  // Clic en cualquier parte fuera del menú → se contrae (solo en pantallas grandes)
+  if (!window.__cxSbClick) {
+    window.__cxSbClick = true;
+    document.addEventListener("click", ev => {
+      if (window.innerWidth <= 900 || lay.classList.contains("sbhide")) return;
+      if (ev.target.closest && (ev.target.closest(".sb") || ev.target.closest("#sbToggle"))) return;
+      lay.classList.add("sbhide"); guardar(true);
+    });
+  }
 }
 function initFab() {
   const f = el("cxFab"); if (!f) return;
@@ -140,8 +152,8 @@ const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", editor: "Editor"
 const DEFAULT_ROLE_VIEWS = {
   admin: ALL_VIEWS.slice(),
   supervisor: ALL_VIEWS.slice(),
-  editor: ["inicio", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
-  cajero: ["inicio", "basedatos", "recepcion", "pasarela", "arqueo", "egresos", "calendario", "asistente"],
+  editor: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
+  cajero: ["inicio", "dashboard", "basedatos", "recepcion", "pasarela", "arqueo", "egresos", "calendario", "asistente"],
   lector: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
 };
 let ROLE_VIEWS = null; // se carga de config/app.rolePerms; si no, usa los defaults
@@ -226,7 +238,7 @@ onAuthStateChanged(auth, async (user) => {
 
 async function loadAll() {
   USERS = []; CHATS = [];
-  try { (await getDocs(collection(db, "users"))).forEach(d =>USERS.push({ uid: d.id, ...d.data() })); } catch (e) {}
+  try { (await getDocs(collection(db, "users"))).forEach(d =>USERS.push({ ...d.data(), uid: d.id })); } catch (e) {}
   try { (await getDocs(collection(db, "waChats"))).forEach(d =>CHATS.push(d.data())); } catch (e) {}
 }
 
@@ -265,15 +277,26 @@ function switchView(v, btn) {
 }
 
 // ---------- Inicio (portal home) ----------
+const INICIO_IMGS = {
+  claro: ["arquimedes-saludo-claro", "reunion-sala"],
+  oscuro: ["los-cuatro-oscuro", "pitagoras-muestra-sistema", "contrato-euclides-oscuro", "pitagoras-saludo-oscuro", "apreton-arquimedes"]
+};
 async function renderInicio() {
   const hora = new Date().getHours();
   const saludo = hora < 12 ? "Buenos días" : (hora < 19 ? "Buenas tardes" : "Buenas noches");
   const nombre = escape((ME.name || ME.email || "").split(" ")[0] || "");
+  const oscuro = document.documentElement.classList.contains("dark");
+  const lista = oscuro ? INICIO_IMGS.oscuro : INICIO_IMGS.claro.concat(INICIO_IMGS.oscuro.slice(0, 2));
+  const img = lista[Math.floor(Math.random() * lista.length)];
   el("v-inicio").innerHTML = `
-    <div style="position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:40px 24px;min-height:min(72vh,620px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-      <div class="numm-logo" style="width:min(78%,560px);aspect-ratio:852/398;margin:0 auto 6px"></div>
-      <h1 style="font-size:22px;margin:22px 0 6px;font-weight:600">${saludo}, ${nombre}.</h1>
-      <p class="lead" style="margin:0;color:var(--muted)">Bienvenido a tu sistema NUMMEROS by CONTAX.</p>
+    <div style="position:relative;overflow:hidden;border-radius:18px;min-height:min(74vh,640px);display:flex;align-items:flex-end;background:#051F20">
+      <img src="marca/colaboracion/${img}.jpg" alt="Los clásicos de NUMMEROS junto al Contador Virtual de CONTAX" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,31,32,0) 35%,rgba(5,31,32,.88) 100%)"></div>
+      <div style="position:relative;padding:28px 30px;color:#fff;width:100%">
+        <img src="marca/logos/nummeros-logotipo-firma-blanco.svg" alt="NUMMEROS by CONTAX" style="height:44px;width:auto;display:block;margin-bottom:14px">
+        <h1 style="font-size:26px;margin:0 0 4px;font-weight:600;color:#fff">${saludo}, ${nombre}.</h1>
+        <p style="margin:0;color:#DAF1DE;font-size:15px">Sistemas a la medida de tu empresa.</p>
+      </div>
     </div>`;
 }
 
@@ -596,7 +619,7 @@ async function renderUsers() {
     <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select></td>
     <td>${pinCell}</td>
     <td>${u.active ? '<span class="pill agent">Activo</span>' : '<span class="pill" style="background:var(--panel2);color:var(--muted);border:1px solid var(--line)">Inactivo</span>'}</td>
-    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" title="Copia un mensaje con los accesos para enviar por WhatsApp">${ICO("copy")} Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
+    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" data-nombre="${escape(u.name || "")}" data-correo="${escape(u.email || "")}" data-rol="${escape(ROLE_LABELS[u.role] || u.role || "")}" title="Copia un mensaje con los accesos para enviar por WhatsApp">${ICO("copy")} Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
   }).join("");
   el("v-users").innerHTML = `<h1>Usuarios</h1><p class="lead">Crea las cuentas de tu equipo y define qué ve cada rol. Los roles del panel (Admin, Supervisor, Editor, Cajero, Lector) entran aquí; el rol Agente usa la extensión de WhatsApp.</p>
     <div class="formcard">
@@ -641,8 +664,8 @@ async function renderUsers() {
   document.querySelectorAll("[data-toggle]").forEach(b =>b.onclick = async () => { await updateDoc(doc(db, "users", b.dataset.toggle), { active: b.dataset.s !== "true" }); renderUsers(); });
   // Mensaje de accesos listo para WhatsApp (usa la contraseña anotada en la columna PIN)
   document.querySelectorAll("[data-acceso]").forEach(b => b.onclick = async () => {
-    const uid = b.dataset.acceso, u = USERS.find(x => x.uid === uid) || {};
-    const i = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`);
+    const uid = b.dataset.acceso, u = { name: b.dataset.nombre, email: b.dataset.correo, rolTxt: b.dataset.rol };
+    const fila = b.closest("tr"), i = fila && fila.querySelector(".pin-in");
     const pin = (i && i.value) || "";
     if (!pin && !confirm("Este usuario no tiene contraseña anotada en la columna PIN.\n\n¿Copiar el mensaje igual (con la contraseña en blanco)?")) return;
     const msg = [
@@ -652,19 +675,19 @@ async function renderUsers() {
       "*Usuario*: " + (u.name || "—"),
       "*Correo*: " + (u.email || "—"),
       "*Contraseña*: " + (pin || "_______"),
-      "*Rol*: " + (ROLE_LABELS[u.role] || u.role || "—")
+      "*Rol*: " + (u.rolTxt || "—")
     ].join("\n");
     try { await navigator.clipboard.writeText(msg); const o = b.innerHTML; b.innerHTML = ICO("check") + " Copiado"; setTimeout(() => { b.innerHTML = o; }, 2000); }
     catch (e) { prompt("Copia este mensaje:", msg); }
   });
   document.querySelectorAll(".pin-eye").forEach(e => e.onclick = () => {
-    const i = el("v-users").querySelector(`.pin-in[data-uid="${e.dataset.uid}"]`);
+    const fe = e.closest("tr"), i = fe && fe.querySelector(".pin-in");
     if (!i) return; const ver = i.type === "password"; i.type = ver ? "text" : "password"; e.innerHTML = ver ? ICO("eyeOff") + " Ocultar" : ICO("eye") + " Ver";
   });
   // Cambia la contraseña al instante (vía el script de Apps Script, que verifica que seas Admin)
   document.querySelectorAll(".pin-set").forEach(b => b.onclick = async () => {
     const uid = b.dataset.uid, u = USERS.find(x => x.uid === uid) || {};
-    const inp = el("v-users").querySelector(`.pin-new[data-uid="${uid}"]`), nueva = (inp && inp.value || "").trim();
+    const filaN = b.closest("tr"), inp = filaN && filaN.querySelector(".pin-new"), nueva = (inp && inp.value || "").trim();
     if (nueva.length < 6) { alert("La nueva contraseña debe tener al menos 6 caracteres."); if (inp) inp.focus(); return; }
     if (!confirm(`¿Cambiar la contraseña de ${u.name || u.email} a:\n\n${nueva}\n\nSe cerrará su sesión en el panel y en el CRM, y tendrá que entrar con la nueva.`)) return;
     const url = await recibosUrlGet();
@@ -674,7 +697,7 @@ async function renderUsers() {
       const idToken = await auth.currentUser.getIdToken(true);
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_set_password", idToken, uid, password: nueva }) }).then(x => x.json());
       if (!r.ok) throw new Error(r.error || "No se pudo cambiar.");
-      const actual = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`); if (actual) { actual.value = nueva; actual.type = "text"; }
+      const actual = filaN && filaN.querySelector(".pin-in"); if (actual) { actual.value = nueva; actual.type = "text"; }
       if (inp) inp.value = "";
       b.innerHTML = ICO("check") + " Listo"; setTimeout(() => { b.innerHTML = o; b.disabled = false; }, 2500);
     } catch (e) { b.innerHTML = o; b.disabled = false; alert("No se pudo cambiar la contraseña:\n" + (e.message || e)); }
@@ -3103,40 +3126,60 @@ async function registrarEgreso() {
 async function renderDashboard() {
   el("v-dashboard").innerHTML = `<h1>Dashboard</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
   await recepLoad();
+  try { await ltLoad(); } catch (e) {}
   paintDashboard();
 }
+// Quien no tiene acceso a Reportes financieros ve el mismo dashboard pero solo con cantidades (sin importes)
 function paintDashboard() {
+  const verBs = canSeeView("repfinanzas");
   const total = RECEP.length;
-  const ingresos = RECEP.reduce((s, r) => s + (Number(r.importe) || 0), 0);
-  const mesAct = new Date().toISOString().slice(0, 7);
-  const delMes = RECEP.filter(r => mesKey(r.fechaISO) === mesAct);
-  const ingMes = delMes.reduce((s, r) => s + (Number(r.importe) || 0), 0);
-  const porCat = {}; RECEP.forEach(r => { const k = r.categoria || r.servicioNombre || "Otros"; porCat[k] = porCat[k] || { n: 0, m: 0 }; porCat[k].n++; porCat[k].m += Number(r.importe) || 0; });
-  const porMetodo = {}; RECEP.forEach(r => { const k = r.metodoPago || "—"; porMetodo[k] = (porMetodo[k] || 0) + (Number(r.importe) || 0); });
-  const meses = {}; RECEP.forEach(r => { const k = mesKey(r.fechaISO); if (k) meses[k] = (meses[k] || 0) + (Number(r.importe) || 0); });
+  const hoy = new Date(), mesAct = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0");
+  const fLocal = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+  const delMes = RECEP.filter(r => fLocal(r.fechaISO) === mesAct);
+  const suma = l => l.reduce((a, r) => a + (Number(r.importe) || 0), 0);
+  const cat = r => { const c = recCatDe(r); return c === "declaracion" ? "Declaraciones" : c === "eeff" ? "Estados financieros" : c === "facturacion" ? "Facturación" : c === "tramite" ? "Trámites" : "Otros"; };
+  const porCat = {}; RECEP.forEach(r => { const k = cat(r); porCat[k] = porCat[k] || { n: 0, m: 0 }; porCat[k].n++; porCat[k].m += Number(r.importe) || 0; });
+  const meses = {}; RECEP.forEach(r => { const k = fLocal(r.fechaISO); if (k) { meses[k] = meses[k] || { n: 0, m: 0 }; meses[k].n++; meses[k].m += Number(r.importe) || 0; } });
   const mesesK = Object.keys(meses).sort().slice(-6);
-  const maxMes = Math.max(1, ...mesesK.map(k => meses[k]));
-  const tipoCount = tp => RECEP.filter(r => r.tipo === tp).length;
-  el("v-dashboard").innerHTML = `<h1>Dashboard</h1><p class="lead">Resumen general de la operación, todo en un solo lugar.</p>
+  const val = k => verBs ? meses[k].m : meses[k].n;
+  const maxMes = Math.max(1, ...mesesK.map(val));
+  const porAt = {}; delMes.forEach(r => { const k = String(r.atencion || "—").toUpperCase(); porAt[k] = (porAt[k] || 0) + 1; });
+  // Avance de las listas de trabajo
+  const LT = LT_DATA || [];
+  const decl = LT.filter(r => enListaTrabajo(r, "declaracion"));
+  const dEst = k => decl.filter(r => djGrupo(djEstado(r)) === k).length;
+  const eeff = LT.filter(r => enListaTrabajo(r, "eeff"));
+  const fact = LT.filter(r => recCatDe(r) === "facturacion" && recPeriodoKey(r) === mesAct);
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+  const barra = (lbl, a, b, color) => `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${lbl}</span><b class="mono">${a} / ${b}</b></div><div style="height:10px;background:var(--panel2);border-radius:20px;overflow:hidden"><i style="display:block;height:100%;width:${pct(a, b)}%;background:${color || "var(--accent)"};border-radius:20px"></i></div></div>`;
+  const kpi = (n, l, c) => `<div class="kpi"><div class="n"${c ? ` style="color:${c}"` : ""}>${n}</div><div class="l">${l}</div></div>`;
+  el("v-dashboard").innerHTML = `<h1>Dashboard</h1><p class="lead">Cómo vamos: recepciones y avance del trabajo del equipo${verBs ? "" : " (sin importes)"}.</p>
     <div class="kpis">
-      <div class="kpi"><div class="n">${total}</div><div class="l">Total recepcionados</div></div>
-      <div class="kpi"><div class="n">${money(ingresos)}</div><div class="l">Ingresos totales</div></div>
-      <div class="kpi"><div class="n">${delMes.length}</div><div class="l">Pagos este mes</div></div>
-      <div class="kpi"><div class="n" style="color:var(--green)">${money(ingMes)}</div><div class="l">Ingresos este mes</div></div>
-      <div class="kpi"><div class="n">${tipoCount("declaracion")}</div><div class="l">Declaraciones</div></div>
-      <div class="kpi"><div class="n">${tipoCount("tramite")}</div><div class="l">Trámites</div></div>
-      <div class="kpi"><div class="n">${tipoCount("eeff")}</div><div class="l">EEFF / Balances</div></div>
+      ${kpi(total, "Recepcionados en la gestión")}
+      ${kpi(delMes.length, "Recepciones este mes")}
+      ${verBs ? kpi(money(suma(RECEP)), "Ingresos de la gestión") : ""}
+      ${verBs ? kpi(money(suma(delMes)), "Ingresos este mes", "var(--green)") : ""}
+      ${kpi(dEst("pendiente"), "Declaraciones pendientes", "var(--warn)")}
+      ${kpi(dEst("en_proceso"), "Declaraciones en proceso")}
+      ${kpi(dEst("entregado"), "Declaraciones terminadas", "var(--ok)")}
     </div>
     <div class="grid2" style="gap:16px;align-items:start">
-      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Ingresos por mes</h3>
-        ${mesesK.length ? mesesK.map(k => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span class="mono" style="width:62px;color:var(--muted)">${k}</span><span style="flex:1;height:10px;background:var(--panel2);border-radius:20px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(meses[k] / maxMes * 100)}%;background:var(--accent);border-radius:20px"></i></span><span class="mono" style="width:120px;text-align:right">${money(meses[k])}</span></div>`).join('') : '<div class="note">Aún no hay datos. Registra pagos en Recepción.</div>'}
+      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Avance del trabajo</h3>
+        ${barra("Declaraciones terminadas", dEst("entregado"), decl.length)}
+        ${barra("Estados financieros entregados", eeff.filter(r => r.estadoTrabajo === "entregado").length, eeff.length)}
+        ${barra("Facturación del mes · facturados", fact.filter(r => r.estadoFactura === "facturado").length, fact.length)}
       </div>
-      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Por servicio / categoría</h3>
-        <table><thead><tr><th>Categoría</th><th style="text-align:right">N°</th><th style="text-align:right">Ingresos</th></tr></thead><tbody>${Object.keys(porCat).sort((a, b) => porCat[b].m - porCat[a].m).map(k => `<tr><td>${escape(k)}</td><td class="mono" style="text-align:right">${porCat[k].n}</td><td class="mono" style="text-align:right">${money(porCat[k].m)}</td></tr>`).join('') || '<tr><td class="note" colspan="3">Sin datos</td></tr>'}</tbody></table>
+      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">${verBs ? "Ingresos por mes" : "Recepciones por mes"}</h3>
+        ${mesesK.length ? mesesK.map(k => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span class="mono" style="width:62px;color:var(--muted)">${k}</span><span style="flex:1;height:10px;background:var(--panel2);border-radius:20px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(val(k) / maxMes * 100)}%;background:var(--accent);border-radius:20px"></i></span><span class="mono" style="width:${verBs ? 120 : 50}px;text-align:right">${verBs ? money(meses[k].m) : meses[k].n}</span></div>`).join("") : '<div class="note">Aún no hay datos.</div>'}
       </div>
     </div>
-    <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Por método de pago</h3>
-      <table><thead><tr><th>Método</th><th style="text-align:right">Ingresos</th></tr></thead><tbody>${Object.keys(porMetodo).map(k => `<tr><td>${escape(k)}</td><td class="mono" style="text-align:right">${money(porMetodo[k])}</td></tr>`).join('') || '<tr><td class="note" colspan="2">Sin datos</td></tr>'}</tbody></table>
+    <div class="grid2" style="gap:16px;align-items:start">
+      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Por servicio</h3>
+        <table><thead><tr><th>Servicio</th><th style="text-align:right">Cantidad</th>${verBs ? '<th style="text-align:right">Ingresos</th>' : ""}</tr></thead><tbody>${Object.keys(porCat).sort((a, b) => porCat[b].n - porCat[a].n).map(k => `<tr><td>${escape(k)}</td><td class="mono" style="text-align:right">${porCat[k].n}</td>${verBs ? `<td class="mono" style="text-align:right">${money(porCat[k].m)}</td>` : ""}</tr>`).join("") || '<tr><td class="note" colspan="3">Sin datos</td></tr>'}</tbody></table>
+      </div>
+      <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Recepciones del mes por persona</h3>
+        <table><tbody>${Object.entries(porAt).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${escape(k)}</td><td class="mono" style="text-align:right">${n}</td></tr>`).join("") || '<tr><td class="note">Sin recepciones este mes</td></tr>'}</tbody></table>
+      </div>
     </div>`;
 }
 
