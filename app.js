@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "41";
+const APP_VERSION = "42";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2803,6 +2803,7 @@ function paintRecepcion() {
           recFill("r_rubro", bdV(c, "brinda")); recFill("r_idcli", bdV(c, "codigoId"));
           recFill("r_correo", bdV(c, "correo")); recFill("r_cel", bdV(c, "celular"));
           recPintarEstado();
+          if (REC_FASE) recFasePintar(true);
         }
       };
       // Servicio → detalle dependiente + período según categoría
@@ -2812,8 +2813,13 @@ function paintRecepcion() {
         const dets = recDetallesPorCat(cat, L);
         const det = el("r_det");
         if (det) det.innerHTML = `<option value="">— elegir —</option>` + dets.map(s => `<option>${escape(s)}</option>`).join("");
-        const pw = el("r_periodo_wrap"); if (pw) pw.innerHTML = recPeriodoWidget(cat);
+        const pw = el("r_periodo_wrap"); if (pw) pw.innerHTML = recPeriodoWidget(cat) + (cat === "eeff" ? '<div id="r_fase"></div>' : "");
+        if (cat === "eeff") {
+          recFaseCargar();
+          const pa = el("r_peranio"); if (pa) pa.addEventListener("change", () => recFasePintar(true));
+        } else { REC_FASE = null; const t = el("r_total"); if (t && t.dataset.auto === "1") { t.value = ""; t.dataset.auto = ""; } }
       };
+      if (el("r_total")) el("r_total").addEventListener("input", () => { el("r_total").dataset.auto = ""; if (REC_FASE) recFasePintar(false); });
       if (serv) serv.onchange = refreshServicio;
       // Comprobante con IA (igual que en el CRM)
       const setCompPrev = (dataUrl) => { recComprobante = dataUrl; recCompData = null; const p = el("r_compprev"); if (p) p.innerHTML = `<img src="${dataUrl}" style="max-height:130px;border-radius:8px;border:1px solid var(--line)">`; if (el("r_compread")) el("r_compread").disabled = false; const m = el("r_compmsg"); if (m) { m.className = "msg"; m.textContent = "Listo. Toca “Leer con IA”."; } };
@@ -3990,7 +3996,8 @@ function eeffRecsPorPrecio(g) {
 }
 async function eeffFasesCfg() {
   const cfg = await loadConfigDoc(), p = cfg.pasarela || {};
-  return { gestion: String(p.eeffGestion || PAS_DEF.eeffGestion), cupos: (p.cupos && p.cupos.length ? p.cupos : PAS_DEF.cupos).map(c => Object.assign({}, c)) };
+  return { gestion: String(p.eeffGestion || PAS_DEF.eeffGestion), cupos: (p.cupos && p.cupos.length ? p.cupos : PAS_DEF.cupos).map(c => Object.assign({}, c)),
+           otros: Number((p.precios && p.precios.eeffOtros) || PAS_DEF.precios.eeffOtros) };
 }
 // opts: { editable, conMontos, dis }
 function eeffFasesHTML(cupos, recs, reservas, opts) {
@@ -4035,6 +4042,56 @@ async function eeffFasesBloque(contId, conMontos) {
     box.innerHTML = `<h3 style="margin:0 0 4px">Balances por fase · Gestión ${escape(f.gestion)}</h3><p class="note" style="margin:0 0 10px">Solo consulta. Los precios y cupos se cambian en Pasarela de pagos.</p>` + eeffFasesHTML(f.cupos, eeffRecsPorPrecio(f.gestion), res, { editable: false, conMontos });
     eeffFasesEnlazar(box);
   } catch (e) { box.innerHTML = '<p class="note">No se pudo cargar el cuadro de fases.</p>'; }
+}
+// ===== Recepción en el panel: ayuda de fases para Estados financieros =====
+function eeffEstadoFases(cupos, recs, reservas) {
+  let activa = null;
+  const l = cupos.map((x, i) => {
+    const pr = Number(x.precio) || 0, cap = Number(x.capacidad) || 0, key = String(Math.round(pr));
+    const ven = (recs[key] || []).length, res = Number(reservas[key]) || 0, libres = Math.max(0, cap - ven - res);
+    const o = { n: i + 1, precio: pr, capacidad: cap, vendidos: ven, reservados: res, libres };
+    if (!activa && libres > 0) activa = o;
+    return o;
+  });
+  return { fases: l, activa };
+}
+function esRepartidorCli(c) { return !!c && /YANGO|PEDIDOS|TADA|DELIVERY|MTG|MILTHAGOR|PARTNER|REPARTID|FLOTA|UBER|INDRIVE/i.test((bdV(c, "brinda") || "") + " " + (bdV(c, "actP") || "")); }
+let REC_FASE = null;
+async function recFaseCargar() {
+  const box = el("r_fase"); if (!box) return;
+  box.innerHTML = '<span class="note"><span class="cx-spin"></span> Revisando la fase habilitada…</span>';
+  try {
+    const f = await eeffFasesCfg();
+    const [res] = await Promise.all([eeffReservasScript(), recSync().catch(() => null)]);
+    REC_FASE = Object.assign(f, eeffEstadoFases(f.cupos, eeffRecsPorPrecio(f.gestion), res));
+    // Por defecto, la gestión que se está recepcionando con fases (la misma de la pasarela)
+    const pa = el("r_peranio"); if (pa && [...pa.options].some(o => o.value === String(f.gestion))) pa.value = String(f.gestion);
+    recFasePintar(true);
+  } catch (e) { box.innerHTML = '<span class="note">No se pudo revisar las fases.</span>'; }
+}
+function recFasePintar(autollenar) {
+  const box = el("r_fase"); if (!box || !REC_FASE) return;
+  const F = REC_FASE, gSel = el("r_peranio") ? String(el("r_peranio").value) : "", tot = el("r_total");
+  const caja = (color, html) => `<div style="border:2px solid ${color};border-radius:10px;padding:10px 12px;font-size:13px;line-height:19px;margin-top:6px">${html}</div>`;
+  if (gSel !== String(F.gestion)) { box.innerHTML = caja("var(--line)", `Las fases de balances son de la <b>gestión ${escape(F.gestion)}</b>. Para la gestión ${escape(gSel)} el monto es libre y no ocupa cupo.`); return; }
+  const otros = recCli && !esRepartidorCli(recCli);
+  const sugerido = otros ? F.otros : (F.activa ? F.activa.precio : 0);
+  if (autollenar && tot && sugerido && (!tot.value || tot.dataset.auto === "1")) { tot.value = sugerido; tot.dataset.auto = "1"; }
+  let html = otros
+    ? `<b>Cliente de otro rubro (no repartidor):</b> precio de balance Bs ${escape(String(F.otros))}. No ocupa cupo de las fases.`
+    : (F.activa ? `<b style="color:var(--ok)">Fase ${F.activa.n} habilitada · ${money(F.activa.precio)}</b> · quedan <b>${F.activa.libres}</b> de ${F.activa.capacidad} cupos${F.activa.reservados ? ` (${F.activa.reservados} ${F.activa.reservados === 1 ? "reservado" : "reservados"} ahora en la pasarela)` : ""}.`
+      : '<b style="color:var(--bad,#B42318)">Todas las fases están agotadas.</b> Puedes agregar cupos en Pasarela de pagos.');
+  // Validación del monto escrito
+  const v = Math.round(Number(tot && tot.value) || 0);
+  if (v && !otros) {
+    const fz = F.fases.find(x => Math.round(x.precio) === v);
+    if (!fz) html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> Bs ${v} no es el precio de ninguna fase, así que este balance <b>no ocupará cupo</b>.</div>`;
+    else if (fz.libres <= 0) html += `<div style="margin-top:6px;color:#B42318"><b>Atención:</b> la Fase ${fz.n} (Bs ${v}) ya está agotada. Si lo registras, quedará por encima del cupo (+1).</div>`;
+    else if (F.activa && fz.n !== F.activa.n) html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> Bs ${v} es el precio de la Fase ${fz.n}, pero la habilitada es la Fase ${F.activa.n} (${money(F.activa.precio)}).</div>`;
+  } else if (v && otros && v !== Math.round(F.otros)) {
+    html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> el precio de otros rubros es Bs ${escape(String(F.otros))}.</div>`;
+  }
+  box.innerHTML = caja(F.activa || otros ? "var(--ok)" : "#B42318", html);
 }
 // ===== Conteo de balances por fase (por precio) =====
 // config/eeffConteo_<gestión> = { porPrecio: { "250": 40, "300": 3 }, total }
