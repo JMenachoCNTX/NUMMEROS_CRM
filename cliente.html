@@ -125,10 +125,10 @@ tr:last-child td{border-bottom:none}
   <div class="hi" id="t_saludo"></div>
   <p class="lead">Aquí ves el estado de tus servicios con CONTAX y tus documentos.</p>
   <div class="cards" id="t_cards"></div>
-  <div class="sec"><h3>📄 Mis Declaraciones</h3><div id="t_decl"></div></div>
-  <div class="sec"><h3>🧾 Mis Trámites</h3><div id="t_tram"></div></div>
-  <div class="sec"><h3>🧮 Mi Facturación</h3><div id="t_fact"></div></div>
-  <div class="sec"><h3>📎 Mis Documentos</h3>
+  <div class="sec"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Mis Declaraciones</h3><div id="t_decl"></div></div>
+  <div class="sec"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path d="M4 2v20l3-2 3 2 2-2 2 2 3-2 3 2V2l-3 2-3-2-2 2-2-2-3 2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Mis Trámites</h3><div id="t_tram"></div></div>
+  <div class="sec"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h4"/></svg>Mi Facturación</h3><div id="t_fact"></div></div>
+  <div class="sec"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>Mis Documentos</h3>
     <div id="t_docs"></div>
     <div class="up">⬆ Subir un documento (NIT, Matrícula, ROE…)<br><span style="font-size:12px">Disponible en la próxima versión del portal.</span></div>
   </div>
@@ -222,7 +222,7 @@ function entrar(cli){
   const primer = cli.nombre.split(" ")[0];
   $("t_nombre").textContent = cli.nombre;
   $("t_sub").textContent = cli.sub;
-  $("t_saludo").textContent = "Hola, "+primer+" 👋";
+  $("t_saludo").textContent = "Hola, "+primer;
   const nAlDia = cli.facturacion.filter(f=>f.estado==="activo").length;
   const pend = cli.declaraciones.filter(d=>d.estado!=="entregado").length + cli.tramites.filter(t=>t.estado!=="entregado").length;
   $("t_cards").innerHTML =
@@ -241,7 +241,7 @@ function entrar(cli){
     "No tienes facturación activa.");
   $("t_docs").innerHTML = cli.documentos.length ? cli.documentos.map(d=>`
     <div class="docrow">
-      <div class="docicon">📄</div>
+      <div class="docicon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
       <div style="flex:1"><div class="dn">${d.nombre}</div><div class="dm">${d.tipo} · ${d.fecha}</div></div>
       <button class="mini" onclick="verDoc('${d.nombre.replace(/'/g,"")}')">⬇ Descargar</button>
     </div>`).join("") : '<div style="color:var(--muted)">Todavía no hay documentos cargados.</div>';

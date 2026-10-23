@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "34";
+const APP_VERSION = "35";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -49,6 +49,57 @@ function initClock() {
   };
   upd(); if (cxClockTimer) clearInterval(cxClockTimer); cxClockTimer = setInterval(upd, 15000);
 }
+
+
+// ============================================================
+//  ÍCONOS VECTORIALES (sin emojis). ICO("nombre") devuelve un <svg> lineal.
+//  Además, cualquier emoji que aparezca en pantalla se cambia solo por su vector.
+// ============================================================
+const ICO_PATHS = {
+  check: '<path d="M5 12l5 5 9-10"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18M10.6 5.1A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.9 0 3.5-.5 4.9-1.3"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  pin: '<path d="M12 17v5M8 3h8l-1 7 3 3H6l3-3z"/>',
+  zap: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/>',
+  alert: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  bot: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 4v4M8 14h.01M16 14h.01"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/>',
+  calc: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h4"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  clip: '<path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
+  receipt: '<path d="M4 2v20l3-2 3 2 2-2 2 2 3-2 3 2V2l-3 2-3-2-2 2-2-2-3 2z"/><path d="M8 8h8M8 12h8M8 16h5"/>'
+};
+function ICO(n, size) {
+  const p = ICO_PATHS[n]; if (!p) return "";
+  const z = size || 14;
+  return `<svg class="ico" width="${z}" height="${z}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;flex-shrink:0">${p}</svg>`;
+}
+window.ICO = ICO;
+const EMOJI_A_ICO = { "✓": "check", "✔": "check", "✕": "x", "✖": "x", "👁": "eye", "🙈": "eyeOff", "📋": "copy", "📌": "pin", "⚡": "zap", "⛔": "ban", "📲": "phone", "⚙": "settings", "💡": "bulb", "⚠": "alert", "📷": "camera", "🤖": "bot", "📧": "mail", "✉": "mail", "🔑": "key", "🧮": "calc", "🔎": "search", "🔍": "search", "🎉": "check", "📄": "doc", "📎": "clip", "🧾": "receipt" };
+const EMOJI_RE = /([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2705}\u{274C}\u{23F0}-\u{23FF}])\u{FE0F}?\s?/gu;
+function emojisAVectores(root) {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => (EMOJI_RE.lastIndex = 0, EMOJI_RE.test(n.nodeValue) && !(n.parentNode && /^(SCRIPT|STYLE|TEXTAREA|OPTION|TITLE)$/.test(n.parentNode.nodeName))) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodos = []; while (w.nextNode()) nodos.push(w.currentNode);
+  nodos.forEach(t => {
+    const span = document.createElement("span");
+    span.innerHTML = escape(t.nodeValue).replace(EMOJI_RE, (m, e) => { const n = EMOJI_A_ICO[e]; return n ? ICO(n) + (/\s$/.test(m) ? " " : "") : ""; });
+    t.replaceWith(...span.childNodes);
+  });
+}
+try {
+  const obs = new MutationObserver(ms => { for (const m of ms) { if (m.type === "characterData") { if (m.target.parentNode) emojisAVectores(m.target.parentNode); } else m.addedNodes.forEach(n => { if (n.nodeType === 1) emojisAVectores(n); else if (n.nodeType === 3 && n.parentNode) emojisAVectores(n.parentNode); }); } });
+  obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+  emojisAVectores(document.body);
+} catch (e) {}
 
 // ---------- Login ----------
 el("loginBtn").onclick = async () => {
@@ -531,7 +582,7 @@ async function renderUsers() {
            <div style="display:flex;gap:6px;align-items:center">
              <span style="font-size:11px;color:var(--muted);width:52px">Actual</span>
              <input class="mini pin-in" data-uid="${u.uid}" type="password" value="${escape(pin)}" placeholder="sin anotar" readonly style="width:120px;background:transparent">
-             <button class="mini pin-eye" data-uid="${u.uid}" title="Mostrar u ocultar la contraseña">👁 Ver</button>
+             <button class="mini pin-eye" data-uid="${u.uid}" title="Mostrar u ocultar la contraseña">${ICO("eye")} Ver</button>
            </div>
            <div style="display:flex;gap:6px;align-items:center">
              <span style="font-size:11px;color:var(--muted);width:52px">Nueva</span>
@@ -545,7 +596,7 @@ async function renderUsers() {
     <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select></td>
     <td>${pinCell}</td>
     <td>${u.active ? '<span class="pill agent">Activo</span>' : '<span class="pill" style="background:var(--panel2);color:var(--muted);border:1px solid var(--line)">Inactivo</span>'}</td>
-    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" title="Copia un mensaje con los accesos para enviar por WhatsApp">📋 Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
+    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" title="Copia un mensaje con los accesos para enviar por WhatsApp">${ICO("copy")} Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
   }).join("");
   el("v-users").innerHTML = `<h1>Usuarios</h1><p class="lead">Crea las cuentas de tu equipo y define qué ve cada rol. Los roles del panel (Admin, Supervisor, Editor, Cajero, Lector) entran aquí; el rol Agente usa la extensión de WhatsApp.</p>
     <div class="formcard">
@@ -603,12 +654,12 @@ async function renderUsers() {
       "*Contraseña*: " + (pin || "_______"),
       "*Rol*: " + (ROLE_LABELS[u.role] || u.role || "—")
     ].join("\n");
-    try { await navigator.clipboard.writeText(msg); const o = b.textContent; b.textContent = "✓ Copiado"; setTimeout(() => { b.textContent = o; }, 2000); }
+    try { await navigator.clipboard.writeText(msg); const o = b.innerHTML; b.innerHTML = ICO("check") + " Copiado"; setTimeout(() => { b.innerHTML = o; }, 2000); }
     catch (e) { prompt("Copia este mensaje:", msg); }
   });
   document.querySelectorAll(".pin-eye").forEach(e => e.onclick = () => {
     const i = el("v-users").querySelector(`.pin-in[data-uid="${e.dataset.uid}"]`);
-    if (!i) return; const ver = i.type === "password"; i.type = ver ? "text" : "password"; e.textContent = ver ? "🙈 Ocultar" : "👁 Ver";
+    if (!i) return; const ver = i.type === "password"; i.type = ver ? "text" : "password"; e.innerHTML = ver ? ICO("eyeOff") + " Ocultar" : ICO("eye") + " Ver";
   });
   // Cambia la contraseña al instante (vía el script de Apps Script, que verifica que seas Admin)
   document.querySelectorAll(".pin-set").forEach(b => b.onclick = async () => {
@@ -618,15 +669,15 @@ async function renderUsers() {
     if (!confirm(`¿Cambiar la contraseña de ${u.name || u.email} a:\n\n${nueva}\n\nSe cerrará su sesión en el panel y en el CRM, y tendrá que entrar con la nueva.`)) return;
     const url = await recibosUrlGet();
     if (!url) { alert("Falta la URL del script en Configuración → Conexiones (Recibos por correo)."); return; }
-    b.disabled = true; const o = b.textContent; b.textContent = "Cambiando…";
+    b.disabled = true; const o = b.innerHTML; b.textContent = "Cambiando…";
     try {
       const idToken = await auth.currentUser.getIdToken(true);
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_set_password", idToken, uid, password: nueva }) }).then(x => x.json());
       if (!r.ok) throw new Error(r.error || "No se pudo cambiar.");
       const actual = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`); if (actual) { actual.value = nueva; actual.type = "text"; }
       if (inp) inp.value = "";
-      b.textContent = "✓ Listo"; setTimeout(() => { b.textContent = o; b.disabled = false; }, 2500);
-    } catch (e) { b.textContent = o; b.disabled = false; alert("No se pudo cambiar la contraseña:\n" + (e.message || e)); }
+      b.innerHTML = ICO("check") + " Listo"; setTimeout(() => { b.innerHTML = o; b.disabled = false; }, 2500);
+    } catch (e) { b.innerHTML = o; b.disabled = false; alert("No se pudo cambiar la contraseña:\n" + (e.message || e)); }
   });
 
 }
@@ -1678,7 +1729,7 @@ async function migrarBDaFirebase() {
         if (btn) btn.textContent = `Migrando… ${done}/${docs.length}`;
       }
       bdLoaded = false;
-      alert(`✓ Migrados ${done} registros a Firebase. La Base de Datos ahora funciona desde Firebase (más rápido). El Google Sheet queda como respaldo.`);
+      alert(`Migrados ${done} registros a Firebase. La Base de Datos ahora funciona desde Firebase (más rápido). El Google Sheet queda como respaldo.`);
       renderBaseDatos();
     } catch (e) { alert("Error al migrar: " + (e.code || e.message)); if (btn) { btn.disabled = false; btn.textContent = "⬆ Migrar a Firebase"; } }
   });
@@ -1733,7 +1784,7 @@ function paintTarifas() {
   box.innerHTML = `
     <p class="lead">Catálogo de servicios con precios, plazos y detalle. El Asistente IA del Panel lo usa para responder. ${admin ? 'Edita aquí y se actualiza para todo el equipo.' : ''}</p>
     <div class="toolbar">
-      <input id="tar_search" class="mini" style="padding:9px;min-width:240px" placeholder="🔎 Buscar servicio…" value="${escape(tarFilter)}">
+      <input id="tar_search" class="mini" style="padding:9px;min-width:240px" placeholder="Buscar servicio…" value="${escape(tarFilter)}">
       ${admin ? '<button class="btn" id="tar_new">＋ Nuevo servicio</button>' : ''}
       ${admin ? '<button class="btn sec" id="tar_seed" style="border:1px solid var(--line)" title="Carga los planes de CONTAX (Básico, Standard, Premium, Facturación, Trámites, Balances)">⬆ Cargar planes CONTAX</button>' : ''}
       <button class="btn sec" id="tar_export" style="border:1px solid var(--line)" title="Descargar respaldo en CSV">⬇ Exportar</button>
@@ -2033,7 +2084,7 @@ function suscRenderBody(box, overrides) {
       <select id="su_anio" class="mini">${anioSel.join("")}</select>
       <button class="mini" id="su_reload" title="Volver a leer los pagos">↻ Actualizar</button>
       <span style="flex:1"></span>
-      <input id="su_search" class="mini" style="padding:9px;min-width:200px" placeholder="🔎 Buscar cliente…" value="${escape(suscFiltro)}">
+      <input id="su_search" class="mini" style="padding:9px;min-width:200px" placeholder="Buscar cliente…" value="${escape(suscFiltro)}">
       <button class="btn sec" id="su_export" style="border:1px solid var(--line)" title="Descargar lista en Excel/CSV">⬇ Exportar</button>
     </div>
 
@@ -2589,7 +2640,7 @@ function paintRecepcion() {
       ${recepError ? `<p class="msg err">No se pudo leer: ${escape(recepError)}. Toca "Actualizar".</p>` : ""}
       <div class="toolbar">
         <select id="r_gestion" class="mini" style="padding:9px" title="Mostrar solo esta gestión (año)">${yearOpts.join("")}</select>
-        <input id="r_buscar" class="mini" style="padding:9px;min-width:220px" placeholder="🔎 Buscar en esta gestión…" value="${escape(recListFilter)}">
+        <input id="r_buscar" class="mini" style="padding:9px;min-width:220px" placeholder="Buscar en esta gestión…" value="${escape(recListFilter)}">
         <select id="r_sort" class="mini" style="padding:9px">
           <option value="fecha">Más recientes</option>
           <option value="cliente">Cliente (A-Z)</option>
@@ -3245,7 +3296,7 @@ function paintListaTrabajo(tipo, viewId, titulo) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
       ${periodos.length ? `<select id="lt_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === ui.per ? "selected" : ""}>${perTxt(k)}</option>`).join("")}</select>` : ""}
       <select id="lt_est"><option value="">Todos los estados</option>${ESTADOS_TRABAJO.map(([v, l]) => `<option value="${v}" ${v === ui.est ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <input id="lt_q" placeholder="🔎 Buscar cliente, NIT, detalle…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
+      <input id="lt_q" placeholder="Buscar cliente, NIT, detalle…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
     </div>
     <div style="overflow:auto"><table><thead><tr><th>Fecha rec.</th><th>N° Rec</th><th>Cliente</th><th>Detalle</th><th>${tipo === "eeff" ? "Gestión" : "Período"}</th><th>Estado</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="6" style="color:var(--muted)">No hay registros con este filtro.</td></tr>`}</tbody></table></div>`;
@@ -3376,7 +3427,7 @@ function paintDDJJ() {
       <select id="dj_per"><option value="">Todos los períodos</option>${periodos.map(k => `<option value="${k}" ${k === DJ_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("")}</select>
       <select id="dj_est"><option value="">Todos los estados</option>${DJ_ESTADOS.map(([v, l]) => `<option value="${v}" ${v === DJ_UI.est ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="dj_resp"><option value="">Todo el equipo</option>${djEquipo().map(n => `<option ${n === DJ_UI.resp ? "selected" : ""}>${escape(n)}</option>`).join("")}</select>
-      <input id="dj_q" placeholder="🔎 Buscar cliente, NIT, ID…" value="${escape(DJ_UI.q)}" style="flex:1;min-width:200px">
+      <input id="dj_q" placeholder="Buscar cliente, NIT, ID…" value="${escape(DJ_UI.q)}" style="flex:1;min-width:200px">
       <button class="mini" id="dj_reload">↻ Actualizar</button>
     </div>
     <div style="overflow:auto"><table style="font-size:13px"><thead>
@@ -3548,7 +3599,7 @@ function paintFicha() {
   const opts = BD.map(c => `${bdV(c, "nombre") || bdV(c, "razon")} — NIT ${bdV(c, "nit")}${bdV(c, "codigoId") ? " — ID " + bdV(c, "codigoId") : ""}`);
   const c = FI_UI.nit ? BD.find(x => fiNit(bdV(x, "nit")) === FI_UI.nit) : null;
   const buscador = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
-      <input id="fi_q" list="fi_list" placeholder="🔎 Escribe nombre, NIT o ID del cliente…" style="flex:1;min-width:260px" value="${c ? escape(opts[BD.indexOf(c)]) : ""}">
+      <input id="fi_q" list="fi_list" placeholder="Escribe nombre, NIT o ID del cliente…" style="flex:1;min-width:260px" value="${c ? escape(opts[BD.indexOf(c)]) : ""}">
       <datalist id="fi_list">${opts.map(o => `<option value="${escape(o)}">`).join("")}</datalist>
       ${FI_UI.nit ? `<button class="mini" id="fi_reload">↻ Actualizar</button>` : ""}
     </div>`;
@@ -3690,7 +3741,7 @@ function paintControl() {
       .sort((a, b) => (bdV(a, "nombre") || bdV(a, "razon")).localeCompare(bdV(b, "nombre") || bdV(b, "razon")));
     const wa = cel => { const d = fiNit(cel); return d ? `https://wa.me/${d.length === 8 ? "591" + d : d}` : ""; };
     body = `<p class="note" style="margin:0 0 10px">Clientes ACTIVOS que todavía no recepcionaron su declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>. Toca el celular para escribirles por WhatsApp.</p>
-      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="🔎 Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button></div>
+      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button></div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
       ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))}</td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
       </tbody></table></div>`;
@@ -3702,7 +3753,7 @@ function paintControl() {
         .sort((a, b) => ((a._v && a._v.iso) || "9").localeCompare((b._v && b._v.iso) || "9"));
       const dias = iso => Math.round((new Date(iso + "T00:00:00") - new Date(hoy + "T00:00:00")) / 86400000);
       body = `<p class="note" style="margin:0 0 10px">Declaraciones de <b>${escape(recPeriodoTxt(CM_UI.per))}</b> recepcionadas que aún no están <b>Terminadas</b>, ordenadas por fecha de vencimiento (último dígito del NIT). Toca una fila para abrirla.</p>
-        <div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="🔎 Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
+        <div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
         <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Vence</th><th>Cliente</th><th>NIT</th><th>Estado</th><th>RCV por</th><th>Estado RCV</th></tr></thead><tbody>
         ${list.map(r => { const v = r._v, dd = v ? dias(v.iso) : null; const col = dd == null ? "" : dd < 0 ? "var(--danger)" : dd <= 3 ? "var(--warn)" : "var(--txt)";
           return `<tr class="cm-dj" data-id="${r.id}" style="cursor:pointer"><td class="mono" style="color:${col};font-weight:700">${v ? djFechaTxt(v.iso) : "—"}<div class="note" style="margin:0;color:${col}">${dd == null ? "" : dd < 0 ? "Vencido hace " + (-dd) + " d" : dd === 0 ? "Vence hoy" : "Faltan " + dd + " d"}</div></td>
@@ -3714,7 +3765,7 @@ function paintControl() {
     body = `<div class="grid3" style="gap:14px;align-items:start">${tabla("Recepción (atención)", cuenta("atencion"))}${tabla("RCV realizado por", cuenta("dj_rcvPor"))}${tabla("Declarado por", cuenta("dj_declaradoPor"))}</div>`;
   } else {
     const list = delPer.filter(r => !q || [r.clienteNombre, r.nit, r.atencion, r.detalleServicio].join(" ").toLowerCase().includes(q)).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
-    body = `<div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="🔎 Buscar por cliente, NIT o persona…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
+    body = `<div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="Buscar por cliente, NIT o persona…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Fecha rec.</th><th>Cliente</th><th>Presta servicios a</th><th>Tipo de servicio</th><th>NIT</th><th>Atención</th></tr></thead><tbody>
       ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td><b>${escape(r.clienteNombre || "—")}</b></td><td>${escape(r.rubro || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td class="mono">${escape(String(r.nit || ""))}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Sin recepciones.</td></tr>`}
       </tbody></table></div>`;
@@ -3959,7 +4010,7 @@ function paintFacturacion() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
         <label style="margin:0">Mes:</label>
         <select id="fac_per">${periodos.map(k => `<option value="${k}" ${k === FAC_UI.per ? "selected" : ""}>${recPeriodoTxt(k)}</option>`).join("") || `<option value="">Sin datos</option>`}</select>
-        <input id="fac_q" placeholder="🔎 Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
+        <input id="fac_q" placeholder="Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
       </div>
       <div class="kpis">
         <div class="kpi"><div class="n">${list.length}</div><div class="l">Suscriptores activos · ${escape(recPeriodoTxt(FAC_UI.per))}</div></div>
@@ -3978,7 +4029,7 @@ function paintFacturacion() {
     const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
     body = `
       <p class="note" style="margin:0 0 10px">Facturas por emitir de los suscriptores activos (período Octubre 2026 en adelante). Al marcar <b>Facturado</b> sale de esta lista. <i>Esta sección se desarrollará a detalle más adelante.</i></p>
-      <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="🔎 Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
+      <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
       <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
       ${list.map(r => `<tr><td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
         <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
