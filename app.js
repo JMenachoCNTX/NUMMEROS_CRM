@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "40";
+const APP_VERSION = "41";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3285,7 +3285,9 @@ function paintDashboard() {
       <div class="formcard" style="max-width:none"><h3 style="margin:0 0 12px">Recepciones del mes por persona</h3>
         <table><tbody>${Object.entries(porAt).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${escape(k)}</td><td class="mono" style="text-align:right">${n}</td></tr>`).join("") || '<tr><td class="note">Sin recepciones este mes</td></tr>'}</tbody></table>
       </div>
-    </div>`;
+    </div>
+    <div class="formcard" style="max-width:none;margin-top:16px" id="dash-fases"><p class="note"><span class="cx-spin"></span> Cargando balances por fase…</p></div>`;
+  eeffFasesBloque("dash-fases", verBs);
 }
 
 // ---------- LISTAS (Declaraciones / Trámites / EEFF) ----------
@@ -3953,6 +3955,7 @@ async function renderPasarela() {
   try { await recSync(); } catch (e) {}
   // El conteo por fase que usa la pasarela se corrige con lo que hay en las recepciones (solo admin)
   try { await eeffSincronizarConteo(PA_UI.cfg.eeffGestion); } catch (e) {}
+  try { PA_UI.reservas = await eeffReservasScript(); } catch (e) { PA_UI.reservas = {}; }
   paintPasarela();
 }
 function paMontos() {
@@ -3963,6 +3966,75 @@ function paMontos() {
   add(c.precios.fact, "Suscripción de facturación");
   (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
   return o.sort((a, b) => a.m - b.m);
+}
+// ===== Balances por fase: tabla reutilizable (Pasarela editable · Dashboard y Reportes solo lectura) =====
+let EEFF_RES = { t: 0, porPrecio: {} };
+async function eeffReservasScript() {
+  if (Date.now() - EEFF_RES.t < 60000) return EEFF_RES.porPrecio;
+  try {
+    const url = await recibosUrlGet(); if (!url) return {};
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "pas_config" }) }).then(x => x.json());
+    const m = {}; ((r && r.eeff && r.eeff.cupos) || []).forEach(c => { if (c.reservados) m[String(Math.round(c.precio))] = c.reservados; });
+    EEFF_RES = { t: Date.now(), porPrecio: m };
+  } catch (e) {}
+  return EEFF_RES.porPrecio;
+}
+function eeffRecsPorPrecio(g) {
+  const m = {};
+  (RC.docs || []).forEach(r => {
+    if (!recValida(r) || recCatDe(r) !== "eeff" || eeffGestionDe(r) !== String(g)) return;
+    (m[eeffPrecioKey(r)] = m[eeffPrecioKey(r)] || []).push(r);
+  });
+  Object.values(m).forEach(l => l.sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || "")));
+  return m;
+}
+async function eeffFasesCfg() {
+  const cfg = await loadConfigDoc(), p = cfg.pasarela || {};
+  return { gestion: String(p.eeffGestion || PAS_DEF.eeffGestion), cupos: (p.cupos && p.cupos.length ? p.cupos : PAS_DEF.cupos).map(c => Object.assign({}, c)) };
+}
+// opts: { editable, conMontos, dis }
+function eeffFasesHTML(cupos, recs, reservas, opts) {
+  opts = opts || {}; const conM = opts.conMontos !== false;
+  const precios = cupos.map(x => String(Math.round(Number(x.precio) || 0)));
+  const dup = precios.filter((p, i) => precios.indexOf(p) !== i);
+  let tCap = 0, tVen = 0, tRes = 0, tProy = 0, tCob = 0, tPend = 0, activa = 0;
+  const filas = cupos.map((x, i) => {
+    const pr = Number(x.precio) || 0, cap = Number(x.capacidad) || 0, key = String(Math.round(pr));
+    const lista = recs[key] || [], ven = lista.length, res = Number(reservas[key]) || 0;
+    const libres = Math.max(0, cap - ven - res), proy = pr * cap, cob = pr * ven, pend = pr * libres;
+    tCap += cap; tVen += ven; tRes += res; tProy += proy; tCob += cob; tPend += pend;
+    if (!activa && libres > 0) activa = i + 1;
+    const est = libres <= 0 ? '<span class="badge" style="background:#B42318;color:#fff">Agotada</span>' : (activa === i + 1 ? '<span class="badge ok">Habilitada</span>' : '<span class="badge" style="background:#F2C94C;color:#5A4200">Próxima</span>');
+    const celPr = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:80px" ${opts.dis || ""}>` : `<span class="mono">${money(pr)}</span>`;
+    const celCap = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:70px" ${opts.dis || ""}>` : `<span class="mono">${cap}</span>`;
+    const detalle = `<tr class="ef-det" data-fase="${i}" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${lista.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Origen</th></tr></thead><tbody>${lista.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${escape(r.fecha || String(r.fechaISO || "").slice(0, 10))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td>${escape(r.clienteNombre || "")}</td><td class="mono">${escape(String(r.nit || ""))}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${r.origen === "pasarela" ? "Pasarela" : "Panel"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó en esta fase.</span>'}</td></tr>`;
+    return `<tr><td><b>${i + 1}</b></td><td>${celPr}</td><td>${celCap}</td>
+      <td class="mono">${ven}${ven > cap ? ` <span class="note" style="color:#B42318">(+${ven - cap})</span>` : ""}</td><td class="mono">${res || 0}</td><td class="mono">${libres}</td><td>${est}</td>
+      ${conM ? `<td class="mono" style="text-align:right">${money(proy)}</td><td class="mono" style="text-align:right">${money(cob)}</td><td class="mono" style="text-align:right">${money(pend)}</td>` : ""}
+      <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="${i}" ${ven ? "" : "disabled"}>Ver (${ven})</button>${opts.editable && isAdmin() ? ` <button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>` + detalle;
+  }).join("");
+  const fuera = Object.keys(recs).filter(k => precios.indexOf(k) < 0);
+  return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fase</th><th>Precio${opts.editable ? " (Bs)" : ""}</th><th>Cupos</th><th>Vendidos</th><th>Reservados</th><th>Libres</th><th>Estado</th>${conM ? '<th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th>' : ""}<th></th></tr></thead><tbody>${filas}
+    <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">Total · ${tCap} cupos</td><td class="mono">${tVen}</td><td class="mono">${tRes}</td><td class="mono">${Math.max(0, tCap - tVen - tRes)}</td><td></td>${conM ? `<td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td>` : ""}<td></td></tr></tbody></table></div>
+    <p class="note" style="margin:8px 0 0">Reservados = clientes que están pagando ahora en la pasarela (tienen 30 minutos). Toca «Ver» para la lista de quienes pagaron en cada fase.${conM ? " Ingreso proyectado = precio × cupos · Ya vendido = precio × vendidos · Por vender = precio × libres." : ""}</p>
+    ${dup.length ? `<p class="msg err" style="margin:6px 0 0">Dos fases tienen el mismo precio (Bs ${escape(dup.join(", "))}). Cada fase debe tener un precio distinto para contar bien los cupos.</p>` : ""}
+    ${fuera.length ? `<p class="note" style="margin:6px 0 0">Balances con precios que no son de ninguna fase (no ocupan cupos): ${fuera.map(k => `Bs ${escape(k)} × ${recs[k].length}`).join(" · ")}.</p>` : ""}`;
+}
+function eeffFasesEnlazar(raiz) {
+  (raiz || document).querySelectorAll(".ef-ver").forEach(b => b.onclick = () => {
+    const d = b.closest("table").querySelector(`.ef-det[data-fase="${b.dataset.fase}"]`); if (!d) return;
+    const ab = d.style.display === "none"; d.style.display = ab ? "" : "none"; b.classList.toggle("on", ab);
+  });
+}
+// Bloque de solo lectura para Dashboard y Reportes financieros
+async function eeffFasesBloque(contId, conMontos) {
+  const box = el(contId); if (!box) return;
+  try {
+    const f = await eeffFasesCfg();
+    const [res] = await Promise.all([eeffReservasScript(), recSync().catch(() => null)]);
+    box.innerHTML = `<h3 style="margin:0 0 4px">Balances por fase · Gestión ${escape(f.gestion)}</h3><p class="note" style="margin:0 0 10px">Solo consulta. Los precios y cupos se cambian en Pasarela de pagos.</p>` + eeffFasesHTML(f.cupos, eeffRecsPorPrecio(f.gestion), res, { editable: false, conMontos });
+    eeffFasesEnlazar(box);
+  } catch (e) { box.innerHTML = '<p class="note">No se pudo cargar el cuadro de fases.</p>'; }
 }
 // ===== Conteo de balances por fase (por precio) =====
 // config/eeffConteo_<gestión> = { porPrecio: { "250": 40, "300": 3 }, total }
@@ -4046,29 +4118,8 @@ function paintPasarela() {
       <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · fases</h3>
         <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin fases)")}</div>
         <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cada balance cuenta en la fase que tiene su mismo precio. Se habilita la primera fase que tenga cupos libres.</p>
-        ${(() => {
-          const precios = PA_UI.cupos.map(x => String(Math.round(Number(x.precio) || 0)));
-          const dup = precios.filter((p, i) => precios.indexOf(p) !== i);
-          let tCap = 0, tVen = 0, tProy = 0, tCob = 0, tPend = 0, activa = 0;
-          const filas = PA_UI.cupos.map((x, i) => {
-            const pr = Number(x.precio) || 0, cap = Number(x.capacidad) || 0, ven = conteo.porPrecio[String(Math.round(pr))] || 0;
-            const libres = Math.max(0, cap - ven), proy = pr * cap, cob = pr * Math.min(ven, cap), pend = pr * libres;
-            tCap += cap; tVen += Math.min(ven, cap); tProy += proy; tCob += cob; tPend += pend;
-            if (!activa && libres > 0) activa = i + 1;
-            const est = libres <= 0 ? '<span class="badge" style="background:#B42318;color:#fff">Agotada</span>' : (activa === i + 1 ? '<span class="badge ok">Habilitada</span>' : '<span class="badge" style="background:#F2C94C;color:#5A4200">Próxima</span>');
-            return `<tr><td><b>${i + 1}</b></td><td><input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:80px" ${dis}></td><td><input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:70px" ${dis}></td>
-              <td class="mono">${ven}${ven > cap ? ` <span class="note" style="color:#B42318">(+${ven - cap})</span>` : ""}</td><td class="mono">${libres}</td><td>${est}</td>
-              <td class="mono" style="text-align:right">${money(proy)}</td><td class="mono" style="text-align:right">${money(cob)}</td><td class="mono" style="text-align:right">${money(pend)}</td>
-              <td>${admin ? `<button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>`;
-          }).join("");
-          const fuera = Object.keys(conteo.porPrecio).filter(k => precios.indexOf(k) < 0);
-          return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fase</th><th>Precio (Bs)</th><th>Cupos</th><th>Vendidos</th><th>Libres</th><th>Estado</th><th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th><th></th></tr></thead><tbody>${filas}
-            <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="2">Total</td><td class="mono">${tCap}</td><td class="mono">${tVen}</td><td class="mono">${Math.max(0, tCap - tVen)}</td><td></td><td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td><td></td></tr></tbody></table></div>
-            <p class="note" style="margin:8px 0 0">Ingreso proyectado = precio × cupos. Ya vendido = precio × vendidos. Por vender = precio × libres. Los montos se recalculan al cambiar precio o cupos (antes de guardar).</p>
-            ${dup.length ? `<p class="msg err" style="margin:6px 0 0">Dos fases tienen el mismo precio (Bs ${escape(dup.join(", "))}). Cada fase debe tener un precio distinto para contar bien los cupos.</p>` : ""}
-            ${fuera.length ? `<p class="note" style="margin:6px 0 0">Balances con precios que no son de ninguna fase (no ocupan cupos): ${fuera.map(k => `Bs ${escape(k)} × ${conteo.porPrecio[k]}`).join(" · ")}.</p>` : ""}
-            <p class="note" style="margin:6px 0 0"><b>¿Aumentar cupos de una fase agotada?</b> Sube el número de cupos y guarda: la fase se vuelve a abrir y pasa a ser la habilitada (porque es la primera con cupos libres) hasta que se llene de nuevo. Lo vendido en las otras fases no cambia.</p>`;
-        })()}
+        ${eeffFasesHTML(PA_UI.cupos, eeffRecsPorPrecio(c.eeffGestion), PA_UI.reservas || {}, { editable: true, conMontos: true, dis })}
+        ${`            <p class="note" style="margin:6px 0 0"><b>¿Aumentar cupos de una fase agotada?</b> Sube el número de cupos y guarda: la fase se vuelve a abrir y pasa a ser la habilitada (porque es la primera con cupos libres) hasta que se llene de nuevo. Lo vendido en las otras fases no cambia.</p>`}
         ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar fase</button>` : ""}
       </div></div>
       ${admin ? `<div style="margin-top:14px"><button class="btn" id="pa_save">Guardar configuración</button> <span class="msg" id="pa_msg"></span></div>` : ""}`;
@@ -4101,6 +4152,7 @@ function paintPasarela() {
   V.querySelectorAll("[data-aprobar]").forEach(b => b.onclick = () => paResolver(b.dataset.aprobar, true));
   V.querySelectorAll("[data-rechazar]").forEach(b => b.onclick = () => paResolver(b.dataset.rechazar, false));
   V.querySelectorAll(".pa-cp").forEach(i => i.onchange = () => { PA_UI.cupos[Number(i.dataset.i)][i.dataset.k] = Number(i.value) || 0; paintPasarela(); });
+  eeffFasesEnlazar(V);
   V.querySelectorAll(".pa-del").forEach(b => b.onclick = () => { PA_UI.cupos.splice(Number(b.dataset.i), 1); paintPasarela(); });
   if (el("pa_addcupo")) el("pa_addcupo").onclick = () => { const u = PA_UI.cupos[PA_UI.cupos.length - 1]; PA_UI.cupos.push({ precio: u ? Number(u.precio) + 50 : 250, capacidad: 30 }); paintPasarela(); };
   if (el("pa_save")) el("pa_save").onclick = paGuardar;
@@ -4211,7 +4263,8 @@ function paintRepFinanzas() {
   }
   el("v-repfinanzas").innerHTML = `<h1>Reportes financieros</h1>
     <p class="note" style="margin:0 0 8px">Montos de lo recepcionado por lista. Esta pestaña solo la ven los roles con permiso (Usuarios → Permisos).</p>
-    <div class="subtabs" id="rftabs">${tabs.map(([k, l]) => `<button class="subtab ${RF_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
+    <div class="subtabs" id="rftabs">${tabs.map(([k, l]) => `<button class="subtab ${RF_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${RF_UI.tab === "eeff" ? '<div class="formcard" style="max-width:none;margin:0 0 16px" id="rf-fases"><p class="note"><span class="cx-spin"></span> Cargando balances por fase…</p></div>' : ""}${body}`;
+  if (RF_UI.tab === "eeff") eeffFasesBloque("rf-fases", true);
   el("v-repfinanzas").querySelectorAll("#rftabs .subtab").forEach(b => b.onclick = () => { RF_UI.tab = b.dataset.tab; paintRepFinanzas(); });
   if (el("dj_agr")) el("dj_agr").onchange = e => { DJ_UI.agr = e.target.value; paintRepFinanzas(); };
 }

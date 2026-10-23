@@ -36,7 +36,14 @@ var PAS_DEF = {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-23c";
+var PAS_TERMINOS_VERSION = "2026-10-23d";
+// Advertencia de balances (se muestra aparte, en rojo, y se acepta con su propia casilla; también va en el correo)
+var PAS_ADVERTENCIA_EEFF = [
+  "Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de Impuestos Nacionales. Nuestro sistema contable NUMMEROS los genera de forma automática.",
+  "Si el resultado muestra utilidad, CONTAX no alterará los resultados ni hará ajustes que no estén de acuerdo a ley para que salga pérdida. Eso es un ilícito tributario (contravención o defraudación fiscal) y nuestra firma no lo hace.",
+  "Una vez terminados tus estados financieros, presentaremos la declaración ante Impuestos Nacionales, tengas o no que pagar IUE (25% de la utilidad), aunque el monto sea alto.",
+  "Si lo que buscas es que tu balance salga con pérdida teniendo utilidad, por favor no realices el pago y busca otro profesional."
+];
 var PAS_TERMINOS = {
   declaracion: [
     "Cada pago cubre una sola declaración (un mes). Los meses atrasados se pagan uno por uno, con la tarifa de su plan.",
@@ -49,8 +56,6 @@ var PAS_TERMINOS = {
     "CONTAX no se responsabiliza por facturas que no sean válidas para tu actividad registrada."
   ],
   eeff: [
-    "Los estados financieros se elaboran con la información registrada en el portal de Impuestos Nacionales y los genera automáticamente el sistema contable NUMMEROS.",
-    "Si el resultado muestra utilidad, CONTAX no alterará los resultados ni hará ajustes que no estén de acuerdo a ley para que salga pérdida (sería un ilícito tributario). La declaración se presenta tal como resulte, aunque corresponda pagar IUE (25% de la utilidad).",
     "El servicio corresponde a los estados financieros de la gestión indicada (un año).",
     "Incluye: balance general, estado de resultados, flujo de efectivo, evolución del patrimonio, notas, cuadro de activos fijos y balance de sumas y saldos; presentación del Formulario 500 (IUE) y envío digital con el Formulario 605.",
     "El precio corresponde a la fase habilitada al momento de tu pago; cuando se llenan los cupos de una fase, el precio sube a la siguiente fase.",
@@ -119,7 +124,7 @@ function pasConfigPublica() {
     eeff: pasCupoActual_(c),
     ufv: pasUfv_(), multasEeff: { f500: 50, f605: 100 },
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
-    terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION
+    terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF
   };
 }
 
@@ -305,7 +310,7 @@ function pasCupoActual_(c, excluirNit) {
     cupos = (c.cupos || []).map(function (x, i) {
       var cap = Number(x.capacidad) || 0, pr = Number(x.precio) || 0;
       var ocup = Math.min(cap, (Number(porPrecio[String(Math.round(pr))]) || 0) + (resPorFase[pr] || 0));
-      return { n: i + 1, precio: pr, capacidad: cap, ocupados: ocup, libres: cap - ocup };
+      return { n: i + 1, precio: pr, capacidad: cap, ocupados: ocup, libres: cap - ocup, reservados: resPorFase[pr] || 0 };
     });
   } else {
     // Respaldo (si todavía no existe el conteo): se reparten en orden
@@ -539,7 +544,7 @@ function pasConfirmar(token) {
       tipo: cot.tipo, estado: "pendiente", estadoDeuda: "sin_deuda",
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: "", registradoPorNombre: "Pasarela (cliente)", origen: "pasarela",
-      terminosAceptados: { servicio: cot.tipo, version: PAS_TERMINOS_VERSION, fecha: hoy.iso + " " + hoy.hora },
+      terminosAceptados: { servicio: cot.tipo, version: PAS_TERMINOS_VERSION, fecha: hoy.iso + " " + hoy.hora, advertenciaUtilidad: cot.tipo === "eeff" },
       pasarela: { estado: estadoPas, motivos: v.motivos, montoEsperado: cot.monto, montoLeido: pasNum_(x.importe), leido: x, cupo: cot.cupo || "" },
       _upd: Date.now()
     };
@@ -557,7 +562,7 @@ function pasConfirmar(token) {
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
           tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: "QR", atencion: "PASARELA", comentarios: "",
-          terminos: PAS_TERMINOS[cot.tipo] || [], terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
+          terminos: (PAS_TERMINOS[cot.tipo] || []).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []), terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
         });
         enviado = true;

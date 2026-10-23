@@ -49,15 +49,15 @@ service cloud.firestore {
 
     // Respuestas rápidas compartidas
     match /quickReplies/{id} {
-      allow read: if isAgent();
-      allow create, update: if isAgent();
+      allow read: if isAgent() || portalView();
+      allow create, update: if isAgent() || portalEdit();
       allow delete: if isSup();
     }
 
     // Chats de WhatsApp (notas, etiquetas, estado, quién atiende)
     match /waChats/{id} {
-      allow read: if isAgent();
-      allow create, update: if isAgent();
+      allow read: if isAgent() || portalView();
+      allow create, update: if isAgent() || portalEdit();
       allow delete: if isSup();
     }
 
