@@ -300,8 +300,11 @@ function pasCotizar(d) {
   return { ok: false, error: "Elige un servicio." };
 }
 function pasQR_(monto) {
+  var m = Math.round(Number(monto));
+  var d = fsGet_("config/qr_m" + m);
+  if (d && d.img) return d.img;
   var q = fsGet_("config/pasarelaQR") || {};
-  return q["m" + Math.round(Number(monto))] || "";
+  return q["m" + m] || "";
 }
 
 // ---------------- Verificar comprobante con IA ----------------

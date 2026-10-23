@@ -108,6 +108,7 @@ main > .pila{animation:entra .35s ease both}
   .pasos div i{height:4px;border-radius:4px;background:var(--borde)}
   .pasos div.on{color:var(--acento);font-weight:700}.pasos div.on i{background:var(--acento)}
   main{width:100%;max-width:640px;margin:0 auto;padding:28px clamp(24px,5vw,72px) 20px}
+  .nav{max-width:640px;width:100%;margin:0 auto;padding:16px clamp(24px,5vw,72px) 8px}
   .solo-movil{display:none!important}
   .solo-pc{display:block}
   h2{font-size:34px;line-height:38px}
@@ -120,6 +121,35 @@ main > .pila{animation:entra .35s ease both}
 @media (min-width:1280px){ .lado{padding:48px 72px} }
 /* ===== Tablet vertical: columna más ancha con imagen arriba ===== */
 @media (min-width:560px) and (max-width:1023px){ .app{max-width:680px} header{background:transparent;border-bottom:0} main{padding:24px 28px} .foto.banda{aspect-ratio:16/5} .foto.grande{aspect-ratio:16/8} }
+
+/* ===== Menú superior de navegación ===== */
+.nav{display:flex;gap:8px;padding:10px 20px 0;overflow-x:auto}
+.nav button{display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1.5px solid var(--borde);border-radius:999px;background:var(--sup);color:var(--acento);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.nav button:active{transform:scale(.97)}
+.nav.oculto{display:none}
+.nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
+.opc,.subir,.btn2,.link,.seg,.ayuda{color:var(--acento)}
+.opc .ic{color:var(--acento)}
+.subir{color:var(--txt)}
+.opc .t b{color:var(--txt)}
+.cerrado{border:2px dashed var(--borde);border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;background:var(--sup)}
+.cerrado .ic{width:44px;height:44px;border-radius:10px;background:var(--avisoF);color:var(--aviso);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cerrado b{display:block;font-size:16px}.cerrado span{font-size:13px;color:var(--suave);line-height:19px;display:block;margin-top:2px}
+.logoOsc{display:none}
+/* ===== Modo oscuro automático (según la configuración del celular o la computadora) ===== */
+@media (prefers-color-scheme:dark){
+  :root{--fondo:#051F20;--sup:#0B2B26;--campo:#0F3530;--borde:#1F4A41;--bctl:#5E8E73;--txt:#E3F2E7;--suave:#9DC2AA;--acento:#8EB69B;--menta:#163832;--error:#F97066;--aviso:#FDB022;--avisoF:#3A2A12;--btnF:#2F6B5A}
+  html,body{color-scheme:dark}
+  .btn{background:var(--btnF)}
+  .paso b,.check,.chk .d.ok,.barra i{background:var(--btnF)}
+  .barras i.on,.pasos div.on i{background:var(--acento)}
+  .card,.opc,.cupo,details.info,.tipos button{box-shadow:none}
+  .aviso.err{background:#3B1512}
+  .qr{background:#fff}
+  .logoClaro{display:none}.logoOsc{display:block}
+  .app{background:var(--fondo)}
+  @media (min-width:1024px){ .lado{background:radial-gradient(120% 80% at 0% 0%,#163832 0%,#0B2B26 40%,#03171A 100%)} }
+}
 </style>
 </head>
 <body>
@@ -137,11 +167,16 @@ main > .pila{animation:entra .35s ease both}
 </aside>
 <div class="app">
   <header>
-    <img src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS">
-    <div class="seg"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.8" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Pago seguro</div>
+    <img class="logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><img class="logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS">
+    <div class="seg"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Pago seguro</div>
   </header>
   <div class="barras" id="barras" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="pasos" id="pasos" aria-hidden="true"><div><i></i>Tu NIT</div><div><i></i>Servicio</div><div><i></i>Plan</div><div><i></i>Pago</div><div><i></i>Listo</div></div>
+  <nav class="nav oculto" id="nav" aria-label="Navegación">
+    <button type="button" id="nAtras"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Atrás</button>
+    <button type="button" id="nServ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Cambiar servicio</button>
+    <button type="button" id="nInicio"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>Inicio</button>
+  </nav>
   <main id="main" aria-live="polite"></main>
   <footer>NUMMEROS by CONTAX · Santa Cruz - Bolivia</footer>
 </div>
@@ -154,14 +189,14 @@ main > .pila{animation:entra .35s ease both}
   var S = { paso: "nit", nit: "", cli: null, cfg: null, serv: "", opcion: "", plan: "", tipoFact: "", per: null, cot: null, img: "", ver: null, fin: null, cargando: false, error: "" };
   var main = document.getElementById("main");
   var ICON = {
-    decl: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></svg>',
-    eeff: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.6" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
-    fact: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.6" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>',
+    decl: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></svg>',
+    eeff: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+    fact: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>',
     ok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
     no: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     big: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
     reloj: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-    subir: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#163832" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>'
+    subir: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>'
   };
   // Descripciones tomadas del Manual CONTAX
   var INFO = {
@@ -223,13 +258,42 @@ main > .pila{animation:entra .35s ease both}
     if (t.textContent !== e[2]) { [t, su].forEach(function (x) { x.style.animation = "none"; void x.offsetWidth; x.style.animation = ""; }); }
     t.textContent = e[2]; su.textContent = e[3];
   }
-  function ayuda() { return WA ? '<a class="ayuda" href="' + wa() + '" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.8" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg>¿Necesitas ayuda? Escríbenos por WhatsApp</a>' : ""; }
+  function ayuda() { return WA ? '<a class="ayuda" href="' + wa() + '" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg>¿Necesitas ayuda? Escríbenos por WhatsApp</a>' : ""; }
   function barras() {
     var orden = { nit: 0, datos: 1, servicio: 1, opcion: 2, pago: 3, verif: 4, fin: 4 }, k = orden[S.paso] || 0;
     document.querySelectorAll("#barras i").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
     document.querySelectorAll("#pasos div").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
   }
-  function ir(p) { S.paso = p; S.error = ""; pintar(); window.scrollTo(0, 0); }
+  function ir(p, err, sinHistorial) {
+    var antes = S.paso; S.paso = p; S.error = err || "";
+    if (!sinHistorial && antes !== p) { try { history.pushState({ paso: p }, ""); } catch (e) {} }
+    pintar(); window.scrollTo(0, 0);
+  }
+  // Paso al que se puede volver con los datos que hay
+  function pasoValido(p) {
+    if (p === "nit") return true;
+    if (!S.cli || !S.cfg) return false;
+    if (p === "datos" || p === "servicio") return true;
+    if (S.fin) return false;                  // ya se pagó: no volver al QR ni al comprobante
+    if (p === "opcion") return !!S.serv;
+    if (p === "pago") return !!(S.cot && S.cot.ok && S.acepta);
+    if (p === "verif") return !!S.ver;
+    return false;
+  }
+  window.addEventListener("popstate", function (ev) {
+    var p = ev.state && ev.state.paso;
+    if (!p) p = "nit";
+    if (S.fin && p !== "fin") { reiniciarServicio(); p = "servicio"; }
+    if (!pasoValido(p)) p = S.cli && S.cfg ? "servicio" : "nit";
+    ir(p, "", true);
+  });
+  try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
+  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; }
+  function menu() {
+    var n = document.getElementById("nav"); if (!n) return;
+    n.classList.toggle("oculto", S.paso === "nit");
+    document.getElementById("nServ").classList.toggle("oculto", !(S.cli && S.cfg) || S.paso === "servicio" || S.paso === "datos");
+  }
   function cargando(txt) { main.innerHTML = '<div class="pila" style="padding-top:60px;text-align:center"><div class="spin"></div><p class="suave">' + esc(txt) + "</p></div>"; }
   function errHtml() { return S.error ? '<div class="aviso err" role="alert">' + esc(S.error) + "</div>" : ""; }
 
@@ -248,7 +312,7 @@ main > .pila{animation:entra .35s ease both}
         '<div class="card"><div class="fila"><span>Nombre</span><b>' + esc(c.nombre) + '</b></div><div class="fila"><span>NIT</span><b>' + esc(c.nit) + "</b></div>" +
         (c.id ? '<div class="fila"><span>Código de cliente</span><b>' + esc(c.id) + "</b></div>" : "") +
         (c.celular ? '<div class="fila"><span>Celular</span><b>' + esc(c.celular) + "</b></div>" : "") +
-        '<div class="fila"><span>Correo</span><b>' + (c.correo ? esc(c.correo) : '<span style="color:#93370D">Sin correo</span>') + "</b></div>" +
+        '<div class="fila"><span>Correo</span><b>' + (c.correo ? esc(c.correo) : '<span style="color:var(--aviso)">Sin correo</span>') + "</b></div>" +
         (c.brinda ? '<div class="fila"><span>Plataforma</span><b>' + esc(c.brinda) + "</b></div>" : "") +
         (c.diaVence ? '<div class="fila"><span>Tu declaración vence</span><b>el día ' + esc(c.diaVence) + " de cada mes</b></div>" : "") + "</div>" +
         '<p class="chico suave">Por tu seguridad mostramos tu celular y correo ocultos.' + (c.tieneCorreo ? "" : " Como no tienes correo registrado, tu Orden de Recepción te la enviaremos por WhatsApp.") + "</p>" +
@@ -257,7 +321,8 @@ main > .pila{animation:entra .35s ease both}
       var p = S.cfg.precios, e = S.cfg.eeff, ven = S.cfg.ventana || { abierta: true }, rep_ = !S.cli || S.cli.repartidor !== false;
       var eeffTxt = rep_ ? (e.agotado ? "cupos agotados" : "por cupos · hoy Bs " + esc(e.actual.precio)) : "Bs " + esc(p.eeffOtros);
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
-        '<button class="opc" data-s="decl"' + (ven.abierta ? "" : " disabled") + '><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>' + (ven.abierta ? "IVA e IT del mes · desde Bs " + esc(p.sinMov) : "Recepción cerrada · abre el " + esc(ven.abreDia) + " de " + esc(ven.abreMes)) + "</span></span></button>" +
+        (ven.abierta ? '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT del mes · desde Bs ' + esc(p.sinMov) + "</span></span></button>"
+          : '<div class="cerrado"><span class="ic">' + ICON.decl + '</span><span><b>Declaración mensual</b><span>La recepción de declaraciones está cerrada en este momento. Abre el <b style="display:inline;font-size:13px">' + esc(ven.abreDia) + " de " + esc(ven.abreMes) + '</b>. Recibimos del 25 a fin de mes (precio normal) y del 1 al 5 (recepción tardía).</span><a class="chico" href="' + wa("Hola CONTAX, quiero pagar una declaración y la recepción está cerrada.") + '" target="_blank" rel="noopener" style="color:var(--acento);display:inline-block;margin-top:6px">¿Es urgente? Escríbenos por WhatsApp</a></span></div>') +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
         '<button class="opc" data-s="eeff"' + (rep_ && e.agotado ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros (Balance)</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
         info("¿En qué consisten los estados financieros?", INFO.eeff) +
@@ -284,19 +349,19 @@ main > .pila{animation:entra .35s ease both}
       var E = S.cfg.eeff;
       var esRepE = !S.cli || S.cli.repartidor !== false;
       if (!esRepE) {
-        h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
+        h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
           info("¿Qué incluye?", INFO.eeff, true) + errHtml() +
           terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
       } else
       h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + "</b></div></div>" +
         '<p class="l" style="margin:4px 0 0">Precio según cupo</p>' +
         E.cupos.map(function (c) { var act = E.actual && c.n === E.actual.n, lleno = c.libres <= 0;
-          return '<div class="cupo' + (act ? " act" : "") + (lleno ? " lleno" : "") + '"><div style="display:flex;justify-content:space-between;align-items:center"><span><b>Cupo ' + c.n + '</b> <span class="chico" style="font-weight:700;margin-left:6px;color:' + (lleno ? "#B42318" : act ? "#235347" : "#557363") + '">' + (lleno ? "LLENO" : act ? "DISPONIBLE" : "SIGUIENTE") + '</span></span><span class="precio" style="color:' + (act ? "#163832" : "#557363") + '">Bs ' + esc(c.precio) + '</span></div><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><p class="chico suave">' + (lleno ? c.capacidad + " de " + c.capacidad + " cupos ocupados" : act ? "Quedan " + c.libres + " de " + c.capacidad + " · tu precio actual" : "Se habilita cuando se llene el cupo anterior") + "</p></div>"; }).join("") +
+          return '<div class="cupo' + (act ? " act" : "") + (lleno ? " lleno" : "") + '"><div style="display:flex;justify-content:space-between;align-items:center"><span><b>Cupo ' + c.n + '</b> <span class="chico" style="font-weight:700;margin-left:6px;color:' + (lleno ? "#B42318" : act ? "var(--acento)" : "var(--suave)") + '">' + (lleno ? "LLENO" : act ? "DISPONIBLE" : "SIGUIENTE") + '</span></span><span class="precio" style="color:' + (act ? "var(--txt)" : "var(--suave)") + '">Bs ' + esc(c.precio) + '</span></div><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><p class="chico suave">' + (lleno ? c.capacidad + " de " + c.capacidad + " cupos ocupados" : act ? "Quedan " + c.libres + " de " + c.capacidad + " · tu precio actual" : "Se habilita cuando se llene el cupo anterior") + "</p></div>"; }).join("") +
         '<p class="chico suave">Cuando se llena un cupo, el precio pasa automáticamente al siguiente. ¡Aprovecha temprano y paga menos!</p>' + info("¿Qué incluye?", INFO.eeff) + errHtml() +
         terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Reservar mi cupo · Pagar " + bs(S.cot.monto) : "Calculando…") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "fact") {
       h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' +
-        '<div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + info("¿Qué incluye?", INFO.fact, true) + errHtml() +
+        '<div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + info("¿Qué incluye?", INFO.fact, true) + errHtml() +
         terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "pago") {
       var q = S.cot;
@@ -310,13 +375,13 @@ main > .pila{animation:entra .35s ease both}
     } else if (S.paso === "verif") {
       var v = S.ver;
       h = '<div class="pila"><h2>' + (v.aprobado ? "Comprobante verificado" : "Revisemos tu comprobante") + '</h2><p class="suave c13">Esto es lo que leímos en la captura que subiste:</p><div class="card" style="padding:4px 18px">' +
-        v.checks.map(function (k) { return '<div class="chk"><span class="d ' + (k.ok ? "ok" : "no") + '">' + (k.ok ? ICON.ok : ICON.no) + '</span><span class="v"><span>' + esc(k.label) + "</span><b>" + esc(k.valor) + '</b></span><span class="n" style="color:' + (k.ok ? "#235347" : "#B42318") + '">' + esc(k.nota) + "</span></div>"; }).join("") + "</div>" +
+        v.checks.map(function (k) { return '<div class="chk"><span class="d ' + (k.ok ? "ok" : "no") + '">' + (k.ok ? ICON.ok : ICON.no) + '</span><span class="v"><span>' + esc(k.label) + "</span><b>" + esc(k.valor) + '</b></span><span class="n" style="color:' + (k.ok ? "var(--acento)" : "#B42318") + '">' + esc(k.nota) + "</span></div>"; }).join("") + "</div>" +
         (v.aprobado ? '<button class="btn" id="bConf">Confirmar y recepcionar</button>'
           : '<div class="aviso warn">Algo no coincide (' + esc(v.motivos.join(", ")) + '). Puedes subir otra captura más clara, o enviarlo así: el equipo de CONTAX lo revisará y te escribirá por WhatsApp.</div><button class="btn" id="bOtra">Subir otra captura</button><button class="btn2" id="bConf">Enviar a revisión</button>') + errHtml() + "</div>";
     } else if (S.paso === "fin") {
       var f = S.fin, ok = f.estado === "aprobado";
       h = '<div class="pila" style="text-align:center;padding-top:16px"><div class="check' + (ok ? "" : " rev") + '">' + (ok ? ICON.big : ICON.reloj) + "</div>" +
-        "<h2>" + (ok ? "¡Listo!" : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? "Tu pago fue recepcionado." : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:#163832\">N° " + esc(f.nroRecepcion) + "</b></p>" +
+        "<h2>" + (ok ? "¡Listo!" : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? "Tu pago fue recepcionado." : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
         '<p class="c13 suave" style="line-height:19px">' + (ok ? "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Te avisaremos por WhatsApp cuando esté listo." : "Guarda este número por si necesitas consultarnos.") + "</p>" +
@@ -327,7 +392,7 @@ main > .pila{animation:entra .35s ease both}
     if (S.paso === "fin") h = h.replace(/<\/div>$/, '<div class="galeria solo-movil">' + ["reunion-sala.jpg", "pitagoras-muestra-sistema.jpg", "apreton-arquimedes.jpg"].map(function (f) { return '<img src="' + FOTOS + f + '" alt="" loading="lazy">'; }).join("") + "</div>" + "</div>");
     h = h.replace(/<\/div>$/, ayuda() + "</div>");
     main.innerHTML = h;
-    lado();
+    lado(); menu();
     enlazar();
   }
   // Términos y condiciones del servicio elegido: hay que aceptarlos antes de ver el QR
@@ -337,7 +402,7 @@ main > .pila{animation:entra .35s ease both}
     if (!t || !t.length) { S.acepta = true; return ""; }
     return '<details class="info"' + (S.acepta ? "" : " open") + '><summary>Términos y condiciones del servicio</summary><div class="c"><ul>' +
       t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico suave">Te los enviamos también en el correo de tu Orden de Recepción.</p></div></details>' +
-      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:20px"><input type="checkbox" id="chkTer"' + (S.acepta ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:#235347"> <span>Leí y acepto los términos y condiciones de este servicio.</span></label>';
+      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:20px"><input type="checkbox" id="chkTer"' + (S.acepta ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Leí y acepto los términos y condiciones de este servicio.</span></label>';
   }
   function avisoFecha() {
     if (S.plan !== "estandar") return "";
@@ -377,8 +442,8 @@ main > .pila{animation:entra .35s ease both}
       if (S.nit.length < 5) { S.error = "Escribe tu NIT completo."; pintar(); return; }
       cargando("Buscando tus datos…");
       Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" })]).then(function (rs) {
-        if (!rs[0].ok) { S.error = rs[0].error; ir("nit"); return; }
-        if (!rs[1].ok) { S.error = rs[1].error; ir("nit"); return; }
+        if (!rs[0].ok) { ir("nit", rs[0].error); return; }
+        if (!rs[1].ok) { ir("nit", rs[1].error); return; }
         S.cli = rs[0].cliente; S.cfg = rs[1]; ir("datos");
       });
     };
@@ -402,15 +467,18 @@ main > .pila{animation:entra .35s ease both}
       cargando("Leyendo tu comprobante con IA… (unos segundos)");
       var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img, aceptaTerminos: S.acepta === true };
       if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
-      api(d).then(function (r) { if (!r.ok) { S.error = r.error; ir("pago"); return; } S.ver = r; ir("verif"); });
+      api(d).then(function (r) { if (!r.ok) { ir("pago", r.error); return; } S.ver = r; ir("verif"); });
     };
     if ($("bOtra")) $("bOtra").onclick = function () { S.img = ""; ir("pago"); };
     if ($("bConf")) $("bConf").onclick = function () {
       this.disabled = true; cargando("Registrando tu recepción…");
-      api({ action: "pas_confirmar", token: S.ver.token }).then(function (r) { if (!r.ok) { S.error = r.error; ir("verif"); return; } S.fin = r; ir("fin"); });
+      api({ action: "pas_confirmar", token: S.ver.token }).then(function (r) { if (!r.ok) { ir("verif", r.error); return; } S.fin = r; ir("fin"); });
     };
-    if ($("bOtro")) $("bOtro").onclick = function () { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; ir("servicio"); };
+    if ($("bOtro")) $("bOtro").onclick = function () { reiniciarServicio(); ir("servicio"); };
   }
+  document.getElementById("nAtras").onclick = function () { if (history.state && history.state.paso && history.state.paso !== "nit") history.back(); else ir("nit"); };
+  document.getElementById("nInicio").onclick = function () { reiniciarServicio(); S.cli = null; ir("nit"); };
+  document.getElementById("nServ").onclick = function () { reiniciarServicio(); ir("servicio"); };
   // NIT por enlace: pagos.html?nit=123456
   try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) S.nit = qn.replace(/\D/g, ""); } catch (e) {}
   pintar();

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "37";
+const APP_VERSION = "38";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3945,7 +3945,10 @@ async function renderPasarela() {
   const p = cfg.pasarela || {};
   PA_UI.cfg = Object.assign(JSON.parse(JSON.stringify(PAS_DEF)), p, { precios: Object.assign({}, PAS_DEF.precios, p.precios || {}) });
   PA_UI.cupos = (PA_UI.cfg.cupos || []).map(c => Object.assign({}, c));
-  try { const q = await getDoc(doc(db, "config", "pasarelaQR")); PA_UI.qr = q.exists() ? q.data() : {}; } catch (e) { PA_UI.qr = {}; }
+  // Cada QR vive en su propio documento (config/qr_m50, config/qr_m60…) para no pasar el límite de 1 MB por documento
+  PA_UI.qr = {};
+  try { const q = await getDoc(doc(db, "config", "pasarelaQR")); if (q.exists()) Object.assign(PA_UI.qr, q.data()); } catch (e) {}
+  try { const sn = await getDocs(collection(db, "config")); sn.docs.forEach(d => { if (/^qr_m\d+$/.test(d.id) && d.data().img) PA_UI.qr[d.id.slice(3)] = d.data().img; }); } catch (e) {}
   try { await recSync(); } catch (e) {}
   paintPasarela();
 }
@@ -4050,10 +4053,37 @@ function paintPasarela() {
     const f = inp.files && inp.files[0]; if (!f) return;
     const m = el("pa_qrmsg"); m.className = "msg"; m.textContent = "Subiendo QR…";
     try {
-      const data = await cxCompressImage(f, 700, 0.92);
-      await setDoc(doc(db, "config", "pasarelaQR"), { ["m" + inp.dataset.qr]: data, updatedAt: serverTimestamp() }, { merge: true });
+      const data = await paQRImagen(f);
+      await setDoc(doc(db, "config", "qr_m" + inp.dataset.qr), { img: data, monto: Number(inp.dataset.qr), updatedAt: serverTimestamp() });
       PA_UI.qr["m" + inp.dataset.qr] = data; paintPasarela();
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar el QR: " + (e.code || e.message); }
+  });
+}
+// Prepara la imagen del QR: fondo blanco (los PNG transparentes se verían negros) y tamaño liviano
+function paQRImagen(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) { reject(new Error("Sube una imagen (PNG o JPG).")); return; }
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const intento = (max, cal) => {
+          let w = img.width, h = img.height; const k = Math.min(1, max / Math.max(w, h)); w = Math.round(w * k); h = Math.round(h * k);
+          const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+          const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+          return cv.toDataURL("image/jpeg", cal);
+        };
+        let d = intento(800, 0.9);
+        if (d.length > 600000) d = intento(650, 0.85);
+        if (d.length > 600000) d = intento(520, 0.8);
+        if (d.length > 900000) { reject(new Error("La imagen es demasiado pesada. Recórtala solo al QR e intenta de nuevo.")); return; }
+        resolve(d);
+      };
+      img.onerror = () => reject(new Error("No se pudo abrir la imagen."));
+      img.src = fr.result;
+    };
+    fr.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    fr.readAsDataURL(file);
   });
 }
 async function paGuardar() {
