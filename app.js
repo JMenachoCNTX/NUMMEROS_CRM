@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "33";
+const APP_VERSION = "34";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -527,11 +527,17 @@ async function renderUsers() {
   const rows = USERS.map(u => {
     const pin = PINS[u.uid] || "";
     const pinCell = isAdmin
-      ? `<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-           <input class="mini pin-in" data-uid="${u.uid}" type="password" value="${escape(pin)}" placeholder="—" style="width:110px">
-           <span class="reveal mini pin-eye" data-uid="${u.uid}" title="Mostrar/ocultar"></span>
-           <button class="mini pin-save" data-uid="${u.uid}" title="Solo anota el PIN aquí (no cambia la contraseña)">Anotar</button>
-           <button class="mini pin-reset" data-uid="${u.uid}" data-email="${escape(u.email || "")}" title="Enviar correo para cambiar la contraseña de verdad">Restablecer</button>
+      ? `<div style="display:flex;flex-direction:column;gap:6px;min-width:250px">
+           <div style="display:flex;gap:6px;align-items:center">
+             <span style="font-size:11px;color:var(--muted);width:52px">Actual</span>
+             <input class="mini pin-in" data-uid="${u.uid}" type="password" value="${escape(pin)}" placeholder="sin anotar" readonly style="width:120px;background:transparent">
+             <button class="mini pin-eye" data-uid="${u.uid}" title="Mostrar u ocultar la contraseña">👁 Ver</button>
+           </div>
+           <div style="display:flex;gap:6px;align-items:center">
+             <span style="font-size:11px;color:var(--muted);width:52px">Nueva</span>
+             <input class="mini pin-new" data-uid="${u.uid}" type="text" placeholder="mín. 6 caracteres" style="width:120px" autocomplete="off">
+             <button class="mini pin-set" data-uid="${u.uid}" title="Cambia la contraseña al instante (sin correo)">Restablecer</button>
+           </div>
          </div>`
       : `<span style="color:var(--muted)">—</span>`;
     return `<tr>
@@ -600,22 +606,29 @@ async function renderUsers() {
     try { await navigator.clipboard.writeText(msg); const o = b.textContent; b.textContent = "✓ Copiado"; setTimeout(() => { b.textContent = o; }, 2000); }
     catch (e) { prompt("Copia este mensaje:", msg); }
   });
-  document.querySelectorAll(".pin-eye").forEach(e =>e.onclick = () => { const i = el("v-users").querySelector(`.pin-in[data-uid="${e.dataset.uid}"]`); if (i) i.type = i.type === "password" ? "text" : "password"; });
-  document.querySelectorAll(".pin-save").forEach(b =>b.onclick = async () => {
-    const uid = b.dataset.uid, i = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`);
-    const u = USERS.find(x =>x.uid === uid) || {};
-    b.disabled = true; b.textContent = "…";
-    try { await setDoc(doc(db, "userPins", uid), { pin: i.value, email: u.email || "", updatedAt: serverTimestamp() }, { merge: true }); b.textContent = "✓"; setTimeout(() => { b.textContent = "Anotar"; b.disabled = false; }, 1200); }
-    catch (e) { b.textContent = "Error"; b.disabled = false; }
+  document.querySelectorAll(".pin-eye").forEach(e => e.onclick = () => {
+    const i = el("v-users").querySelector(`.pin-in[data-uid="${e.dataset.uid}"]`);
+    if (!i) return; const ver = i.type === "password"; i.type = ver ? "text" : "password"; e.textContent = ver ? "🙈 Ocultar" : "👁 Ver";
   });
-  document.querySelectorAll(".pin-reset").forEach(b =>b.onclick = async () => {
-    const email = b.dataset.email;
-    if (!email) { alert("Ese usuario no tiene correo registrado."); return; }
-    if (!confirm(`Se enviará un correo a:\n${email}\n\ncon un enlace para poner una nueva contraseña. La persona (o quien tenga acceso a ese correo) debe abrirlo y elegir la nueva contraseña.\n\n¿Enviar ahora?`)) return;
-    b.disabled = true; const o = b.textContent; b.textContent = "Enviando…";
-    try { await sendPasswordResetEmail(auth, email); b.textContent = "✓ Enviado"; setTimeout(() => { b.textContent = o; b.disabled = false; }, 2500); }
-    catch (e) { b.textContent = "Error"; b.disabled = false; alert("No se pudo enviar: " + (e.code || e.message)); }
+  // Cambia la contraseña al instante (vía el script de Apps Script, que verifica que seas Admin)
+  document.querySelectorAll(".pin-set").forEach(b => b.onclick = async () => {
+    const uid = b.dataset.uid, u = USERS.find(x => x.uid === uid) || {};
+    const inp = el("v-users").querySelector(`.pin-new[data-uid="${uid}"]`), nueva = (inp && inp.value || "").trim();
+    if (nueva.length < 6) { alert("La nueva contraseña debe tener al menos 6 caracteres."); if (inp) inp.focus(); return; }
+    if (!confirm(`¿Cambiar la contraseña de ${u.name || u.email} a:\n\n${nueva}\n\nSe cerrará su sesión en el panel y en el CRM, y tendrá que entrar con la nueva.`)) return;
+    const url = await recibosUrlGet();
+    if (!url) { alert("Falta la URL del script en Configuración → Conexiones (Recibos por correo)."); return; }
+    b.disabled = true; const o = b.textContent; b.textContent = "Cambiando…";
+    try {
+      const idToken = await auth.currentUser.getIdToken(true);
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_set_password", idToken, uid, password: nueva }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo cambiar.");
+      const actual = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`); if (actual) { actual.value = nueva; actual.type = "text"; }
+      if (inp) inp.value = "";
+      b.textContent = "✓ Listo"; setTimeout(() => { b.textContent = o; b.disabled = false; }, 2500);
+    } catch (e) { b.textContent = o; b.disabled = false; alert("No se pudo cambiar la contraseña:\n" + (e.message || e)); }
   });
+
 }
 
 // ---------- Permisos por rol (qué pestañas ve cada rol) ----------

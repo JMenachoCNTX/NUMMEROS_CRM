@@ -463,3 +463,43 @@ function fsDec_(fields) { var o = {}; for (var k in fields) o[k] = fsDec1_(field
 function probarPasarela() {
   Logger.log(JSON.stringify(pasConfigPublica()));
 }
+
+// =====================================================================
+//  ADMINISTRACIÓN DE USUARIOS (desde el panel, solo Admin)
+//  El panel envía el "idToken" de quien está conectado; aquí se verifica
+//  con Google que sea un usuario Admin activo antes de cambiar nada.
+// =====================================================================
+var ADM_API_KEY = "AIzaSyBPUgVMi3IQCow6pJiQwaC-WsH_mMf_arI"; // clave web pública de Firebase (la misma de config.js)
+function adminHandle(d) {
+  try {
+    var yo = admVerificar_(d.idToken);
+    if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
+    return { ok: false, error: "accion_desconocida" };
+  } catch (e) { console.error(e); return { ok: false, error: String(e && e.message || e) }; }
+}
+function admVerificar_(idToken) {
+  if (!idToken) throw new Error("Falta la sesión. Vuelve a iniciar sesión en el panel.");
+  var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + ADM_API_KEY,
+    { method: "post", contentType: "application/json", payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error("Tu sesión venció. Recarga el panel e inténtalo de nuevo.");
+  var u = (JSON.parse(r.getContentText()).users || [])[0];
+  if (!u) throw new Error("Sesión no válida.");
+  var perfil = fsGet_("users/" + u.localId) || {};
+  if (perfil.role !== "admin" || perfil.active !== true) throw new Error("Solo un Admin puede cambiar contraseñas.");
+  return { uid: u.localId, nombre: perfil.name || perfil.email || "" };
+}
+function admSetPassword_(yo, uid, password) {
+  password = String(password || "");
+  if (!uid) throw new Error("Falta el usuario.");
+  if (password.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres.");
+  var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/projects/" + PAS.proyecto + "/accounts:update", {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "x-goog-user-project": PAS.proyecto },
+    payload: JSON.stringify({ localId: uid, password: password })
+  });
+  if (r.getResponseCode() !== 200) throw new Error("Firebase no aceptó el cambio (" + r.getResponseCode() + "): " + r.getContentText().slice(0, 200));
+  // Se anota en la caja privada del Admin (userPins) para poder verla desde el panel
+  fsReq_(fsBase_() + "/userPins/" + uid + "?updateMask.fieldPaths=pin&updateMask.fieldPaths=updatedAtMs&updateMask.fieldPaths=updatedBy", "patch",
+    { fields: fsEnc_({ pin: password, updatedAtMs: Date.now(), updatedBy: yo.nombre }).mapValue.fields });
+  return { ok: true };
+}

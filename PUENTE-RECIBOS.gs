@@ -39,6 +39,7 @@ function doPost(e) {
     var d = JSON.parse(e.postData.contents);
     if (d.action === "recibo") { enviarRecibo(d); out.ok = true; }
     else if (String(d.action || "").indexOf("pas_") === 0) out = pasarelaHandle(d);   // Pasarela de pagos (PASARELA.gs)
+    else if (String(d.action || "").indexOf("admin_") === 0) out = adminHandle(d);    // Usuarios del panel (solo Admin)
     else out.error = "accion_desconocida";
   } catch (err) { out.error = String(err); }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
