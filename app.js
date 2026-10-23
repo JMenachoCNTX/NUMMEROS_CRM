@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "32";
+const APP_VERSION = "33";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -539,7 +539,7 @@ async function renderUsers() {
     <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select></td>
     <td>${pinCell}</td>
     <td>${u.active ? '<span class="pill agent">Activo</span>' : '<span class="pill" style="background:var(--panel2);color:var(--muted);border:1px solid var(--line)">Inactivo</span>'}</td>
-    <td>${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
+    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" title="Copia un mensaje con los accesos para enviar por WhatsApp">📋 Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
   }).join("");
   el("v-users").innerHTML = `<h1>Usuarios</h1><p class="lead">Crea las cuentas de tu equipo y define qué ve cada rol. Los roles del panel (Admin, Supervisor, Editor, Cajero, Lector) entran aquí; el rol Agente usa la extensión de WhatsApp.</p>
     <div class="formcard">
@@ -582,6 +582,24 @@ async function renderUsers() {
   };
   document.querySelectorAll(".role-sel").forEach(s =>s.onchange = async () => { await updateDoc(doc(db, "users", s.dataset.uid), { role: s.value }); renderUsers(); });
   document.querySelectorAll("[data-toggle]").forEach(b =>b.onclick = async () => { await updateDoc(doc(db, "users", b.dataset.toggle), { active: b.dataset.s !== "true" }); renderUsers(); });
+  // Mensaje de accesos listo para WhatsApp (usa la contraseña anotada en la columna PIN)
+  document.querySelectorAll("[data-acceso]").forEach(b => b.onclick = async () => {
+    const uid = b.dataset.acceso, u = USERS.find(x => x.uid === uid) || {};
+    const i = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`);
+    const pin = (i && i.value) || "";
+    if (!pin && !confirm("Este usuario no tiene contraseña anotada en la columna PIN.\n\n¿Copiar el mensaje igual (con la contraseña en blanco)?")) return;
+    const msg = [
+      "*Accesos Panel & CRM*:",
+      "*Link CRM*: https://microsoftedge.microsoft.com/addons/detail/nummeros-by-contax-%E2%80%94-crm-/hhhomdbjhagdapmfkgajimjcnbpamlpj",
+      "*Link Panel*: https://nummerospanel.contaxbolivia.com/",
+      "*Usuario*: " + (u.name || "—"),
+      "*Correo*: " + (u.email || "—"),
+      "*Contraseña*: " + (pin || "_______"),
+      "*Rol*: " + (ROLE_LABELS[u.role] || u.role || "—")
+    ].join("\n");
+    try { await navigator.clipboard.writeText(msg); const o = b.textContent; b.textContent = "✓ Copiado"; setTimeout(() => { b.textContent = o; }, 2000); }
+    catch (e) { prompt("Copia este mensaje:", msg); }
+  });
   document.querySelectorAll(".pin-eye").forEach(e =>e.onclick = () => { const i = el("v-users").querySelector(`.pin-in[data-uid="${e.dataset.uid}"]`); if (i) i.type = i.type === "password" ? "text" : "password"; });
   document.querySelectorAll(".pin-save").forEach(b =>b.onclick = async () => {
     const uid = b.dataset.uid, i = el("v-users").querySelector(`.pin-in[data-uid="${uid}"]`);
