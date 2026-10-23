@@ -34,6 +34,16 @@ var PAS_DEF = {
 
 // ---------------- Entrada (la llama doPost de PUENTE-RECIBOS.gs) ----------------
 function pasarelaHandle(d) {
+  try { return pasarelaHandle_(d); }
+  catch (e) {
+    console.error(e);
+    var t = String(e && e.message || e);
+    return { ok: false, error: /429|RESOURCE_EXHAUSTED|quota/i.test(t)
+      ? "El sistema está con mucha demanda en este momento. Intenta de nuevo en unos minutos o escríbenos por WhatsApp."
+      : "No pudimos procesar tu solicitud. Intenta de nuevo o escríbenos por WhatsApp." };
+  }
+}
+function pasarelaHandle_(d) {
   var a = d.action;
   if (a === "pas_config") return pasConfigPublica();
   if (a === "pas_buscar") return pasBuscar(d.nit);
