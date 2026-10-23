@@ -185,6 +185,7 @@ tbody tr:hover{background:var(--panel2)}
 .sb-brand .iso{display:none;height:26px;width:26px}
 @media(min-width:901px){
   .layout.sbhide{grid-template-columns:68px 1fr}
+  .layout.sbhide > .main{grid-column:2}
   .layout.sbhide .sb{opacity:1;pointer-events:auto;position:fixed;left:0;top:0;bottom:0;height:100vh;width:68px;z-index:70;transition:width .22s cubic-bezier(.4,0,.2,1),box-shadow .22s ease}
   .layout.sbhide .sb:hover{width:260px;box-shadow:10px 0 34px rgba(0,0,0,.38)}
   .layout.sbhide .sb nav.tabs{overflow-x:hidden}
@@ -230,7 +231,7 @@ tbody tr:hover{background:var(--panel2)}
       <input id="password" type="password" placeholder="Tu contraseña / PIN" autocomplete="current-password" />
       <button class="btn block" id="loginBtn">Entrar</button>
       <div class="msg" id="loginMsg"></div>
-      <span class="ver" style="margin-top:18px">v36</span>
+      <span class="ver" style="margin-top:18px">v37</span>
     </div>
     <div class="loginhero">
       <div class="mark"><div class="numm-logo-light"></div></div>
@@ -258,7 +259,7 @@ tbody tr:hover{background:var(--panel2)}
       <div class="sb-brand">
         <img src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS by CONTAX">
         <img class="iso" src="marca/logos/nummeros-isotipo-blanco.svg" alt="NUMMEROS">
-        <span class="ver" style="margin-left:auto">v36</span>
+        <span class="ver" style="margin-left:auto">v37</span>
       </div>
       <nav class="tabs">
       <div class="navgroup" data-sec="portal">PORTAL</div>
@@ -354,7 +355,7 @@ tbody tr:hover{background:var(--panel2)}
   </div>
 </div>
 
-<script src="config.js?v=36"></script>
-<script type="module" src="app.js?v=36"></script>
+<script src="config.js?v=37"></script>
+<script type="module" src="app.js?v=37"></script>
 </body>
 </html>

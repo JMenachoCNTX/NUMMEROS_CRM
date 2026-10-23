@@ -443,8 +443,8 @@ function pasReactivar_(cli, cot) {
   if (g !== "inactivo" && g !== "susc_inact") return;
   var nuevo = (g === "susc_inact" && cot.tipo === "facturacion") ? "SUSCRIPCIÓN FACTURACIÓN" : "ACTIVO";
   var campo = cli.campoEstado || "20. Estado Usuario";
-  var f = {}; f[campo] = { stringValue: nuevo };
-  fsReq_(fsBase_() + "/bdclientes/" + cli.docId + "?updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(campo)), "patch", { fields: f });
+  var f = {}; f[campo] = { stringValue: nuevo }; f._upd = { integerValue: String(Date.now()) };
+  fsReq_(fsBase_() + "/bdclientes/" + cli.docId + "?updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(campo)) + "&updateMask.fieldPaths=_upd", "patch", { fields: f });
   fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "cambio_estado", nombre: cli.nombre, estadoAnterior: cli.estado, estadoNuevo: nuevo,
                        porUid: "pasarela", porNombre: "Pasarela de pagos", detalle: "Reactivado al pagar " + cot.resumen });
   CacheService.getScriptCache().remove("cli_" + String(cli.nitBuscado || ""));
