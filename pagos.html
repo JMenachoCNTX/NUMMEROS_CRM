@@ -175,6 +175,15 @@ html.oscuro .fz.act{background:#123B2A;color:#C9F0D6}html.oscuro .fz.pend{backgr
 .multas .fila b{white-space:nowrap}
 .fz .t{gap:6px;white-space:nowrap}
 .multas p{font-size:12.5px;line-height:18px;color:inherit}
+/* ===== Ejemplo de EEFF y advertencia ===== */
+.muestra{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 8px}
+.muestra a{flex-shrink:0;width:44%;max-width:180px;scroll-snap-align:start;text-decoration:none;color:var(--suave);font-size:11px;text-align:center}
+.muestra img{width:100%;aspect-ratio:612/792;object-fit:cover;object-position:top;border-radius:10px;border:1px solid var(--borde);box-shadow:0 4px 14px rgba(5,31,32,.12);display:block;margin-bottom:5px;background:#fff}
+.alerta{border:2px solid #B42318;border-radius:16px;padding:16px 18px;background:#FDECEA;color:#7A1A12;display:flex;flex-direction:column;gap:8px}
+.alerta h3{margin:0;font-family:Akshar,sans-serif;font-size:21px;display:flex;gap:8px;align-items:center}
+.alerta p,.alerta li{font-size:13.5px;line-height:20px}.alerta ul{margin:0;padding-left:18px}
+html.oscuro .alerta{background:#3B1512;color:#FFD4CF;border-color:#F97066}
+
 </style>
 <script>
 (function(){var pref="auto";try{pref=localStorage.getItem("pas-tema")||"auto"}catch(e){}
@@ -329,7 +338,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ir(p, "", true);
   });
   try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
-  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.resFin = 0; }
+  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; }
   var relojT = null;
   function relojReserva() {
     clearInterval(relojT);
@@ -345,7 +354,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function guardarEstado() {
     try {
       if (S.paso === "fin" || S.paso === "nit") { localStorage.removeItem("pas-estado"); return; }
-      var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, acepta: S.acepta, resFin: S.resFin || 0 };
+      var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, acepta: S.acepta, aceptaUtil: S.aceptaUtil, resFin: S.resFin || 0 };
       localStorage.setItem("pas-estado", JSON.stringify(g));
     } catch (e) {}
   }
@@ -353,7 +362,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     try {
       var g = JSON.parse(localStorage.getItem("pas-estado") || "null");
       if (!g || Date.now() - g.t > 6 * 3600000 || !g.cli || !g.cfg) return false;
-      ["nit", "cli", "cfg", "serv", "plan", "tipoFact", "per", "cot", "acepta", "resFin"].forEach(function (k) { S[k] = g[k]; });
+      ["nit", "cli", "cfg", "serv", "plan", "tipoFact", "per", "cot", "acepta", "aceptaUtil", "resFin"].forEach(function (k) { S[k] = g[k]; });
       S.paso = g.paso || "servicio";
       try { history.replaceState({ paso: S.paso }, ""); } catch (e) {}
       return true;
@@ -418,10 +427,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var E = S.cfg.eeff;
       var esRepE = !S.cli || S.cli.repartidor !== false;
       var notaRes = esRepE ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Al continuar te reservamos el cupo por ' + esc(E.reservaMin || 30) + " minutos a este precio, para que nadie más lo tome mientras pagas.</p>" : "";
-      var pagar = terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : "Calculando…") + "</button>" + notaRes;
+      var pagar = advertenciaEeff() + terminosHtml() + '<button class="btn" id="bPagar"' + (puedePagar() ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : "Calculando…") + "</button>" + notaRes;
       if (!esRepE) {
         h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
-          multasHtml() + info("¿Qué incluye?", INFO.eeff, true) + errHtml() + pagar + "</div>";
+          muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff, true) + errHtml() + pagar + "</div>";
       } else {
         var A = E.actual;
         var contador = A ? '<div class="contador"><span class="fase">Fase ' + A.n + ' habilitada</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + " en la Fase " + A.n + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
@@ -433,7 +442,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
           return '<div class="fz ' + cls + '"><div class="t"><span>Fase ' + c.n + '</span><span class="et">' + et + '</span></div><span class="p">Bs ' + esc(c.precio) + '</span><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
         }).join("") + "</div>";
         h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube en cada fase. Mientras antes pagues, menos pagas.</p>" + contador + fases +
-          multasHtml() + info("¿Qué incluye?", INFO.eeff) + errHtml() + pagar + "</div>";
+          muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff) + errHtml() + pagar + "</div>";
       }
     } else if (S.paso === "opcion" && S.serv === "fact") {
       h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' +
@@ -489,6 +498,23 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function perDefault() { var d = S.cfg.periodoDeclDefault, l = S.cfg.periodosDecl || []; for (var i = 0; i < l.length; i++) if (l[i].anio === d.anio && l[i].mes === d.mes) return l[i]; return l[0] || d; }
   function perEtq(x) { return x.estado === "adelantado" ? "por adelantado" : x.estado === "en fecha" ? "en fecha" : "atrasado"; }
+  // Ejemplo real (con datos ficticios) de cómo entregamos los estados financieros
+  function muestraEeff() {
+    var pag = [["portada", "Portada"], ["balance", "Balance general"], ["resultados", "Estado de resultados"], ["flujo", "Flujo de efectivo"], ["notas", "Notas a los EEFF"]];
+    return '<div class="card pila" style="gap:10px"><div><b style="font-size:16px">Así recibirás tus estados financieros</b><p class="chico suave" style="margin-top:2px">Ejemplo con datos ficticios. Son 7 reportes en un solo PDF, con firma del contador.</p></div>' +
+      '<div class="muestra">' + pag.map(function (x) { return '<a href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener"><img src="marca/ejemplos/eeff-' + x[0] + '.jpg" alt="Ejemplo: ' + x[1] + '" loading="lazy">' + x[1] + "</a>"; }).join("") + "</div>" +
+      '<a class="btn2" href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>Ver el ejemplo completo (PDF)</a></div>';
+  }
+  // Advertencia: no alteramos resultados. Hay que aceptarla para pagar.
+  function advertenciaEeff() {
+    return '<div class="alerta" role="note"><h3><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>Importante antes de pagar</h3>' +
+      "<ul><li>Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de <b>Impuestos Nacionales</b>. Nuestro sistema contable NUMMEROS los genera de forma automática.</li>" +
+      "<li>Si el resultado muestra <b>utilidad</b>, CONTAX <b>no alterará los resultados</b> ni hará ajustes que no estén de acuerdo a ley para que salga pérdida. Eso es un ilícito tributario (contravención o defraudación fiscal) y nuestra firma no lo hace.</li>" +
+      "<li>Una vez terminados tus estados financieros, <b>presentaremos la declaración ante Impuestos Nacionales</b>, tengas o no que pagar IUE (25% de la utilidad), aunque el monto sea alto.</li>" +
+      "<li>Si lo que buscas es que tu balance salga con pérdida teniendo utilidad, por favor <b>no realices el pago</b> y busca otro profesional.</li></ul>" +
+      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:20px;color:inherit;font-weight:600"><input type="checkbox" id="chkUtil"' + (S.aceptaUtil ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:#B42318"> <span>Entiendo y acepto: si mi empresa tiene utilidad, se declarará tal como es.</span></label></div>';
+  }
+  function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || S.aceptaUtil); }
   // Multas por no presentar estados financieros, en bolivianos con la UFV del día (BCB)
   function multasHtml() {
     var u = S.cfg.ufv || {}, m = S.cfg.multasEeff || { f500: 50, f605: 100 }, v = Number(u.valor) || 0;
@@ -547,15 +573,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
-      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.per = perDefault(); S.img = ""; ir("opcion");
+      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
     document.querySelectorAll("[data-plan]").forEach(function (b) { b.onclick = function () { S.plan = b.dataset.plan; if (S.plan === "basico") S.tipoFact = ""; cotizar(); }; });
     document.querySelectorAll("[data-tf]").forEach(function (b) { b.onclick = function () { S.tipoFact = b.dataset.tf; cotizar(); }; });
     if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.plan) cotizar(); else pintar(); };
-    if ($("chkTer")) $("chkTer").onchange = function () { S.acepta = this.checked; pintar(); };
+    if ($("chkTer")) $("chkTer").onchange = function () { S.acepta = this.checked; var y = window.scrollY; pintar(); window.scrollTo(0, y); };
+    if ($("chkUtil")) $("chkUtil").onchange = function () { S.aceptaUtil = this.checked; var y = window.scrollY; pintar(); window.scrollTo(0, y); };
     if ($("bPagar")) $("bPagar").onclick = function () {
-      if (!(S.cot && S.cot.ok && S.acepta)) return;
+      if (!puedePagar()) return;
       if (S.serv !== "eeff") { ir("pago"); return; }
       cargando("Reservando tu cupo…");
       api({ action: "pas_reservar", nit: S.nit, servicio: "eeff" }).then(function (r) {
@@ -571,7 +598,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     };
     if ($("bVerif")) $("bVerif").onclick = function () {
       cargando("Leyendo tu comprobante con IA… (unos segundos)");
-      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img, aceptaTerminos: S.acepta === true };
+      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
       if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
       api(d).then(function (r) { if (!r.ok) { ir("pago", r.error); return; } S.ver = r; ir("verif"); });
     };

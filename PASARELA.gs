@@ -36,7 +36,7 @@ var PAS_DEF = {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-23b";
+var PAS_TERMINOS_VERSION = "2026-10-23c";
 var PAS_TERMINOS = {
   declaracion: [
     "Cada pago cubre una sola declaración (un mes). Los meses atrasados se pagan uno por uno, con la tarifa de su plan.",
@@ -49,6 +49,8 @@ var PAS_TERMINOS = {
     "CONTAX no se responsabiliza por facturas que no sean válidas para tu actividad registrada."
   ],
   eeff: [
+    "Los estados financieros se elaboran con la información registrada en el portal de Impuestos Nacionales y los genera automáticamente el sistema contable NUMMEROS.",
+    "Si el resultado muestra utilidad, CONTAX no alterará los resultados ni hará ajustes que no estén de acuerdo a ley para que salga pérdida (sería un ilícito tributario). La declaración se presenta tal como resulte, aunque corresponda pagar IUE (25% de la utilidad).",
     "El servicio corresponde a los estados financieros de la gestión indicada (un año).",
     "Incluye: balance general, estado de resultados, flujo de efectivo, evolución del patrimonio, notas, cuadro de activos fijos y balance de sumas y saldos; presentación del Formulario 500 (IUE) y envío digital con el Formulario 605.",
     "El precio corresponde a la fase habilitada al momento de tu pago; cuando se llenan los cupos de una fase, el precio sube a la siguiente fase.",
@@ -412,6 +414,7 @@ function pasVerificar(d) {
   var cot = pasCotizar(d);
   if (!cot.ok) return cot;
   if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
+  if (cot.tipo === "eeff" && d.aceptaUtilidad !== true) return { ok: false, error: "Debes aceptar la advertencia sobre la utilidad de tus estados financieros." };
   var img = String(d.imagen || "");
   if (img.indexOf("data:") !== 0) return { ok: false, error: "Sube la imagen del comprobante." };
   if (img.length > 3500000) return { ok: false, error: "La imagen es muy pesada. Toma una captura más pequeña." };
