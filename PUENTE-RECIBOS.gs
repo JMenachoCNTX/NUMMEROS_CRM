@@ -14,6 +14,9 @@
  *
  *   Al cambiar el código, crea una NUEVA implementación (o nueva versión)
  *   para que tome los cambios.
+ *
+ *   v4: este proyecto también contiene PASARELA.gs (pasarela de pagos) y
+ *   el archivo de manifiesto appsscript.json con los permisos necesarios.
  **********************************************************************/
 
 var EMPRESA = {
@@ -35,6 +38,7 @@ function doPost(e) {
   try {
     var d = JSON.parse(e.postData.contents);
     if (d.action === "recibo") { enviarRecibo(d); out.ok = true; }
+    else if (String(d.action || "").indexOf("pas_") === 0) out = pasarelaHandle(d);   // Pasarela de pagos (PASARELA.gs)
     else out.error = "accion_desconocida";
   } catch (err) { out.error = String(err); }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);

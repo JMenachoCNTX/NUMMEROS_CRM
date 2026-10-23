@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "30";
+const APP_VERSION = "31";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -68,7 +68,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 // Secciones del menú (apartados) y las pestañas (views) que contienen
 const NAV_SECTIONS = [
   { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario"] },
-  { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "arqueo", "egresos", "repfinanzas"] },
+  { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "pasarela", "arqueo", "egresos", "repfinanzas"] },
   { key: "listas",   label: "LISTAS",          views: ["control", "declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
   { key: "reportes", label: "REPORTES",        views: ["presence", "historial", "reports"] },
@@ -76,7 +76,7 @@ const NAV_SECTIONS = [
 ];
 const VIEW_LABELS = {
   inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
-  recepcion: "Recepción", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
+  recepcion: "Recepción", pasarela: "Pasarela de pagos", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
   control: "Control del mes", declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
   presence: "Presencia", historial: "Historial", reports: "Reportes",
@@ -90,7 +90,7 @@ const DEFAULT_ROLE_VIEWS = {
   admin: ALL_VIEWS.slice(),
   supervisor: ALL_VIEWS.slice(),
   editor: ["inicio", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "asistente"],
-  cajero: ["inicio", "basedatos", "recepcion", "arqueo", "egresos", "calendario", "asistente"],
+  cajero: ["inicio", "basedatos", "recepcion", "pasarela", "arqueo", "egresos", "calendario", "asistente"],
   lector: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "control", "declaraciones", "tramites", "eeff", "facturacion", "presence", "historial", "reports"]
 };
 let ROLE_VIEWS = null; // se carga de config/app.rolePerms; si no, usa los defaults
@@ -192,6 +192,7 @@ function switchView(v, btn) {
   if (v === "tarifas") renderTarifas();
   if (v === "asistente") renderAsistente();
   if (v === "recepcion") renderRecepcion();
+  if (v === "pasarela") renderPasarela();
   if (v === "dashboard") renderDashboard();
   if (v === "control") renderControl();
   if (v === "declaraciones") renderDDJJ();
@@ -2235,11 +2236,13 @@ async function recSync(forzarTodo) {
   })();
   try { return await RC.loading; } finally { RC.loading = null; }
 }
+// Pagos de la pasarela que aún no se aprobaron (o se rechazaron) no cuentan como recepción
+function recValida(r) { const e = r && r.pasarela && r.pasarela.estado; return e !== "revision" && e !== "rechazado"; }
 let RECEP = [], recepLoaded = false, recFilterMes = "", recFlash = "", recGestion = String(new Date().getFullYear()), recLoadedGestion = null, recepError = "";
 async function recepLoad(gestion) {
   gestion = gestion || recGestion || String(new Date().getFullYear());
   try {
-    const todos = await recSync();
+    const todos = (await recSync()).filter(recValida);
     RECEP = gestion === "todas" ? todos.slice() : todos.filter(r => String(r.fechaISO || "").slice(0, 4) === String(gestion));
     RECEP.sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
     recLoadedGestion = gestion; recepLoaded = true; recepError = "";
@@ -3150,7 +3153,7 @@ const LT_UI = {}; // filtros por lista
 let LT_DATA = null, LT_AT = 0;
 async function ltLoad(force) {
   try {
-    const todos = await recSync();
+    const todos = (await recSync()).filter(recValida);
     LT_DATA = todos.filter(r => String(r.fechaISO || "") >= LISTA_CORTE.eeffDesdeFecha); LT_AT = Date.now();
   } catch (e) { if (!LT_DATA) LT_DATA = []; alert("No se pudo cargar la lista: " + (e.code || e.message)); }
 }
@@ -3697,6 +3700,167 @@ function paintControl() {
   if (el("cm_q")) el("cm_q").oninput = e => { CM_UI.q = e.target.value; clearTimeout(CM_UI._t); CM_UI._t = setTimeout(() => { paintControl(); const x = el("cm_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
   if (el("cm_copycel")) el("cm_copycel").onclick = () => { try { navigator.clipboard.writeText(el("cm_cels").textContent); el("cm_copycel").textContent = "✓ Copiados"; } catch (e) {} };
   V.querySelectorAll(".cm-dj").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id), paintControl));
+}
+
+// ============================================================
+//  PASARELA DE PAGOS (configuración + pagos en revisión)
+//  La página pública es pagos.html; el intermediario seguro es el script
+//  de Apps Script (PASARELA.gs, en el mismo proyecto que los recibos).
+//  Config: config/app.pasarela  ·  QR por importe: config/pasarelaQR (campos m30, m50…)
+// ============================================================
+const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, fact: 20 }, diaDesde: 25, diaHasta: 30, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 350, capacidad: 30 }], destinoClaves: [] };
+const PA_UI = { tab: "revision", cfg: null, qr: null, cupos: null };
+async function renderPasarela() {
+  el("v-pasarela").innerHTML = `<h1>Pasarela de pagos</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  const cfg = await loadConfigDoc();
+  const p = cfg.pasarela || {};
+  PA_UI.cfg = Object.assign(JSON.parse(JSON.stringify(PAS_DEF)), p, { precios: Object.assign({}, PAS_DEF.precios, p.precios || {}) });
+  PA_UI.cupos = (PA_UI.cfg.cupos || []).map(c => Object.assign({}, c));
+  try { const q = await getDoc(doc(db, "config", "pasarelaQR")); PA_UI.qr = q.exists() ? q.data() : {}; } catch (e) { PA_UI.qr = {}; }
+  try { await recSync(); } catch (e) {}
+  paintPasarela();
+}
+function paMontos() {
+  const c = PA_UI.cfg, o = [];
+  const add = (m, uso) => { m = Math.round(Number(m) || 0); if (!m) return; const ex = o.find(x => x.m === m); if (ex) ex.uso += " · " + uso; else o.push({ m, uso }); };
+  add(c.precios.sinMov, "Declaración sin movimiento"); add(c.precios.enFecha, "Declaración en fecha"); add(c.precios.fueraFecha, "Declaración fuera de fecha / atrasada");
+  add(c.precios.fact, "Suscripción de facturación");
+  (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
+  return o.sort((a, b) => a.m - b.m);
+}
+function paintPasarela() {
+  const admin = isAdmin(), canEdit = canEditClientes();
+  const todos = RC.docs || [];
+  const pas = todos.filter(r => r.origen === "pasarela" || r.pasarela);
+  const revision = pas.filter(r => r.pasarela && r.pasarela.estado === "revision").sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
+  const hoy = djHoy();
+  const fechaLocal = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const deHoy = pas.filter(r => fechaLocal(r.fechaISO) === hoy || r.fechaPago === hoy);
+  const c = PA_UI.cfg;
+  const usadosEeff = todos.filter(r => recValida(r) && recCatDe(r) === "eeff" && String(r.periodoAnio || "") === String(c.eeffGestion)).length;
+  const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "pagos.html";
+  const tabs = [["revision", `Pagos en revisión (${revision.length})`], ["ultimos", "Últimos pagos"], ["config", "Precios y cupos"], ["qr", "QR por importe"]];
+  let body = "";
+  if (PA_UI.tab === "revision") {
+    body = `<p class="note" style="margin:0 0 10px">La IA no pudo confirmar estos comprobantes. Revisa la imagen y apruébalos (pasan a la lista que corresponde y se envía el correo) o recházalos.</p>
+      <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Esperado</th><th style="text-align:right">Leído</th><th>Motivo</th><th></th></tr></thead><tbody>
+      ${revision.map(r => `<tr><td class="mono">${escape(r.fecha || "")}<div class="note" style="margin:0">N° ${escape(String(r.nroRecepcion || ""))}</div></td>
+        <td><b>${escape(r.clienteNombre || "—")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td>
+        <td style="font-size:12px">${escape(r.detalleServicio || r.servicio || "")}<div class="note" style="margin:0">${escape(r.mesRecepcion || "")}</div></td>
+        <td class="mono" style="text-align:right">${money(r.pasarela.montoEsperado)}</td><td class="mono" style="text-align:right">${money(r.pasarela.montoLeido)}</td>
+        <td style="color:var(--warn);font-weight:600;font-size:12px">${escape((r.pasarela.motivos || []).join(", "))}</td>
+        <td style="white-space:nowrap">${r.compUrl ? `<a class="mini" href="${escape(r.compUrl)}" target="_blank" rel="noopener">Ver comprobante</a> ` : ""}${canEdit ? `<button class="mini" data-aprobar="${r.id}" style="background:#2E7D5B;color:#fff;border-color:#2E7D5B">Aprobar</button> <button class="mini" data-rechazar="${r.id}">Rechazar</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="note">No hay pagos en revisión. 🎉</td></tr>`}
+      </tbody></table></div>`;
+  } else if (PA_UI.tab === "ultimos") {
+    const ult = pas.slice().sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || "")).slice(0, 60);
+    const est = r => { const e = (r.pasarela && r.pasarela.estado) || "aprobado"; return e === "aprobado" ? `<span class="badge ok">Aprobado</span>` : e === "revision" ? `<span class="badge off" style="color:var(--warn)">En revisión</span>` : `<span class="badge danger">Rechazado</span>`; };
+    body = `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Importe</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${ult.map(r => `<tr><td class="mono">${escape((r.fecha || "") + " " + (r.hora || ""))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b></td><td style="font-size:12px">${escape(r.detalleServicio || "")} · ${escape(r.mesRecepcion || "")}</td><td class="mono" style="text-align:right">${money(r.importe)}</td><td>${est(r)}</td><td>${r.compUrl ? `<a href="${escape(r.compUrl)}" target="_blank" rel="noopener">Comprobante</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Todavía no hay pagos por la pasarela.</td></tr>`}
+      </tbody></table></div>`;
+  } else if (PA_UI.tab === "config") {
+    const dis = admin ? "" : "disabled";
+    const n = (id, v, lbl) => `<div class="field"><label>${lbl}</label><input id="${id}" type="number" min="0" step="1" value="${escape(String(v))}" ${dis}></div>`;
+    let acum = 0;
+    body = `${admin ? "" : `<p class="note">Solo un administrador puede cambiar precios y cupos.</p>`}
+      <div class="grid2" style="gap:16px;align-items:start">
+      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Declaración mensual</h3>
+        <div class="grid3">${n("pa_sin", c.precios.sinMov, "Sin movimiento (Bs)")}${n("pa_en", c.precios.enFecha, "En fecha (Bs)")}${n("pa_fuera", c.precios.fueraFecha, "Fuera de fecha (Bs)")}</div>
+        <div class="grid2">${n("pa_d1", c.diaDesde, "En fecha desde el día")}${n("pa_d2", c.diaHasta, "hasta el día")}</div>
+        <p class="note" style="margin:0">Desde el día ${escape(String(c.diaDesde))} se declara el mes actual; antes, el mes anterior. Los meses atrasados cobran el precio fuera de fecha. Sin movimiento cuesta siempre lo mismo.</p>
+        <h3 style="margin:16px 0 10px">Suscripción de facturación</h3>
+        <div class="grid2">${n("pa_fact", c.precios.fact, "Precio mensual (Bs)")}</div>
+        <h3 style="margin:16px 0 10px">Cuenta que recibe los pagos</h3>
+        <div class="field"><label>Palabras que deben aparecer en el comprobante (separadas por coma)</label><input id="pa_dest" value="${escape((c.destinoClaves || []).join(", "))}" placeholder="Ej. CONTAX, 4417" ${dis}></div>
+        <p class="note" style="margin:0">Nombre del titular o últimos dígitos de la cuenta. Si el comprobante no las tiene, el pago queda en revisión.</p>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600"><input type="checkbox" id="pa_activo" ${c.activo ? "checked" : ""} ${dis} style="width:auto"> Pasarela activa (los clientes pueden pagar)</label>
+      </div>
+      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · cupos</h3>
+        <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}</div>
+        <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cuando se llena un cupo, el precio pasa al siguiente.</p>
+        <table style="font-size:13px"><thead><tr><th>Cupo</th><th>Precio (Bs)</th><th>Cupos</th><th>Ocupados</th><th></th></tr></thead><tbody>
+        ${PA_UI.cupos.map((x, i) => { const cap = Number(x.capacidad) || 0, ocup = Math.max(0, Math.min(cap, usadosEeff - acum)); acum += cap; return `<tr><td><b>${i + 1}</b></td><td><input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:90px" ${dis}></td><td><input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:80px" ${dis}></td><td class="mono">${ocup} / ${cap}</td><td>${admin ? `<button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>`; }).join("")}
+        </tbody></table>
+        ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar cupo</button>` : ""}
+      </div></div>
+      ${admin ? `<div style="margin-top:14px"><button class="btn" id="pa_save">Guardar configuración</button> <span class="msg" id="pa_msg"></span></div>` : ""}`;
+  } else {
+    const ms = paMontos();
+    body = `<p class="note" style="margin:0 0 10px">Sube el QR de tu banco para cada importe (con el monto ya fijado). La página de pagos muestra el que corresponde. Si cambias un precio, sube el QR del nuevo monto.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px">
+      ${ms.map(x => { const img = (PA_UI.qr || {})["m" + x.m]; return `<div class="formcard" style="max-width:none;margin:0;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center">
+        <div style="font-family:Akshar,sans-serif;font-size:26px;font-weight:700">Bs ${x.m}</div><div class="note" style="margin:0;min-height:32px">${escape(x.uso)}</div>
+        ${img ? `<img src="${img}" alt="QR Bs ${x.m}" style="width:150px;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff">` : `<div style="width:150px;height:150px;border:2px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--warn);font-weight:700;font-size:13px">Falta QR</div>`}
+        ${admin ? `<label class="mini" style="cursor:pointer">${img ? "Cambiar QR" : "Subir QR"}<input type="file" accept="image/*" data-qr="${x.m}" style="display:none"></label>` : ""}</div>`; }).join("")}
+      </div><div class="msg" id="pa_qrmsg"></div>`;
+  }
+  const faltanQR = paMontos().filter(x => !(PA_UI.qr || {})["m" + x.m]).length;
+  el("v-pasarela").innerHTML = `<h1>Pasarela de pagos</h1>
+    <div class="formcard" style="max-width:none;display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <div style="flex:1;min-width:240px"><div class="note" style="margin:0">Link para tus clientes</div><b class="mono" style="font-size:15px">${escape(link)}</b>
+        <div class="note" style="margin:2px 0 0">Tip: con <span class="mono">?nit=NUMERO</span> al final, el NIT ya viene escrito.</div></div>
+      <button class="mini" id="pa_copy">Copiar link</button><a class="mini" href="${escape(link)}" target="_blank" rel="noopener">Abrir como cliente</a>
+      ${c.activo ? `<span class="badge ok">Activa</span>` : `<span class="badge danger">Pausada</span>`}
+    </div>
+    ${faltanQR ? `<div class="formcard" style="max-width:none;border-color:var(--warn);margin-bottom:14px"><b style="color:var(--warn)">Faltan ${faltanQR} QR.</b> <span class="note">Súbelos en la pestaña "QR por importe" para que los clientes puedan pagar esos montos.</span></div>` : ""}
+    <div class="kpis"><div class="kpi"><div class="n">${deHoy.length}</div><div class="l">Pagos por la pasarela hoy</div></div>
+      <div class="kpi"><div class="n">${deHoy.filter(r => (r.pasarela || {}).estado === "aprobado").length}</div><div class="l">Recepcionados solos hoy</div></div>
+      <div class="kpi"><div class="n" style="color:var(--warn)">${revision.length}</div><div class="l">En revisión</div></div></div>
+    <div class="subtabs" id="patabs">${tabs.map(([k, l]) => `<button class="subtab ${PA_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
+  const V = el("v-pasarela");
+  V.querySelectorAll("#patabs .subtab").forEach(b => b.onclick = () => { PA_UI.tab = b.dataset.tab; paintPasarela(); });
+  el("pa_copy").onclick = () => { try { navigator.clipboard.writeText(link); el("pa_copy").textContent = "✓ Copiado"; } catch (e) {} };
+  V.querySelectorAll("[data-aprobar]").forEach(b => b.onclick = () => paResolver(b.dataset.aprobar, true));
+  V.querySelectorAll("[data-rechazar]").forEach(b => b.onclick = () => paResolver(b.dataset.rechazar, false));
+  V.querySelectorAll(".pa-cp").forEach(i => i.onchange = () => { PA_UI.cupos[Number(i.dataset.i)][i.dataset.k] = Number(i.value) || 0; });
+  V.querySelectorAll(".pa-del").forEach(b => b.onclick = () => { PA_UI.cupos.splice(Number(b.dataset.i), 1); paintPasarela(); });
+  if (el("pa_addcupo")) el("pa_addcupo").onclick = () => { const u = PA_UI.cupos[PA_UI.cupos.length - 1]; PA_UI.cupos.push({ precio: u ? Number(u.precio) + 50 : 250, capacidad: 30 }); paintPasarela(); };
+  if (el("pa_save")) el("pa_save").onclick = paGuardar;
+  V.querySelectorAll("[data-qr]").forEach(inp => inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    const m = el("pa_qrmsg"); m.className = "msg"; m.textContent = "Subiendo QR…";
+    try {
+      const data = await cxCompressImage(f, 700, 0.92);
+      await setDoc(doc(db, "config", "pasarelaQR"), { ["m" + inp.dataset.qr]: data, updatedAt: serverTimestamp() }, { merge: true });
+      PA_UI.qr["m" + inp.dataset.qr] = data; paintPasarela();
+    } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar el QR: " + (e.code || e.message); }
+  });
+}
+async function paGuardar() {
+  const m = el("pa_msg"); m.className = "msg"; m.textContent = "Guardando…";
+  const v = id => Number(el(id).value) || 0;
+  const pasarela = {
+    activo: el("pa_activo").checked,
+    precios: { sinMov: v("pa_sin"), enFecha: v("pa_en"), fueraFecha: v("pa_fuera"), fact: v("pa_fact") },
+    diaDesde: v("pa_d1") || 25, diaHasta: v("pa_d2") || 30,
+    eeffGestion: String(v("pa_gest") || new Date().getFullYear()),
+    cupos: PA_UI.cupos.filter(x => Number(x.precio) > 0 && Number(x.capacidad) > 0),
+    destinoClaves: el("pa_dest").value.split(",").map(x => x.trim()).filter(Boolean)
+  };
+  // Nombres de columnas de la Base de Datos, para que el script encuentre al cliente por NIT
+  await new Promise(res => bdEnsureLoaded(() => res()));
+  pasarela.campos = Object.assign({}, bdKey2Header || {});
+  try {
+    await setDoc(doc(db, "config", "app"), { pasarela, updatedAt: serverTimestamp() }, { merge: true });
+    PA_UI.cfg = Object.assign(PA_UI.cfg, pasarela); PA_UI.cupos = pasarela.cupos.map(x => Object.assign({}, x));
+    paintPasarela(); const m2 = el("pa_msg"); if (m2) { m2.className = "msg ok"; m2.textContent = "✓ Guardado. Los clientes ya ven los nuevos precios."; }
+  } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+}
+async function paResolver(id, aprobar) {
+  const r = (RC.docs || []).find(x => x.id === id); if (!r) return;
+  let motivo = "";
+  if (!aprobar) { motivo = prompt("Motivo del rechazo (se guardará en la recepción):", "Comprobante no válido"); if (motivo === null) return; }
+  else if (!confirm(`¿Aprobar el pago de ${r.clienteNombre} (${money(r.importe)})?\nPasará a ${recCatDe(r) === "declaracion" ? "Declaraciones" : recCatDe(r) === "eeff" ? "EEFF" : "Facturación"} y se enviará la Orden de Recepción a su correo.`)) return;
+  const pas = Object.assign({}, r.pasarela, { estado: aprobar ? "aprobado" : "rechazado", resueltoPor: (ME && (ME.name || ME.email)) || "", resueltoAt: Date.now(), motivoRechazo: motivo });
+  const datos = { pasarela: pas, comentarios: aprobar ? "Pago por pasarela (aprobado manualmente)" : ("Pasarela rechazada: " + motivo), _upd: Date.now() };
+  try {
+    await setDoc(doc(db, "recepciones", id), datos, { merge: true });
+    rcPoner(id, datos); LT_DATA = null; recepLoaded = false;
+    if (aprobar && r.clienteCorreo) {
+      const ok = await postRecibo(Object.assign({}, r, datos));
+      if (ok) { try { await setDoc(doc(db, "recepciones", id), { reciboEnviado: true, _upd: Date.now() }, { merge: true }); rcPoner(id, { reciboEnviado: true }); } catch (e) {} }
+    }
+    paintPasarela();
+  } catch (e) { alert("No se pudo guardar: " + (e.code || e.message)); }
 }
 
 // ---------- FINANZAS · Reportes financieros (con importes; solo para quien tenga permiso) ----------
