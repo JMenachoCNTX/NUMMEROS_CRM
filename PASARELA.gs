@@ -287,20 +287,44 @@ function pasReservas_(gestion) {
   });
   return out;
 }
+// Cada balance cuenta en la fase que tiene su mismo precio (config/eeffConteo_<gestión>, que mantienen
+// el panel y la pasarela). Se habilita la primera fase con cupos libres: si el admin agrega cupos a una
+// fase agotada, esa fase se vuelve a abrir.
+function pasConteoEeff_(g) {
+  var d = fsGet_("config/eeffConteo_" + g);
+  return d && d.porPrecio ? d.porPrecio : null;
+}
 function pasCupoActual_(c, excluirNit) {
   var g = String(c.eeffGestion || PAS_DEF.eeffGestion);
-  var usados = fsCount_("recepciones", [["tipo", "EQUAL", "eeff"], ["periodoAnio", "EQUAL", g]]);
-  var res = pasReservas_(g), ahora = Date.now(), reservados = 0;
-  Object.keys(res).forEach(function (n) { if (n !== excluirNit && res[n].exp > ahora) reservados++; });
-  var tomados = usados + reservados;
-  var acum = 0, cupos = (c.cupos || []).map(function (x, i) {
-    var cap = Number(x.capacidad) || 0, desde = acum; acum += cap;
-    var ocup = Math.max(0, Math.min(cap, tomados - desde));
-    return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup };
-  });
+  var res = pasReservas_(g), ahora = Date.now(), resPorFase = {}, reservados = 0;
+  Object.keys(res).forEach(function (n) { if (n !== excluirNit && res[n].exp > ahora) { reservados++; resPorFase[res[n].precio] = (resPorFase[res[n].precio] || 0) + 1; } });
+  var porPrecio = pasConteoEeff_(g), cupos;
+  if (porPrecio) {
+    cupos = (c.cupos || []).map(function (x, i) {
+      var cap = Number(x.capacidad) || 0, pr = Number(x.precio) || 0;
+      var ocup = Math.min(cap, (Number(porPrecio[String(Math.round(pr))]) || 0) + (resPorFase[pr] || 0));
+      return { n: i + 1, precio: pr, capacidad: cap, ocupados: ocup, libres: cap - ocup };
+    });
+  } else {
+    // Respaldo (si todavía no existe el conteo): se reparten en orden
+    var tomados = fsCount_("recepciones", [["tipo", "EQUAL", "eeff"], ["periodoAnio", "EQUAL", g]]) + reservados, acum = 0;
+    cupos = (c.cupos || []).map(function (x, i) {
+      var cap = Number(x.capacidad) || 0, desde = acum; acum += cap;
+      var ocup = Math.max(0, Math.min(cap, tomados - desde));
+      return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup };
+    });
+  }
   var actual = null;
   for (var i = 0; i < cupos.length; i++) if (cupos[i].libres > 0) { actual = cupos[i]; break; }
   return { gestion: g, cupos: cupos, actual: actual, agotado: !actual, reservados: reservados, reservaMin: PAS_RES_MIN };
+}
+// Suma 1 balance vendido en el conteo de su precio (al aprobar un pago de la pasarela)
+function pasContarEeff_(g, precio) {
+  if (!fsGet_("config/eeffConteo_" + g)) return;   // el conteo lo crea el panel con el total correcto
+  var doc = "projects/" + PAS.proyecto + "/databases/(default)/documents/config/eeffConteo_" + g;
+  var campo = "porPrecio.`" + String(Math.round(Number(precio))) + "`";
+  fsReq_(fsBase_() + ":commit", "post", { writes: [{ transform: { document: doc, fieldTransforms: [
+    { fieldPath: campo, increment: { integerValue: "1" } }, { fieldPath: "total", increment: { integerValue: "1" } } ] } }] });
 }
 // Reserva (o recupera) el cupo del cliente. Con candado: dos personas no pueden tomar el último cupo a la vez.
 function pasReservar(d) {
@@ -391,6 +415,13 @@ function pasVerificar(d) {
   var img = String(d.imagen || "");
   if (img.indexOf("data:") !== 0) return { ok: false, error: "Sube la imagen del comprobante." };
   if (img.length > 3500000) return { ok: false, error: "La imagen es muy pesada. Toma una captura más pequeña." };
+  // Si el cliente sube el comprobante con la reserva vigente, se le dan 15 minutos más para terminar
+  if (cot.tipo === "eeff") {
+    try {
+      var nitR = String(d.nit || "").replace(/\D/g, ""), pR = PropertiesService.getScriptProperties(), rr = pR.getProperty("res_" + nitR);
+      if (rr) { rr = JSON.parse(rr); if (rr.exp > Date.now() && rr.exp < Date.now() + 15 * 60000) { rr.exp = Date.now() + 15 * 60000; pR.setProperty("res_" + nitR, JSON.stringify(rr)); } }
+    } catch (e) {}
+  }
   var lect = pasLeerComprobante_(img);
   var c = pasCfg(), checks = [], motivos = [];
   var x = lect.data || {};
@@ -510,7 +541,10 @@ function pasConfirmar(token) {
       _upd: Date.now()
     };
     fsCreate_("recepciones", rec);
-    if (cot.tipo === "eeff") { try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {} }
+    if (cot.tipo === "eeff") {
+      try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
+      if (v.aprobado) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
+    }
     if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {

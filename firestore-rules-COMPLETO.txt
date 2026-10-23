@@ -43,6 +43,8 @@ service cloud.firestore {
     match /config/{id} {
       allow read: if isAgent() || portalView();
       allow write: if isAdmin();
+      // Conteo de balances por fase: quien registra recepciones puede sumarlo
+      allow create, update: if id.matches('eeffConteo_.*') && (portalEdit() || isAgent());
     }
 
     // Respuestas rápidas compartidas
