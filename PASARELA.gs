@@ -81,6 +81,7 @@ function pasarelaHandle_(d) {
   if (a === "pas_config") return pasConfigPublica();
   if (a === "pas_buscar") return pasBuscar(d.nit);
   if (a === "pas_cotizar") { var r = pasCotizar(d); if (r.ok) r.qr = pasQR_(r.monto); return r; }
+  if (a === "pas_reservar") { var rr = pasReservar(d); if (rr.ok) rr.qr = pasQR_(rr.monto); return rr; }
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
   return { ok: false, error: "accion_desconocida" };
@@ -256,33 +257,75 @@ function pasPeriodosDecl_(c, hoy) {
 // ---------------- UFV del día (Banco Central de Bolivia) ----------------
 // Se lee de la portada del BCB y se guarda 6 horas; si el BCB no responde se usa el último valor conocido.
 function pasUfv_() {
-  var cache = CacheService.getScriptCache(), props = PropertiesService.getScriptProperties();
-  var c = cache.get("ufv_hoy"); if (c) return JSON.parse(c);
-  var r = null;
+  // Se consulta al BCB una sola vez por día (la primera visita del día); el resto del día se usa ese valor.
+  var props = PropertiesService.getScriptProperties(), hoy = pasHoy_().iso;
+  var u = null; try { u = JSON.parse(props.getProperty("ufv_ultimo") || "null"); } catch (e) {}
+  if (u && u.dia === hoy) return u;
   try {
     var html = UrlFetchApp.fetch("https://www.bcb.gob.bo/", { muteHttpExceptions: true, followRedirects: true }).getContentText();
     var mm = html.match(/Bs\/UFV<\/div>[\s\S]{0,300}?bcb-quote-value">\s*([\d.,]+)/) || html.match(/UFV[\s\S]{0,400}?(\d,\d{5})/);
     if (mm) {
       var v = Number(mm[1].replace(/\./g, "").replace(",", "."));
-      if (v > 1 && v < 20) r = { valor: v, fecha: pasHoy_().fecha, fuente: "BCB" };
+      if (v > 1 && v < 20) { var r = { valor: v, fecha: pasHoy_().fecha, fuente: "BCB", dia: hoy }; props.setProperty("ufv_ultimo", JSON.stringify(r)); return r; }
     }
   } catch (e) {}
-  if (r) { props.setProperty("ufv_ultimo", JSON.stringify(r)); cache.put("ufv_hoy", JSON.stringify(r), 21600); return r; }
-  var u = props.getProperty("ufv_ultimo");
-  if (u) { r = JSON.parse(u); r.fuente = "último valor conocido"; cache.put("ufv_hoy", JSON.stringify(r), 3600); return r; }
+  if (u) { u.fuente = "último valor conocido"; return u; }
   return { valor: 3.36231, fecha: "23/10/2026", fuente: "referencial" };
 }
-function pasCupoActual_(c) {
+// ---------------- Fases de balance con reserva de cupo ----------------
+// Al pasar al QR, el cupo queda RESERVADO 30 minutos a ese precio (nadie más puede tomarlo).
+// Si el cliente pagó dentro de esos 30 minutos, se respeta su precio aunque suba el comprobante
+// más tarde (por internet, por la IA, etc.): la reserva se guarda 48 horas para eso.
+var PAS_RES_MIN = 30, PAS_RES_GRACIA_H = 48;
+function pasReservas_(gestion) {
+  var props = PropertiesService.getScriptProperties(), all = props.getProperties(), ahora = Date.now(), out = {};
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf("res_") !== 0) return;
+    var r; try { r = JSON.parse(all[k]); } catch (e) { props.deleteProperty(k); return; }
+    if (ahora - r.creado > PAS_RES_GRACIA_H * 3600000) { props.deleteProperty(k); return; }   // limpieza
+    if (!gestion || String(r.gestion) === String(gestion)) out[k.slice(4)] = r;
+  });
+  return out;
+}
+function pasCupoActual_(c, excluirNit) {
   var g = String(c.eeffGestion || PAS_DEF.eeffGestion);
   var usados = fsCount_("recepciones", [["tipo", "EQUAL", "eeff"], ["periodoAnio", "EQUAL", g]]);
+  var res = pasReservas_(g), ahora = Date.now(), reservados = 0;
+  Object.keys(res).forEach(function (n) { if (n !== excluirNit && res[n].exp > ahora) reservados++; });
+  var tomados = usados + reservados;
   var acum = 0, cupos = (c.cupos || []).map(function (x, i) {
     var cap = Number(x.capacidad) || 0, desde = acum; acum += cap;
-    var ocup = Math.max(0, Math.min(cap, usados - desde));
+    var ocup = Math.max(0, Math.min(cap, tomados - desde));
     return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup };
   });
   var actual = null;
   for (var i = 0; i < cupos.length; i++) if (cupos[i].libres > 0) { actual = cupos[i]; break; }
-  return { gestion: g, cupos: cupos, actual: actual, agotado: !actual };
+  return { gestion: g, cupos: cupos, actual: actual, agotado: !actual, reservados: reservados, reservaMin: PAS_RES_MIN };
+}
+// Reserva (o recupera) el cupo del cliente. Con candado: dos personas no pueden tomar el último cupo a la vez.
+function pasReservar(d) {
+  var nit = String(d.nit || "").replace(/\D/g, "");
+  var cli = pasClienteCache_(nit);
+  if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
+  if (d.servicio !== "eeff" || !pasEsRepartidor_(cli)) { var q = pasCotizar(d); return q; }
+  var c = pasCfg(), g = String(c.eeffGestion || PAS_DEF.eeffGestion), props = PropertiesService.getScriptProperties();
+  var lock = LockService.getScriptLock(); lock.waitLock(25000);
+  try {
+    var ahora = Date.now(), r = pasReservas_(g)[nit];
+    if (!(r && r.exp > ahora)) {
+      var e = pasCupoActual_(c, nit);
+      if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + g + ". Escríbenos por WhatsApp." };
+      r = { gestion: g, fase: e.actual.n, precio: e.actual.precio, creado: ahora, exp: ahora + PAS_RES_MIN * 60000 };
+      props.setProperty("res_" + nit, JSON.stringify(r));
+    }
+    var cot = pasCotEeff_(g, r.precio, r.fase);
+    cot.reserva = { fase: r.fase, precio: r.precio, exp: r.exp, quedanSeg: Math.max(0, Math.round((r.exp - ahora) / 1000)) };
+    return cot;
+  } finally { lock.releaseLock(); }
+}
+function pasCotEeff_(g, precio, fase) {
+  return { ok: true, monto: precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: fase,
+           periodo: { tipo: "gestion", mes: "", anio: g, texto: "Gestión " + g }, resumen: "Estados financieros gestión " + g + " · Fase " + fase };
 }
 function pasCotizar(d) {
   var c = pasCfg(), hoy = pasHoy_(), s = d.servicio;
@@ -316,10 +359,12 @@ function pasCotizar(d) {
       return { ok: true, monto: Number(c.precios.eeffOtros), servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: "",
                periodo: { tipo: "gestion", mes: "", anio: gO, texto: "Gestión " + gO }, resumen: "Estados financieros gestión " + gO };
     }
-    var e = pasCupoActual_(c);
+    var nitE = String(d.nit || "").replace(/\D/g, ""), gE = String(c.eeffGestion || PAS_DEF.eeffGestion);
+    var resE = nitE ? pasReservas_(gE)[nitE] : null;
+    if (resE && resE.exp > Date.now()) { var cr = pasCotEeff_(gE, resE.precio, resE.fase); cr.reserva = { fase: resE.fase, precio: resE.precio, exp: resE.exp, quedanSeg: Math.round((resE.exp - Date.now()) / 1000) }; return cr; }
+    var e = pasCupoActual_(c, nitE);
     if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + e.gestion + ". Escríbenos por WhatsApp." };
-    return { ok: true, monto: e.actual.precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: e.actual.n,
-             periodo: { tipo: "gestion", mes: "", anio: e.gestion, texto: "Gestión " + e.gestion }, resumen: "Estados financieros gestión " + e.gestion + " · Fase " + e.actual.n };
+    return pasCotEeff_(e.gestion, e.actual.precio, e.actual.n);
   }
   if (s === "fact") {
     var t = PAS_MESES[hoy.mes - 1] + " " + hoy.anio;
@@ -349,6 +394,15 @@ function pasVerificar(d) {
   var lect = pasLeerComprobante_(img);
   var c = pasCfg(), checks = [], motivos = [];
   var x = lect.data || {};
+  // Balances: si el cliente tenía su cupo reservado y pagó dentro de la reserva, vale el precio reservado
+  if (cot.tipo === "eeff" && !lect.error) {
+    var gV = String(c.eeffGestion || PAS_DEF.eeffGestion), resV = pasReservas_(gV)[String(d.nit || "").replace(/\D/g, "")];
+    if (resV) {
+      var tPago = pasMomentoPago_(x.fecha, x.hora);
+      var dentro = tPago ? tPago <= resV.exp + 10 * 60000 : (Date.now() - resV.creado < 24 * 3600000);
+      if (dentro && Math.abs(pasNum_(x.importe) - resV.precio) < 0.01) { cot = pasCotEeff_(gV, resV.precio, resV.fase); cot.reservaRespetada = true; }
+    }
+  }
   if (lect.error) motivos.push("No se pudo leer el comprobante");
   // 1) Monto
   var leido = pasNum_(x.importe);
@@ -380,6 +434,13 @@ function pasVerificar(d) {
   var token = Utilities.getUuid();
   pasCachePut_("v_" + token, { nit: String(d.nit).replace(/\D/g, ""), cot: cot, x: x, motivos: motivos, aprobado: aprobado, img: img }, 1800);
   return { ok: true, token: token, aprobado: aprobado, checks: checks, motivos: motivos, monto: cot.monto, resumen: cot.resumen };
+}
+// Fecha y hora del comprobante (hora de Bolivia) en milisegundos; null si no se pudo leer la hora
+function pasMomentoPago_(fecha, hora) {
+  var f = pasFecha_(fecha), h = String(hora || "").match(/(\d{1,2}):(\d{2})/);
+  if (!f || !h) return null;
+  var t = new Date(f + "T" + ("0" + h[1]).slice(-2) + ":" + h[2] + ":00-04:00").getTime();
+  return isNaN(t) ? null : t;
 }
 function pasLeerComprobante_(dataUrl) {
   var app = pasCfgApp();
@@ -449,6 +510,7 @@ function pasConfirmar(token) {
       _upd: Date.now()
     };
     fsCreate_("recepciones", rec);
+    if (cot.tipo === "eeff") { try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {} }
     if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {

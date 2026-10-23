@@ -260,9 +260,17 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function wa(txt) { return WA ? "https://wa.me/" + WA + "?text=" + encodeURIComponent(txt || "Hola CONTAX, necesito ayuda con mi pago.") : "#"; }
   function api(datos) {
     if (!URL_) return Promise.resolve({ ok: false, error: "La pasarela aún no está activada. Escríbenos por WhatsApp." });
-    return fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(datos) })
-      .then(function (r) { return r.json(); })
-      .catch(function () { return { ok: false, error: "No hay conexión. Revisa tu internet e intenta de nuevo." }; });
+    var intentos = 0;
+    function uno() {
+      return fetch(URL_, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(datos) })
+        .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+        .catch(function () {
+          intentos++;
+          if (intentos <= 3) return new Promise(function (res) { setTimeout(res, 1500 * intentos); }).then(uno);
+          return { ok: false, error: "No hay conexión. Revisa tu internet e intenta de nuevo. Tus datos y tu reserva no se pierden." };
+        });
+    }
+    return uno();
   }
   // Imagen y mensaje de cada paso (colaboración NUMMEROS x CONTAX)
   var FOTOS = "marca/colaboracion/";
@@ -321,7 +329,36 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ir(p, "", true);
   });
   try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
-  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; }
+  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.resFin = 0; }
+  var relojT = null;
+  function relojReserva() {
+    clearInterval(relojT);
+    var c = document.getElementById("cuenta"); if (!c || !S.resFin) return;
+    function tic() {
+      var q = Math.max(0, Math.round((S.resFin - Date.now()) / 1000));
+      c.textContent = Math.floor(q / 60) + ":" + ("0" + (q % 60)).slice(-2);
+      if (q <= 0) { clearInterval(relojT); if (S.paso === "pago") pintar(); }
+    }
+    tic(); relojT = setInterval(tic, 1000);
+  }
+  // Guarda el avance en el celular: si se va el internet o se recarga la página, el cliente sigue donde estaba
+  function guardarEstado() {
+    try {
+      if (S.paso === "fin" || S.paso === "nit") { localStorage.removeItem("pas-estado"); return; }
+      var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, acepta: S.acepta, resFin: S.resFin || 0 };
+      localStorage.setItem("pas-estado", JSON.stringify(g));
+    } catch (e) {}
+  }
+  function recuperarEstado() {
+    try {
+      var g = JSON.parse(localStorage.getItem("pas-estado") || "null");
+      if (!g || Date.now() - g.t > 6 * 3600000 || !g.cli || !g.cfg) return false;
+      ["nit", "cli", "cfg", "serv", "plan", "tipoFact", "per", "cot", "acepta", "resFin"].forEach(function (k) { S[k] = g[k]; });
+      S.paso = g.paso || "servicio";
+      try { history.replaceState({ paso: S.paso }, ""); } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  }
   function menu() {
     var n = document.getElementById("nav"); if (!n) return;
     n.classList.toggle("oculto", S.paso === "nit");
@@ -380,13 +417,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     } else if (S.paso === "opcion" && S.serv === "eeff") {
       var E = S.cfg.eeff;
       var esRepE = !S.cli || S.cli.repartidor !== false;
-      var pagar = terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : "Calculando…") + "</button>";
+      var notaRes = esRepE ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Al continuar te reservamos el cupo por ' + esc(E.reservaMin || 30) + " minutos a este precio, para que nadie más lo tome mientras pagas.</p>" : "";
+      var pagar = terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : "Calculando…") + "</button>" + notaRes;
       if (!esRepE) {
         h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
           multasHtml() + info("¿Qué incluye?", INFO.eeff, true) + errHtml() + pagar + "</div>";
       } else {
         var A = E.actual;
-        var contador = A ? '<div class="contador"><span class="fase">Fase ' + A.n + ' habilitada</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + " en la Fase " + A.n + '</span><span class="pr">Bs ' + esc(A.precio) + "</span></div>"
+        var contador = A ? '<div class="contador"><span class="fase">Fase ' + A.n + ' habilitada</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + " en la Fase " + A.n + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
           : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todas las fases. Escríbenos por WhatsApp.</span></div>';
         var fases = '<div class="fases">' + E.cupos.map(function (c) {
           var lleno = c.libres <= 0, act = A && c.n === A.n, cls = lleno ? "agot" : act ? "act" : "pend";
@@ -403,7 +441,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "pago") {
       var q = S.cot;
-      h = '<div class="pila"><h2>Paga con QR</h2><div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
+      var resHtml = "";
+      if (q.reserva) {
+        var vencida = S.resFin && Date.now() > S.resFin;
+        resHtml = vencida
+          ? '<div class="aviso warn" id="resBox"><b>Tu reserva venció.</b><br>Si ya pagaste, sube tu comprobante igual: revisamos la hora del pago y respetamos tu precio. Si aún no pagaste, reserva de nuevo para ver el precio actual.<button class="btn2" id="bReservar" style="margin-top:10px">Reservar de nuevo</button></div>'
+          : '<div class="aviso ok" id="resBox"><b>Tu cupo de la Fase ' + esc(q.reserva.fase) + " está reservado a " + bs(q.reserva.precio) + '</b><br>Tienes <b id="cuenta">--:--</b> minutos para pagar. Si se te corta el internet o tardas en subir el comprobante, no te preocupes: si pagaste dentro de este tiempo, respetamos tu precio.</div>';
+      }
+      h = '<div class="pila"><h2>Paga con QR</h2>' + resHtml + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
         (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
               : '<div class="aviso warn">El QR de este monto no está disponible en este momento. <a href="' + wa("Hola, quiero pagar " + q.resumen + " (" + bs(q.monto) + ") y no me aparece el QR.") + '" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>.</div>') +
         '</div><div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
@@ -430,7 +475,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.paso === "fin") h = h.replace(/<\/div>$/, '<div class="galeria solo-movil">' + ["reunion-sala.jpg", "pitagoras-muestra-sistema.jpg", "apreton-arquimedes.jpg"].map(function (f) { return '<img src="' + FOTOS + f + '" alt="" loading="lazy">'; }).join("") + "</div>" + "</div>");
     h = h.replace(/<\/div>$/, ayuda() + "</div>");
     main.innerHTML = h;
-    lado(); menu();
+    lado(); menu(); guardarEstado(); relojReserva();
     enlazar();
   }
   // Términos y condiciones del servicio elegido: hay que aceptarlos antes de ver el QR
@@ -509,7 +554,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     document.querySelectorAll("[data-tf]").forEach(function (b) { b.onclick = function () { S.tipoFact = b.dataset.tf; cotizar(); }; });
     if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.plan) cotizar(); else pintar(); };
     if ($("chkTer")) $("chkTer").onchange = function () { S.acepta = this.checked; pintar(); };
-    if ($("bPagar")) $("bPagar").onclick = function () { if (S.cot && S.cot.ok && S.acepta) ir("pago"); };
+    if ($("bPagar")) $("bPagar").onclick = function () {
+      if (!(S.cot && S.cot.ok && S.acepta)) return;
+      if (S.serv !== "eeff") { ir("pago"); return; }
+      cargando("Reservando tu cupo…");
+      api({ action: "pas_reservar", nit: S.nit, servicio: "eeff" }).then(function (r) {
+        if (!r.ok) { ir("opcion", r.error); return; }
+        S.cot = r; if (r.reserva) S.resFin = Date.now() + r.reserva.quedanSeg * 1000; ir("pago");
+      });
+    };
+    if ($("bReservar")) $("bReservar").onclick = function () { S.cot = null; S.resFin = 0; S.img = ""; ir("opcion"); cotizar(); };
     if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? "datos" : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
@@ -529,7 +583,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bOtro")) $("bOtro").onclick = function () { reiniciarServicio(); ir("servicio"); };
   }
   document.getElementById("nAtras").onclick = function () { if (history.state && history.state.paso && history.state.paso !== "nit") history.back(); else ir("nit"); };
-  document.getElementById("nInicio").onclick = function () { reiniciarServicio(); S.cli = null; ir("nit"); };
+  document.getElementById("nInicio").onclick = function () { reiniciarServicio(); S.cli = null; try { localStorage.removeItem("pas-estado"); } catch (e) {} ir("nit"); };
   document.getElementById("nServ").onclick = function () { reiniciarServicio(); ir("servicio"); };
   // Botón de modo: Automático -> Claro -> Oscuro
   var TEMAS = { auto: ["Automático", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>'],
@@ -539,7 +593,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   document.getElementById("bTema").onclick = function () { var orden = ["auto", "claro", "oscuro"], t = pasTema.get(); pasTema.set(orden[(orden.indexOf(t) + 1) % 3]); pintarTema(); };
   pintarTema();
   // NIT por enlace: pagos.html?nit=123456
-  try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) S.nit = qn.replace(/\D/g, ""); } catch (e) {}
+  var porEnlace = false;
+  try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
+  if (!porEnlace && recuperarEstado() && S.paso !== "nit") { try { history.replaceState({ paso: "nit" }, ""); history.pushState({ paso: S.paso }, ""); } catch (e) {} }
   pintar();
 })();
 </script>

@@ -29,6 +29,11 @@ var EMPRESA = {
 var DISCLAIMER = "\"CONTAX no asume responsabilidad alguna por declaraciones presentadas fuera de plazo o multas derivadas de la falta de entrega oportuna de documentación por parte del cliente. Tampoco nos responsabilizamos por facturas que no sean válidas para la actividad registrada, o por cualquier otro motivo que pueda afectar el proceso. Es responsabilidad del cliente garantizar la entrega correcta y a tiempo de toda la documentación necesaria.\"";
 
 function doGet(e) {
+  // Diagnóstico: ?cuota=1 muestra cuántos correos quedan hoy (no muestra datos de clientes)
+  if (e && e.parameter && e.parameter.cuota === "1") {
+    var q; try { q = MailApp.getRemainingDailyQuota(); } catch (err) { q = "no disponible: " + err.message; }
+    return ContentService.createTextOutput(JSON.stringify({ correosRestantesHoy: q })).setMimeType(ContentService.MimeType.JSON);
+  }
   return ContentService.createTextOutput("PUENTE DE RECIBOS CONTAX activo. Usa POST para enviar una Orden de Recepción.")
     .setMimeType(ContentService.MimeType.TEXT);
 }
