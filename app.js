@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "31";
+const APP_VERSION = "32";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3708,7 +3708,7 @@ function paintControl() {
 //  de Apps Script (PASARELA.gs, en el mismo proyecto que los recibos).
 //  Config: config/app.pasarela  ·  QR por importe: config/pasarelaQR (campos m30, m50…)
 // ============================================================
-const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, fact: 20 }, diaDesde: 25, diaHasta: 30, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 350, capacidad: 30 }], destinoClaves: [] };
+const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 }, diaDesde: 25, diaHasta: 31, diaCierre: 5, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }], destinoClaves: [] };
 const PA_UI = { tab: "revision", cfg: null, qr: null, cupos: null };
 async function renderPasarela() {
   el("v-pasarela").innerHTML = `<h1>Pasarela de pagos</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
@@ -3723,7 +3723,8 @@ async function renderPasarela() {
 function paMontos() {
   const c = PA_UI.cfg, o = [];
   const add = (m, uso) => { m = Math.round(Number(m) || 0); if (!m) return; const ex = o.find(x => x.m === m); if (ex) ex.uso += " · " + uso; else o.push({ m, uso }); };
-  add(c.precios.sinMov, "Declaración sin movimiento"); add(c.precios.enFecha, "Declaración en fecha"); add(c.precios.fueraFecha, "Declaración fuera de fecha / atrasada");
+  add(c.precios.sinMov, "Plan Básico (sin movimiento)"); add(c.precios.enFecha, "Plan Estándar del 25 al 30"); add(c.precios.fueraFecha, "Plan Estándar del 1 al 5");
+  add(c.precios.premium, "Plan Premium"); add(c.precios.eeffOtros, "Balance · otros rubros");
   add(c.precios.fact, "Suscripción de facturación");
   (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
   return o.sort((a, b) => a.m - b.m);
@@ -3764,9 +3765,10 @@ function paintPasarela() {
     body = `${admin ? "" : `<p class="note">Solo un administrador puede cambiar precios y cupos.</p>`}
       <div class="grid2" style="gap:16px;align-items:start">
       <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Declaración mensual</h3>
-        <div class="grid3">${n("pa_sin", c.precios.sinMov, "Sin movimiento (Bs)")}${n("pa_en", c.precios.enFecha, "En fecha (Bs)")}${n("pa_fuera", c.precios.fueraFecha, "Fuera de fecha (Bs)")}</div>
-        <div class="grid2">${n("pa_d1", c.diaDesde, "En fecha desde el día")}${n("pa_d2", c.diaHasta, "hasta el día")}</div>
-        <p class="note" style="margin:0">Desde el día ${escape(String(c.diaDesde))} se declara el mes actual; antes, el mes anterior. Los meses atrasados cobran el precio fuera de fecha. Sin movimiento cuesta siempre lo mismo.</p>
+        <div class="grid2">${n("pa_sin", c.precios.sinMov, "Básico · sin movimiento (Bs)")}${n("pa_prem", c.precios.premium, "Premium · 101 a 200 facturas (Bs)")}</div>
+        <div class="grid2">${n("pa_en", c.precios.enFecha, "Estándar en fecha (Bs)")}${n("pa_fuera", c.precios.fueraFecha, "Estándar recepción tardía (Bs)")}</div>
+        <div class="grid2">${n("pa_d1", c.diaDesde, "Recepción en fecha desde el día")}${n("pa_cierre", c.diaCierre, "Recepción tardía hasta el día")}</div>
+        <p class="note" style="margin:0">Del día ${escape(String(c.diaDesde))} a fin de mes se recibe el mes actual a precio normal; del 1 al ${escape(String(c.diaCierre))} el mes anterior con recepción tardía; en los demás días la recepción está cerrada. Los meses atrasados pagan la tarifa del momento. El plan Estándar es solo para repartidores; las demás unipersonales pagan Premium.</p>
         <h3 style="margin:16px 0 10px">Suscripción de facturación</h3>
         <div class="grid2">${n("pa_fact", c.precios.fact, "Precio mensual (Bs)")}</div>
         <h3 style="margin:16px 0 10px">Cuenta que recibe los pagos</h3>
@@ -3775,7 +3777,7 @@ function paintPasarela() {
         <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600"><input type="checkbox" id="pa_activo" ${c.activo ? "checked" : ""} ${dis} style="width:auto"> Pasarela activa (los clientes pueden pagar)</label>
       </div>
       <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · cupos</h3>
-        <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}</div>
+        <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin cupos)")}</div>
         <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cuando se llena un cupo, el precio pasa al siguiente.</p>
         <table style="font-size:13px"><thead><tr><th>Cupo</th><th>Precio (Bs)</th><th>Cupos</th><th>Ocupados</th><th></th></tr></thead><tbody>
         ${PA_UI.cupos.map((x, i) => { const cap = Number(x.capacidad) || 0, ocup = Math.max(0, Math.min(cap, usadosEeff - acum)); acum += cap; return `<tr><td><b>${i + 1}</b></td><td><input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:90px" ${dis}></td><td><input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:80px" ${dis}></td><td class="mono">${ocup} / ${cap}</td><td>${admin ? `<button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>`; }).join("")}
@@ -3830,8 +3832,8 @@ async function paGuardar() {
   const v = id => Number(el(id).value) || 0;
   const pasarela = {
     activo: el("pa_activo").checked,
-    precios: { sinMov: v("pa_sin"), enFecha: v("pa_en"), fueraFecha: v("pa_fuera"), fact: v("pa_fact") },
-    diaDesde: v("pa_d1") || 25, diaHasta: v("pa_d2") || 30,
+    precios: { sinMov: v("pa_sin"), enFecha: v("pa_en"), fueraFecha: v("pa_fuera"), premium: v("pa_prem"), fact: v("pa_fact"), eeffOtros: v("pa_eeffo") },
+    diaDesde: v("pa_d1") || 25, diaHasta: 31, diaCierre: v("pa_cierre") || 5,
     eeffGestion: String(v("pa_gest") || new Date().getFullYear()),
     cupos: PA_UI.cupos.filter(x => Number(x.precio) > 0 && Number(x.capacidad) > 0),
     destinoClaves: el("pa_dest").value.split(",").map(x => x.trim()).filter(Boolean)

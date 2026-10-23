@@ -55,6 +55,16 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .check{width:84px;height:84px;border-radius:999px;background:var(--acento);display:flex;align-items:center;justify-content:center;margin:0 auto}
 .check.rev{background:var(--aviso)}
 .spin{width:28px;height:28px;border:3px solid var(--borde);border-top-color:var(--acento);border-radius:50%;animation:g 0.9s linear infinite;margin:0 auto}@keyframes g{to{transform:rotate(360deg)}}
+.hero{border-radius:16px;overflow:hidden;position:relative;aspect-ratio:16/10;background:#0B2B26}
+.hero img{width:100%;height:100%;object-fit:cover;display:block}
+.hero span{position:absolute;left:12px;bottom:10px;background:rgba(5,31,32,.72);color:#DAF1DE;font-size:11px;padding:4px 9px;border-radius:999px}
+details.info{background:var(--sup);border:1px solid var(--borde);border-radius:12px;padding:0 14px}
+details.info summary{cursor:pointer;padding:12px 0;font-size:14px;font-weight:600;color:var(--acento);list-style:none;display:flex;justify-content:space-between}
+details.info summary::after{content:"+";font-size:18px;line-height:1}details.info[open] summary::after{content:"–"}
+details.info .c{padding:0 0 14px;font-size:13px;line-height:20px;color:var(--txt)}
+details.info ul{margin:6px 0;padding-left:18px}details.info li{margin:3px 0}
+.etq{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--menta);color:var(--acento);margin-left:6px;vertical-align:middle}
+.tipos{display:flex;gap:8px;flex-wrap:wrap}.tipos button{flex:1;min-width:96px;height:44px;border:2px solid var(--borde);border-radius:10px;background:var(--sup);color:var(--txt);font-size:14px;cursor:pointer;font-family:inherit}.tipos button.sel{border-color:var(--acento);background:var(--menta);font-weight:600}
 footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave)}
 .oculto{display:none!important}
 </style>
@@ -74,7 +84,7 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
 (function () {
   "use strict";
   var URL_ = window.PASARELA_URL || "", WA = window.PASARELA_WHATSAPP || "";
-  var S = { paso: "nit", nit: "", cli: null, cfg: null, serv: "", opcion: "", per: null, cot: null, img: "", ver: null, fin: null, cargando: false, error: "" };
+  var S = { paso: "nit", nit: "", cli: null, cfg: null, serv: "", opcion: "", plan: "", tipoFact: "", per: null, cot: null, img: "", ver: null, fin: null, cargando: false, error: "" };
   var main = document.getElementById("main");
   var ICON = {
     decl: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#235347" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></svg>',
@@ -86,6 +96,30 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     reloj: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     subir: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#163832" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>'
   };
+  // Descripciones tomadas del Manual CONTAX
+  var INFO = {
+    decl: '<p>Cada mes hacemos tu declaración ante Impuestos Nacionales: consolidamos tu <b>RCV</b> (Registro de Compras y Ventas) y presentamos los <b>Formularios 200 (IVA)</b> y <b>400 (IT)</b>.</p>' +
+      '<ul><li>Si tienes facturas manuales, déjalas en nuestro <b>buzón (Av. Alemana, 7mo anillo)</b>, disponible a toda hora. Las electrónicas no hace falta.</li>' +
+      '<li>Al terminar, te enviamos por WhatsApp los formularios en PDF, el QR de pago de impuestos (si corresponde) y un resumen de tus compras y ventas.</li>' +
+      '<li>Cada pago cubre <b>un mes</b>. Si debes meses atrasados, se paga cada uno.</li></ul>' +
+      '<p><b>Fechas:</b> recibimos del <b>25 al 30</b> (precio normal) y del <b>1 al 5</b> (recepción tardía). Presentamos antes de tu vencimiento, que depende del último dígito de tu NIT (del día 13 al 22).</p>' +
+      '<p class="suave">No declarar a tiempo genera multas: RCV 100 UFV, Formulario 200 50 UFV y Formulario 400 50 UFV, que se acumulan cada mes.</p>',
+    planes: '<ul><li><b>Básico · Bs 30:</b> sin movimiento. No se ingresan facturas; consolidamos el RCV tal como está y presentamos los formularios.</li>' +
+      '<li><b>Estándar · Bs 50 / 60:</b> con movimiento, hasta <b>100 facturas</b> de compras y ventas al mes. Tarifa preferencial para repartidores de cualquier flota de delivery: Bs 50 pagando del 25 al 30, Bs 60 del 1 al 5.</li>' +
+      '<li><b>Premium · Bs 95:</b> de <b>101 a 200 facturas</b> al mes, o empresas unipersonales que no son repartidores.</li>' +
+      '<li><b>Personalizado · desde Bs 250:</b> más de 200 facturas al mes. Escríbenos por WhatsApp.</li></ul>',
+    eeff: '<p>Una vez al año presentamos tus estados financieros de la gestión. Elaboramos:</p>' +
+      '<ul><li>Balance general</li><li>Estado de resultados</li><li>Flujo de efectivo</li><li>Evolución del patrimonio</li><li>Notas a los estados financieros</li><li>Cuadro de activos fijos</li><li>Balance de sumas y saldos</li></ul>' +
+      '<p>Luego presentamos el <b>Formulario 500 (IUE, 25% de las utilidades)</b> y enviamos los estados financieros en digital con el <b>Formulario 605</b>. Con eso queda culminado y sin multa.</p>' +
+      '<p>Todo NIT abierto durante la gestión debe presentarlos, aunque se haya abierto el último día del año.</p>' +
+      '<p class="suave">Si no se presentan a tiempo, la multa es de 150 UFV (Formulario 500: 50 UFV y Formulario 605: 100 UFV). Pagando temprano aprovechas el precio más bajo: los cupos suben de precio a medida que se llenan.</p>',
+    fact: '<p>Durante todo el mes emitimos por ti tus facturas pendientes:</p>' +
+      '<ul><li><b>Repartidores de Yango:</b> una factura cada semana con el importe autorizado. Cada martes actualizamos tu portal NUMMEROS y la dejamos lista antes del jueves, para que cobres sin demoras.</li>' +
+      '<li><b>Repartidores de PedidosYa:</b> aproximadamente dos facturas al mes.</li>' +
+      '<li><b>Otros clientes:</b> si necesitas emitir una factura a uno de tus clientes, la emitimos nosotros.</li></ul>' +
+      '<p class="suave">Si la app no autoriza tu pago de la semana (por ejemplo, por no cumplir el mínimo de horas), no se emite factura esa semana.</p>'
+  };
+  function info(titulo, html, abierto) { return '<details class="info"' + (abierto ? " open" : "") + "><summary>" + titulo + '</summary><div class="c">' + html + "</div></details>"; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function bs(n) { return "Bs " + (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function wa(txt) { return WA ? "https://wa.me/" + WA + "?text=" + encodeURIComponent(txt || "Hola CONTAX, necesito ayuda con mi pago.") : "#"; }
@@ -107,7 +141,7 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     barras();
     var h = "";
     if (S.paso === "nit") {
-      h = '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1>Paga tu servicio en un minuto</h1>' +
+      h = '<div class="pila"><div class="hero"><img src="marca/clasicos/pitagoras-celular.jpg" alt="Pitágoras, de Los clásicos de los números, usando un celular"><span>Paga desde donde estés</span></div><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1>Paga tu servicio en un minuto</h1>' +
         '<p class="suave" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form></div>';
@@ -119,36 +153,54 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
         (c.id ? '<div class="fila"><span>Código de cliente</span><b>' + esc(c.id) + "</b></div>" : "") +
         (c.celular ? '<div class="fila"><span>Celular</span><b>' + esc(c.celular) + "</b></div>" : "") +
         '<div class="fila"><span>Correo</span><b>' + (c.correo ? esc(c.correo) : '<span style="color:#93370D">Sin correo</span>') + "</b></div>" +
-        (c.brinda ? '<div class="fila"><span>Plataforma</span><b>' + esc(c.brinda) + "</b></div>" : "") + "</div>" +
+        (c.brinda ? '<div class="fila"><span>Plataforma</span><b>' + esc(c.brinda) + "</b></div>" : "") +
+        (c.diaVence ? '<div class="fila"><span>Tu declaración vence</span><b>el día ' + esc(c.diaVence) + " de cada mes</b></div>" : "") + "</div>" +
         '<p class="chico suave">Por tu seguridad mostramos tu celular y correo ocultos.' + (c.tieneCorreo ? "" : " Como no tienes correo registrado, tu Orden de Recepción te la enviaremos por WhatsApp.") + "</p>" +
         '<button class="btn" id="bSi">Sí, soy yo · Elegir servicio</button><button class="btn2" id="bNo">No soy yo, cambiar NIT</button></div>';
     } else if (S.paso === "servicio") {
-      var p = S.cfg.precios, e = S.cfg.eeff;
+      var p = S.cfg.precios, e = S.cfg.eeff, ven = S.cfg.ventana || { abierta: true }, rep_ = !S.cli || S.cli.repartidor !== false;
+      var eeffTxt = rep_ ? (e.agotado ? "cupos agotados" : "por cupos · hoy Bs " + esc(e.actual.precio)) : "Bs " + esc(p.eeffOtros);
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
-        '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT del mes · desde Bs ' + esc(p.sinMov) + "</span></span></button>" +
-        '<button class="opc" data-s="eeff"' + (e.agotado ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros (Balance)</b><span>Gestión ' + esc(e.gestion) + (e.agotado ? " · cupos agotados" : " · por cupos · Bs " + esc(e.actual.precio)) + "</span></span></button>" +
-        '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
+        '<button class="opc" data-s="decl"' + (ven.abierta ? "" : " disabled") + '><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>' + (ven.abierta ? "IVA e IT del mes · desde Bs " + esc(p.sinMov) : "Recepción cerrada · abre el " + esc(ven.abreDia) + " de " + esc(ven.abreMes)) + "</span></span></button>" +
+        info("¿En qué consiste la declaración mensual?", INFO.decl) +
+        '<button class="opc" data-s="eeff"' + (rep_ && e.agotado ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros (Balance)</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
+        info("¿En qué consisten los estados financieros?", INFO.eeff) +
+        '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
+        info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
         '<button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "decl") {
-      var pr = S.cfg.precios, def = S.cfg.periodoDeclDefault, esDef = S.per && S.per.anio === def.anio && S.per.mes === def.mes;
-      var opts = [["sin", "Sin movimiento", "No compraste ni vendiste con factura"], ["elec", "Facturas electrónicas", "Solo facturas electrónicas"], ["man", "Facturas manuales", "Solo facturas en papel"], ["mix", "Mixtas", "Electrónicas y manuales"]];
+      var pr = S.cfg.precios, ven2 = S.cfg.ventana || {}, enF = ven2.tipo === "enFecha", esRep = !S.cli || S.cli.repartidor !== false;
+      var planes = [["basico", "Básico", "Sin movimiento: no compraste ni vendiste con factura", pr.sinMov]];
+      if (esRep) planes.push(["estandar", "Estándar", "Con facturas · hasta 100 al mes", enF ? pr.enFecha : pr.fueraFecha]);
+      planes.push(["premium", "Premium", esRep ? "Con facturas · de 101 a 200 al mes" : "Empresas unipersonales · hasta 200 facturas al mes", pr.premium]);
       h = '<div class="pila"><h2>Declaración mensual</h2><div><label class="l" for="selPer">Mes a declarar</label><select id="selPer">' +
-        S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(x.texto) + (i ? " (atrasado)" : "") + "</option>"; }).join("") + "</select></div>" +
-        '<p class="l" style="margin:4px 0 0">¿Qué tuviste ese mes?</p>' +
-        opts.map(function (o) { return '<button class="opc' + (S.opcion === o[0] ? " sel" : "") + '" data-o="' + o[0] + '"><span class="t"><b>' + o[1] + "</b><span>" + o[2] + '</span></span><span class="precio">' + (o[0] === "sin" ? "Bs " + esc(pr.sinMov) : "Bs " + esc(S.cot && S.cot.ok && S.opcion !== "sin" ? S.cot.monto : (esDef ? pr.enFecha + "/" + pr.fueraFecha : pr.fueraFecha))) + "</span></button>"; }).join("") +
-        avisoFecha() + errHtml() +
-        '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Pagar " + bs(S.cot.monto) : "Elige una opción") + '</button><button class="link" id="bVolver">Volver</button></div>';
+        S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(x.texto) + (i ? " (atrasado)" : "") + "</option>"; }).join("") + "</select>" +
+        '<p class="chico suave" style="margin-top:6px">Cada pago cubre un mes. Si debes varios, paga uno por uno.</p></div>' +
+        '<p class="l" style="margin:4px 0 0">Elige tu plan</p>' +
+        planes.map(function (o) { return '<button class="opc' + (S.plan === o[0] ? " sel" : "") + '" data-plan="' + o[0] + '"><span class="t"><b>' + o[1] + (o[0] === "estandar" ? '<span class="etq">Repartidores</span>' : "") + "</b><span>" + o[2] + '</span></span><span class="precio">Bs ' + esc(o[3]) + "</span></button>"; }).join("") +
+        '<a class="chico" href="' + wa("Hola CONTAX, tengo más de 200 facturas al mes y quiero el Plan Personalizado.") + '" target="_blank" rel="noopener" style="text-align:center">¿Más de 200 facturas al mes? Pide el Plan Personalizado por WhatsApp</a>' +
+        (S.plan && S.plan !== "basico" ? '<p class="l" style="margin:4px 0 0">¿Qué facturas tuviste?</p><div class="tipos">' +
+          [["elec", "Electrónicas"], ["man", "Manuales"], ["mix", "Ambas"]].map(function (t) { return '<button data-tf="' + t[0] + '" class="' + (S.tipoFact === t[0] ? "sel" : "") + '">' + t[1] + "</button>"; }).join("") + "</div>" +
+          (S.tipoFact === "man" || S.tipoFact === "mix" ? '<div class="aviso ok">Deja tus facturas manuales en nuestro <b>buzón de la Av. Alemana, 7mo anillo</b> (abierto a toda hora).</div>' : "") : "") +
+        avisoFecha() + info("Ver todos los planes", INFO.planes) + errHtml() +
+        '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Pagar " + bs(S.cot.monto) : "Elige tu plan") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "eeff") {
       var E = S.cfg.eeff;
+      var esRepE = !S.cli || S.cli.repartidor !== false;
+      if (!esRepE) {
+        h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
+          info("¿Qué incluye?", INFO.eeff, true) + errHtml() +
+          '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
+      } else
       h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + "</b></div></div>" +
         '<p class="l" style="margin:4px 0 0">Precio según cupo</p>' +
         E.cupos.map(function (c) { var act = E.actual && c.n === E.actual.n, lleno = c.libres <= 0;
           return '<div class="cupo' + (act ? " act" : "") + (lleno ? " lleno" : "") + '"><div style="display:flex;justify-content:space-between;align-items:center"><span><b>Cupo ' + c.n + '</b> <span class="chico" style="font-weight:700;margin-left:6px;color:' + (lleno ? "#B42318" : act ? "#235347" : "#557363") + '">' + (lleno ? "LLENO" : act ? "DISPONIBLE" : "SIGUIENTE") + '</span></span><span class="precio" style="color:' + (act ? "#163832" : "#557363") + '">Bs ' + esc(c.precio) + '</span></div><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><p class="chico suave">' + (lleno ? c.capacidad + " de " + c.capacidad + " cupos ocupados" : act ? "Quedan " + c.libres + " de " + c.capacidad + " · tu precio actual" : "Se habilita cuando se llene el cupo anterior") + "</p></div>"; }).join("") +
-        '<p class="chico suave">Cuando se llena un cupo, el precio pasa automáticamente al siguiente.</p>' + errHtml() +
+        '<p class="chico suave">Cuando se llena un cupo, el precio pasa automáticamente al siguiente. ¡Aprovecha temprano y paga menos!</p>' + info("¿Qué incluye?", INFO.eeff) + errHtml() +
         '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? "Reservar mi cupo · Pagar " + bs(S.cot.monto) : "Calculando…") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "opcion" && S.serv === "fact") {
       h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' +
-        '<div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + errHtml() +
+        '<div class="fila" style="border-top:1px solid #DAF1DE;margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + info("¿Qué incluye?", INFO.fact, true) + errHtml() +
         '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "pago") {
       var q = S.cot;
@@ -178,16 +230,15 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     enlazar();
   }
   function avisoFecha() {
-    if (!S.per || S.opcion === "sin") return "";
-    var pr = S.cfg.precios, def = S.cfg.periodoDeclDefault, esDef = S.per.anio === def.anio && S.per.mes === def.mes;
-    if (S.cot && S.cot.ok && S.cot.enFecha) return '<div class="aviso ok"><b>Estás en fecha: Bs ' + esc(pr.enFecha) + "</b><br>Pagando del " + S.cfg.diaDesde + " al " + S.cfg.diaHasta + " tienes el precio normal.</div>";
-    if (!esDef) return '<div class="aviso warn"><b>Mes atrasado: Bs ' + esc(pr.fueraFecha) + "</b><br>Las declaraciones atrasadas tienen el precio fuera de fecha. Sin movimiento siempre es Bs " + esc(pr.sinMov) + ".</div>";
-    return '<div class="aviso warn"><b>Pago fuera de fecha: Bs ' + esc(pr.fueraFecha) + "</b><br>El precio normal (Bs " + esc(pr.enFecha) + ") es pagando del " + S.cfg.diaDesde + " al " + S.cfg.diaHasta + " de cada mes.</div>";
+    if (S.plan !== "estandar") return "";
+    var pr = S.cfg.precios, ven = S.cfg.ventana || {};
+    if (ven.tipo === "enFecha") return '<div class="aviso ok"><b>Estás en fecha: Bs ' + esc(pr.enFecha) + "</b><br>Pagando del " + S.cfg.diaDesde + " a fin de mes tienes el precio normal.</div>";
+    return '<div class="aviso warn"><b>Recepción tardía: Bs ' + esc(pr.fueraFecha) + "</b><br>El precio normal (Bs " + esc(pr.enFecha) + ") es pagando del " + S.cfg.diaDesde + " al 30. La recepción cierra el día " + esc(S.cfg.diaCierre || 5) + ".</div>";
   }
   function cotizar() {
     S.cot = null; pintar();
-    var d = { action: "pas_cotizar", servicio: S.serv, opcion: S.opcion };
-    if (S.serv === "decl") { if (!S.opcion) return; d.anio = S.per.anio; d.mes = S.per.mes; }
+    var d = { action: "pas_cotizar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact };
+    if (S.serv === "decl") { if (!S.plan || (S.plan !== "basico" && !S.tipoFact)) { pintar(); return; } d.anio = S.per.anio; d.mes = S.per.mes; }
     api(d).then(function (r) { S.cot = r; S.error = r.ok ? "" : r.error; pintar(); });
   }
   function comprimir(file) {
@@ -224,11 +275,12 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
-      S.serv = b.dataset.s; S.opcion = ""; S.cot = null; S.per = S.cfg.periodoDeclDefault; S.img = ""; ir("opcion");
+      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.per = S.cfg.periodoDeclDefault; S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
-    document.querySelectorAll("[data-o]").forEach(function (b) { b.onclick = function () { S.opcion = b.dataset.o; cotizar(); }; });
-    if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.opcion) cotizar(); else pintar(); };
+    document.querySelectorAll("[data-plan]").forEach(function (b) { b.onclick = function () { S.plan = b.dataset.plan; if (S.plan === "basico") S.tipoFact = ""; cotizar(); }; });
+    document.querySelectorAll("[data-tf]").forEach(function (b) { b.onclick = function () { S.tipoFact = b.dataset.tf; cotizar(); }; });
+    if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.plan) cotizar(); else pintar(); };
     if ($("bPagar")) $("bPagar").onclick = function () { if (S.cot && S.cot.ok) ir("pago"); };
     if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? "datos" : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
@@ -237,7 +289,7 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
     };
     if ($("bVerif")) $("bVerif").onclick = function () {
       cargando("Leyendo tu comprobante con IA… (unos segundos)");
-      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, opcion: S.opcion, imagen: S.img };
+      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img };
       if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
       api(d).then(function (r) { if (!r.ok) { S.error = r.error; ir("pago"); return; } S.ver = r; ir("verif"); });
     };
@@ -246,7 +298,7 @@ footer{padding:12px 20px 18px;text-align:center;font-size:11px;color:var(--suave
       this.disabled = true; cargando("Registrando tu recepción…");
       api({ action: "pas_confirmar", token: S.ver.token }).then(function (r) { if (!r.ok) { S.error = r.error; ir("verif"); return; } S.fin = r; ir("fin"); });
     };
-    if ($("bOtro")) $("bOtro").onclick = function () { S.serv = ""; S.opcion = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; ir("servicio"); };
+    if ($("bOtro")) $("bOtro").onclick = function () { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; ir("servicio"); };
   }
   // NIT por enlace: pagos.html?nit=123456
   try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) S.nit = qn.replace(/\D/g, ""); } catch (e) {}

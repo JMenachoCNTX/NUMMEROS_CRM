@@ -24,10 +24,12 @@ var PAS = {
 var PAS_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 var PAS_DEF = {
   activo: true,
-  precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, fact: 20 },
-  diaDesde: 25, diaHasta: 30,
+  // Manual CONTAX: Básico 30 (sin movimiento) · Estándar 50 del 25 al 30 / 60 del 1 al 5 (repartidores, hasta 100 facturas)
+  // · Premium 95 (101 a 200 facturas, o unipersonales que no son repartidores) · Facturación 20 · Balance otros rubros desde 780
+  precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 },
+  diaDesde: 25, diaHasta: 31, diaCierre: 5,
   eeffGestion: String(new Date().getFullYear()),
-  cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 350, capacidad: 30 }],
+  cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }],
   destinoClaves: [],
   campos: {}
 };
@@ -76,7 +78,8 @@ function pasConfigPublica() {
   return {
     ok: true,
     empresa: "CONTAX - Contabilidad e Impuestos",
-    precios: c.precios, diaDesde: c.diaDesde, diaHasta: c.diaHasta,
+    precios: c.precios, diaDesde: c.diaDesde, diaHasta: c.diaHasta, diaCierre: c.diaCierre,
+    ventana: pasVentana_(c, hoy),
     periodoDeclDefault: pasPeriodoDeclDefault_(c, hoy),
     periodosDecl: pasPeriodosDecl_(c, hoy),
     eeff: pasCupoActual_(c),
@@ -88,14 +91,15 @@ function pasConfigPublica() {
 function pasBuscar(nitRaw) {
   var nit = String(nitRaw || "").replace(/\D/g, "");
   if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
-  var cli = pasClientePorNit_(nit);
+  var cli = pasClienteCache_(nit);
   if (!cli) return { ok: false, error: "No encontramos ese NIT. Revisa el número o escríbenos por WhatsApp para registrarte." };
   return {
     ok: true,
     cliente: {
       nombre: cli.nombre, nit: nit, id: cli.codigoId,
       celular: pasOcultar_(cli.celular, "cel"), correo: pasOcultar_(cli.correo, "mail"),
-      brinda: cli.brinda, tieneCorreo: !!cli.correo
+      brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli),
+      diaVence: 13 + Number(nit.slice(-1))
     }
   };
 }
@@ -118,6 +122,17 @@ function pasClientePorNit_(nit) {
     estMat: v("estMat", "Estado de La Matricula SEPREC"), estado: v("estado", "Estado Usuario")
   };
 }
+// Repartidores de cualquier flota de delivery tienen tarifa preferencial (Manual CONTAX)
+function pasEsRepartidor_(cli) {
+  return /YANGO|PEDIDOS|TADA|DELIVERY|MTG|MILTHAGOR|PARTNER|REPARTID|FLOTA|UBER|INDRIVE/i.test(String((cli && (cli.brinda + " " + cli.actP)) || ""));
+}
+function pasClienteCache_(nit) {
+  var k = "cli_" + nit, c = pasCache_(k);
+  if (c) return c;
+  var cli = pasClientePorNit_(nit);
+  if (cli) pasCachePut_(k, cli, 600);
+  return cli;
+}
 function pasOcultar_(v, tipo) {
   v = String(v || "");
   if (!v) return "";
@@ -136,6 +151,12 @@ function pasPeriodoDeclDefault_(c, hoy) {
   var a = hoy.anio, m = hoy.mes;
   if (hoy.dia < Number(c.diaDesde)) { m -= 1; if (m < 1) { m = 12; a -= 1; } }
   return { anio: a, mes: m, texto: PAS_MESES[m - 1] + " " + a };
+}
+// Recepción de declaraciones: del 25 a fin de mes (en fecha) · del 1 al 5 (tardía) · del 6 al 24 cerrada
+function pasVentana_(c, hoy) {
+  if (hoy.dia >= Number(c.diaDesde)) return { abierta: true, tipo: "enFecha" };
+  if (hoy.dia <= Number(c.diaCierre)) return { abierta: true, tipo: "tardia" };
+  return { abierta: false, tipo: "cerrada", abreDia: Number(c.diaDesde), abreMes: PAS_MESES[hoy.mes - 1] };
 }
 function pasPeriodosDecl_(c, hoy) {
   var d = pasPeriodoDeclDefault_(c, hoy), out = [], a = d.anio, m = d.mes;
@@ -157,19 +178,37 @@ function pasCupoActual_(c) {
 function pasCotizar(d) {
   var c = pasCfg(), hoy = pasHoy_(), s = d.servicio;
   if (s === "decl") {
+    var ven = pasVentana_(c, hoy);
+    if (!ven.abierta) return { ok: false, cerrada: true, error: "La recepción de declaraciones está cerrada. Abre el " + ven.abreDia + " de " + ven.abreMes + "." };
     var def = pasPeriodoDeclDefault_(c, hoy);
     var anio = Number(d.anio) || def.anio, mes = Number(d.mes) || def.mes;
     if (anio * 12 + mes > def.anio * 12 + def.mes) return { ok: false, error: "Ese mes todavía no se puede declarar." };
     var texto = PAS_MESES[mes - 1] + " " + anio;
-    var detalles = { sin: "DDJJ - Sin Movimiento", elec: "DDJJ - Facturas ELECTRÓNICAS", man: "DDJJ - Facturas MANUALES", mix: "DDJJ - Facturas MIXTAS (Electrónicas y Manuales)" };
-    var det = detalles[d.opcion]; if (!det) return { ok: false, error: "Elige el tipo de declaración." };
-    var esDefault = (anio === def.anio && mes === def.mes);
-    var enVentana = esDefault && hoy.dia >= Number(c.diaDesde) && hoy.dia <= Number(c.diaHasta);
-    var monto = d.opcion === "sin" ? Number(c.precios.sinMov) : (enVentana ? Number(c.precios.enFecha) : Number(c.precios.fueraFecha));
-    return { ok: true, monto: monto, enFecha: enVentana, servicio: "DECLARACIÓN MENSUAL", detalle: det, tipo: "declaracion",
-             periodo: { tipo: "mes", mes: mes, anio: String(anio), texto: texto }, resumen: "Declaración " + texto + " · " + det.replace("DDJJ - ", "") };
+    var cli = d.nit ? pasClienteCache_(String(d.nit).replace(/\D/g, "")) : null;
+    var repartidor = cli ? pasEsRepartidor_(cli) : true;
+    var tiposFact = { elec: "Facturas ELECTRÓNICAS", man: "Facturas MANUALES", mix: "Facturas MIXTAS (Electrónicas y Manuales)" };
+    var plan = d.plan || (d.opcion === "sin" ? "basico" : "estandar");
+    var tf = d.tipoFact || (d.opcion !== "sin" ? d.opcion : "");
+    var monto, det, planTxt, enFecha = ven.tipo === "enFecha";
+    if (plan === "basico") { monto = Number(c.precios.sinMov); det = "DDJJ - Sin Movimiento"; planTxt = "Plan Básico"; }
+    else {
+      if (!tiposFact[tf]) return { ok: false, error: "Elige qué facturas tuviste." };
+      if (plan === "estandar" && !repartidor) plan = "premium"; // las unipersonales que no son repartidores pagan Premium
+      if (plan === "estandar") { monto = enFecha ? Number(c.precios.enFecha) : Number(c.precios.fueraFecha); planTxt = "Plan Estándar"; }
+      else if (plan === "premium") { monto = Number(c.precios.premium); planTxt = "Plan Premium"; }
+      else return { ok: false, error: "Elige un plan." };
+      det = "DDJJ - " + tiposFact[tf];
+    }
+    return { ok: true, monto: monto, enFecha: enFecha, plan: plan, repartidor: repartidor, servicio: "DECLARACIÓN MENSUAL", detalle: det, tipo: "declaracion",
+             periodo: { tipo: "mes", mes: mes, anio: String(anio), texto: texto }, resumen: "Declaración " + texto + " · " + planTxt + (plan === "basico" ? " (sin movimiento)" : " · " + det.replace("DDJJ - ", "")) };
   }
   if (s === "eeff") {
+    var cliE = d.nit ? pasClienteCache_(String(d.nit).replace(/\D/g, "")) : null;
+    if (cliE && !pasEsRepartidor_(cliE)) {
+      var gO = String(c.eeffGestion || PAS_DEF.eeffGestion);
+      return { ok: true, monto: Number(c.precios.eeffOtros), servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: "",
+               periodo: { tipo: "gestion", mes: "", anio: gO, texto: "Gestión " + gO }, resumen: "Estados financieros gestión " + gO };
+    }
     var e = pasCupoActual_(c);
     if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + e.gestion + ". Escríbenos por WhatsApp." };
     return { ok: true, monto: e.actual.precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: e.actual.n,
@@ -189,7 +228,7 @@ function pasQR_(monto) {
 
 // ---------------- Verificar comprobante con IA ----------------
 function pasVerificar(d) {
-  var cli = pasClientePorNit_(String(d.nit || "").replace(/\D/g, ""));
+  var cli = pasClienteCache_(String(d.nit || "").replace(/\D/g, ""));
   if (!cli) return { ok: false, error: "No encontramos tu NIT." };
   var cot = pasCotizar(d);
   if (!cot.ok) return cot;
@@ -270,7 +309,7 @@ function pasConfirmar(token) {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     if (pasCache_("hecho_" + token)) return pasCache_("hecho_" + token);
-    var cli = pasClientePorNit_(v.nit);
+    var cli = pasClienteCache_(v.nit);
     if (!cli) return { ok: false, error: "No encontramos tu NIT." };
     var x = v.x || {}, cot = v.cot, hoy = pasHoy_();
     var nro = String(x.nroOperacion || "").replace(/\s/g, "");
