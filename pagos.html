@@ -127,6 +127,10 @@ main > .pila{animation:entra .35s ease both}
 .nav button{display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1.5px solid var(--borde);border-radius:999px;background:var(--sup);color:var(--acento);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
 .nav button:active{transform:scale(.97)}
 .nav.oculto{display:none}
+.cbar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:9px 14px;background:linear-gradient(90deg,#0B2B26,#235347);color:#DAF1DE;font-size:12.5px;position:sticky;top:0;z-index:25}
+.cbar b{font-family:Akshar,sans-serif;font-size:18px;color:#fff;letter-spacing:.5px}
+.cbar .u{display:inline-flex;align-items:baseline;gap:2px}.cbar .u small{font-size:10px;color:#9DC2AA;margin-right:4px}
+.cbar.oculto{display:none}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
 .opc,.subir,.btn2,.link,.seg,.ayuda{color:var(--acento)}
 .opc .ic{color:var(--acento)}
@@ -156,6 +160,7 @@ html.oscuro .app{background:var(--fondo)}
 .contador .num{font-family:Akshar,sans-serif;font-size:64px;line-height:64px;font-weight:700}
 .contador .de{font-size:14px;color:#DAF1DE}
 .contador .pr{margin-top:8px;display:inline-block;align-self:center;background:rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;font-weight:700;font-family:Akshar,sans-serif;font-size:20px}
+.contador.poco{background:linear-gradient(135deg,#D92D20,#7A1A12)}.contador.poco .num{animation:latir 1.2s ease-in-out infinite}
 .contador.agot{background:linear-gradient(135deg,#B42318,#7A1A12)}
 .fases{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .reloj{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -231,6 +236,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   </header>
   <div class="barras" id="barras" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="pasos" id="pasos" aria-hidden="true"><div><i></i>Tu NIT</div><div><i></i>Servicio</div><div><i></i>Plan</div><div><i></i>Pago</div><div><i></i>Listo</div></div>
+  <div class="cbar oculto" id="cbar" role="timer" aria-live="off"></div>
   <nav class="nav oculto" id="nav" aria-label="Navegación">
     <button type="button" id="nAtras"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Atrás</button>
     <button type="button" id="nServ"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Cambiar servicio</button>
@@ -341,7 +347,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   // Paso al que se puede volver con los datos que hay
   function pasoValido(p) {
-    if (p === "nit") return true;
+    if (p === "nit" || p === "cuenta") return true;
     if (!S.cli || !S.cfg) return false;
     if (p === "datos" || p === "servicio") return true;
     if (S.fin) return false;                  // ya se pagó: no volver al QR ni al comprobante
@@ -353,6 +359,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   window.addEventListener("popstate", function (ev) {
     var p = ev.state && ev.state.paso;
     if (!p) p = "nit";
+    if (!previa && lanzMs() > Date.now()) p = "cuenta";
     if (S.fin && p !== "fin") { reiniciarServicio(); p = "servicio"; }
     if (!pasoValido(p)) p = S.cli && S.cfg ? "servicio" : "nit";
     ir(p, "", true);
@@ -419,11 +426,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<button class="btn" id="bSi">Sí, soy yo · Elegir servicio</button><button class="btn2" id="bNo">No soy yo, cambiar NIT</button></div>';
     } else if (S.paso === "servicio") {
       var p = S.cfg.precios, e = S.cfg.eeff, ven = S.cfg.ventana || { abierta: true }, rep_ = !S.cli || S.cli.repartidor !== false;
-      var eeffTxt = rep_ ? (e.agotado ? "cupos agotados" : "Fase " + esc(e.actual.n) + " · hoy Bs " + esc(e.actual.precio)) : "Bs " + esc(p.eeffOtros);
+      var balCli = balanceDelCliente();
+      var eeffTxt = rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
         '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT · ' + (ven.tipo === "adelantado" ? "puedes pagar por adelantado · " : "") + "desde Bs " + esc(p.sinMov) + "</span></span></button>" +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
-        '<button class="opc" data-s="eeff"' + (rep_ && e.agotado ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros (Balance)</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
+        '<button class="opc" data-s="eeff"' + (rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
         info("¿En qué consisten los estados financieros?", INFO.eeff) +
         '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
         info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
@@ -457,7 +465,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         var aplica = function (c) { return !c.nitDesde || (!!apNit && apNit >= c.nitDesde); };
         var A = null; E.cupos.forEach(function (c) { if (!A && c.libres > 0 && aplica(c)) A = c; });
         var nomb = function (c) { return c.nombre || ("Balance " + c.n); };
-        var contador = A ? '<div class="contador"><span class="fase">' + esc(nomb(A)) + ' · habilitado</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
+        var contador = A ? '<div class="contador' + (A.libres <= 10 ? " poco" : "") + '">' + (A.libres <= 10 ? '<span class="fase" style="color:#FFE1DC">¡Últimos cupos!</span>' : "") + '<span class="fase">' + esc(nomb(A)) + ' · habilitado</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
           : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todos los balances. Escríbenos por WhatsApp.</span></div>';
         var premiosDe = function (c) { return (S.cfg.premios || []).filter(function (p) { return p.servicio === "eeff" && (!p.fase || Number(p.fase) === c.n); }); };
         var fases = '<div class="fases">' + E.cupos.map(function (c) {
@@ -485,7 +493,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         var vencida = S.resFin && Date.now() > S.resFin;
         resHtml = vencida
           ? '<div class="aviso warn" id="resBox"><b>Tu reserva venció.</b><br>Si ya pagaste, sube tu comprobante igual: revisamos la hora del pago y respetamos tu precio. Si aún no pagaste, reserva de nuevo para ver el precio actual.<button class="btn2" id="bReservar" style="margin-top:10px">Reservar de nuevo</button></div>'
-          : '<div class="aviso ok" id="resBox"><b>Tu cupo de la Fase ' + esc(q.reserva.fase) + " está reservado a " + bs(q.reserva.precio) + '</b><br>Tienes <b id="cuenta">--:--</b> minutos para pagar. Si se te corta el internet o tardas en subir el comprobante, no te preocupes: si pagaste dentro de este tiempo, respetamos tu precio.</div>';
+          : '<div class="aviso ok" id="resBox"><b>Tu cupo del ' + esc(q.reserva.nombre || ("Balance " + q.reserva.fase)) + " está reservado a " + bs(q.reserva.precio) + '</b><br>Tienes <b id="cuenta">--:--</b> minutos para pagar. Si se te corta el internet o tardas en subir el comprobante, no te preocupes: si pagaste dentro de este tiempo, respetamos tu precio.</div>';
       }
       h = '<div class="pila"><h2>Paga con QR</h2>' + resHtml + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
         (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
@@ -526,7 +534,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.paso === "fin") h = h.replace(/<\/div>$/, '<div class="galeria solo-movil">' + ["reunion-sala.jpg", "pitagoras-muestra-sistema.jpg", "apreton-arquimedes.jpg"].map(function (f) { return '<img src="' + FOTOS + f + '" alt="" loading="lazy">'; }).join("") + "</div>" + "</div>");
     h = h.replace(/<\/div>$/, ayuda() + "</div>");
     main.innerHTML = h;
-    lado(); menu(); guardarEstado(); relojReserva(); relojCuenta();
+    lado(); menu(); guardarEstado(); relojReserva(); relojCuenta(); barraCuenta();
     enlazar();
   }
   // Términos y condiciones del servicio elegido: hay que aceptarlos antes de ver el QR
@@ -560,6 +568,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<label style="display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;line-height:20px;color:inherit;font-weight:600"><input type="checkbox" id="chkUtil"' + (S.aceptaUtil ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:#B42318"> <span>Entiendo y acepto: si mi empresa tiene utilidad, se declarará tal como es.</span></label></div>';
   }
   function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || S.aceptaUtil); }
+  // Balance que le toca a este cliente (el ¡Nuevos! solo si su NIT es nuevo)
+  function balanceDelCliente() {
+    var E = S.cfg && S.cfg.eeff; if (!E) return null;
+    var ap = S.cli && S.cli.aperturaNit, r = null;
+    (E.cupos || []).forEach(function (c) { if (!r && c.libres > 0 && (!c.nitDesde || (ap && ap >= c.nitDesde))) r = c; });
+    return r;
+  }
   // Multas por no presentar estados financieros, en bolivianos con la UFV del día (BCB)
   function multasHtml() {
     var u = S.cfg.ufv || {}, m = S.cfg.multasEeff || { f500: 50, f605: 100 }, v = Number(u.valor) || 0;
@@ -686,6 +701,20 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var hh = bo.getUTCHours(), mm = ("0" + bo.getUTCMinutes()).slice(-2), ap = hh >= 12 ? "p. m." : "a. m."; var h12 = hh % 12 || 12;
     return "Abrimos el " + dias[bo.getUTCDay()] + " " + bo.getUTCDate() + " de " + meses[bo.getUTCMonth()] + " a las " + h12 + ":" + mm + " " + ap;
   }
+  // Barra de cuenta regresiva arriba (en todas las pantallas) y en el título de la pestaña del navegador
+  var tituloBase = document.title, cbarT = null;
+  function barraCuenta() {
+    var bar = document.getElementById("cbar"); if (!bar) return;
+    function tic() {
+      var q = Math.floor((lanzMs() - Date.now()) / 1000);
+      if (!lanzMs() || q <= 0 || S.paso === "cuenta") { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) { document.title = tituloBase; clearInterval(cbarT); } return; }
+      var d = Math.floor(q / 86400), h = Math.floor(q % 86400 / 3600), m = Math.floor(q % 3600 / 60), sg = q % 60, z = function (n) { return ("0" + n).slice(-2); };
+      bar.classList.remove("oculto");
+      bar.innerHTML = "<span>Lanzamiento en</span>" + '<span class="u"><b>' + z(d) + "</b><small>días</small></span>" + '<span class="u"><b>' + z(h) + "</b><small>h</small></span>" + '<span class="u"><b>' + z(m) + "</b><small>min</small></span>" + '<span class="u"><b>' + z(sg) + "</b><small>s</small></span>";
+      document.title = z(d) + "d " + z(h) + "h " + z(m) + "m · " + tituloBase;
+    }
+    clearInterval(cbarT); tic(); cbarT = setInterval(tic, 1000);
+  }
   var relojCuentaT = null;
   function relojCuenta() {
     clearInterval(relojCuentaT);
@@ -694,7 +723,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var q = Math.max(0, Math.floor((lanzMs() - Date.now()) / 1000));
       var set = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = ("0" + v).slice(-2); };
       set("cD", Math.floor(q / 86400)); set("cH", Math.floor(q % 86400 / 3600)); set("cM", Math.floor(q % 3600 / 60)); set("cS", q % 60);
-      if (q <= 0) { clearInterval(relojCuentaT); S.paso = "nit"; pintar(); }
+      document.title = ("0" + Math.floor(q / 86400)).slice(-2) + "d " + ("0" + Math.floor(q % 86400 / 3600)).slice(-2) + "h " + ("0" + Math.floor(q % 3600 / 60)).slice(-2) + "m · " + tituloBase;
+      if (q <= 0) { clearInterval(relojCuentaT); document.title = tituloBase; S.paso = "nit"; pintar(); }
     }
     tic(); relojCuentaT = setInterval(tic, 1000);
   }
@@ -703,13 +733,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
   if (!porEnlace && recuperarEstado() && S.paso !== "nit") { try { history.replaceState({ paso: "nit" }, ""); history.pushState({ paso: S.paso }, ""); } catch (e) {} }
   var previa = false; try { previa = new URLSearchParams(location.search).get("vista") === "previa"; } catch (e) {}
-  if (S.paso === "nit" || !S.cfg) {
-    cargando("Cargando…");
-    api({ action: "pas_config" }).then(function (r) {
-      if (r && r.ok) { S.cfg = r; if (!previa && lanzMs() > Date.now()) S.paso = "cuenta"; }
-      pintar();
-    });
-  } else pintar();
+  cargando("Cargando…");
+  api({ action: "pas_config" }).then(function (r) {
+    if (r && r.ok) { var guardado = S.cfg; S.cfg = r; if (guardado && guardado.eeff && S.paso !== "nit") S.cfg = Object.assign({}, r); }
+    if (!previa && lanzMs() > Date.now()) { S.paso = "cuenta"; try { history.replaceState({ paso: "cuenta" }, ""); } catch (e) {} }
+    pintar();
+  });
 })();
 </script>
 </body>

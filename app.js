@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "44";
+const APP_VERSION = "45";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4028,6 +4028,7 @@ async function renderPasarela() {
   PA_UI.cfg = Object.assign(JSON.parse(JSON.stringify(PAS_DEF)), p, { precios: Object.assign({}, PAS_DEF.precios, p.precios || {}) });
   PA_UI.cupos = (PA_UI.cfg.cupos || []).map(c => Object.assign({}, c));
   PA_UI.premios = null;
+  EEFF_DESDE = eeffDesdeDe(PA_UI.cfg);
   // Cada QR vive en su propio documento (config/qr_m50, config/qr_m60…) para no pasar el límite de 1 MB por documento
   PA_UI.qr = {};
   try { const q = await getDoc(doc(db, "config", "pasarelaQR")); if (q.exists()) Object.assign(PA_UI.qr, q.data()); } catch (e) {}
@@ -4062,7 +4063,7 @@ async function eeffReservasScript() {
 function eeffRecsPorPrecio(g) {
   const m = {};
   (RC.docs || []).forEach(r => {
-    if (!recValida(r) || recCatDe(r) !== "eeff" || eeffGestionDe(r) !== String(g)) return;
+    if (!recValida(r) || recCatDe(r) !== "eeff" || eeffGestionDe(r) !== String(g) || !eeffCuenta(r)) return;
     (m[eeffPrecioKey(r)] = m[eeffPrecioKey(r)] || []).push(r);
   });
   Object.values(m).forEach(l => l.sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || "")));
@@ -4070,6 +4071,7 @@ function eeffRecsPorPrecio(g) {
 }
 async function eeffFasesCfg() {
   const cfg = await loadConfigDoc(), p = cfg.pasarela || {};
+  EEFF_DESDE = eeffDesdeDe(p);
   return { gestion: String(p.eeffGestion || PAS_DEF.eeffGestion), cupos: (p.cupos && p.cupos.length ? p.cupos : PAS_DEF.cupos).map(c => Object.assign({}, c)),
            otros: Number((p.precios && p.precios.eeffOtros) || PAS_DEF.precios.eeffOtros) };
 }
@@ -4098,7 +4100,7 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
   const fuera = Object.keys(recs).filter(k => precios.indexOf(k) < 0);
   return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Balance</th><th>Precio${opts.editable ? " (Bs)" : ""}</th><th>Cupos</th><th>Vendidos</th><th>Reservados</th><th>Libres</th><th>Estado</th>${conM ? '<th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th>' : ""}<th></th></tr></thead><tbody>${filas}
     <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">Total · ${tCap} cupos</td><td class="mono">${tVen}</td><td class="mono">${tRes}</td><td class="mono">${Math.max(0, tCap - tVen - tRes)}</td><td></td>${conM ? `<td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td>` : ""}<td></td></tr></tbody></table></div>
-    <p class="note" style="margin:8px 0 0">Reservados = clientes que están pagando ahora en la pasarela (tienen 30 minutos). Toca «Ver» para la lista de quienes pagaron en cada fase.${conM ? " Ingreso proyectado = precio × cupos · Ya vendido = precio × vendidos · Por vender = precio × libres." : ""}</p>
+    <p class="note" style="margin:8px 0 0">Solo cuentan los balances recepcionados desde el ${escape(EEFF_DESDE.split("-").reverse().join("/"))} (se cambia en Balances y beneficios). Reservados = clientes que están pagando ahora en la pasarela (tienen 30 minutos). Toca «Ver» para la lista de quienes pagaron en cada fase.${conM ? " Ingreso proyectado = precio × cupos · Ya vendido = precio × vendidos · Por vender = precio × libres." : ""}</p>
     ${dup.length ? `<p class="msg err" style="margin:6px 0 0">Dos fases tienen el mismo precio (Bs ${escape(dup.join(", "))}). Cada fase debe tener un precio distinto para contar bien los cupos.</p>` : ""}
     ${fuera.length ? `<p class="note" style="margin:6px 0 0">Balances con precios que no son de ninguna fase (no ocupan cupos): ${fuera.map(k => `Bs ${escape(k)} × ${recs[k].length}`).join(" · ")}.</p>` : ""}`;
 }
@@ -4175,11 +4177,15 @@ function recFasePintar(autollenar) {
 // ===== Conteo de balances por fase (por precio) =====
 // config/eeffConteo_<gestión> = { porPrecio: { "250": 40, "300": 3 }, total }
 // Lo suma la pasarela al aprobar, lo suma el panel al registrar, y el admin lo recalcula desde las recepciones.
+// Solo cuentan para las fases los balances recepcionados desde esta fecha (antes = pruebas)
+let EEFF_DESDE = "2026-10-26";
+function eeffDesdeDe(p) { p = p || {}; return String(p.contarDesde || (p.lanzamiento ? String(p.lanzamiento).slice(0, 10) : "") || "2026-10-26"); }
+function eeffCuenta(r) { const f = String(r.fechaISO || r.fechaPago || ""); return !EEFF_DESDE || (f && f.slice(0, 10) >= EEFF_DESDE); }
 function eeffGestionDe(r) { return String(recGestionEEFF(r) || r.periodoAnio || ""); }
 function eeffPrecioKey(r) { return String(Math.round(Number(r.importe) || 0)); }
 async function eeffContar(r, signo) {
   try {
-    if (recCatDe(r) !== "eeff") return;
+    if (recCatDe(r) !== "eeff" || !eeffCuenta(r)) return;
     const g = eeffGestionDe(r); if (!g) return;
     // Solo si el conteo ya existe (lo crea el admin al abrir Pasarela con el total correcto)
     await updateDoc(doc(db, "config", "eeffConteo_" + g), new FieldPath("porPrecio", eeffPrecioKey(r)), increment(signo || 1), "total", increment(signo || 1), "actualizadoMs", Date.now());
@@ -4188,7 +4194,7 @@ async function eeffContar(r, signo) {
 function eeffConteoLocal(g) {
   const porPrecio = {}; let total = 0;
   (RC.docs || []).forEach(r => {
-    if (!recValida(r) || recCatDe(r) !== "eeff" || eeffGestionDe(r) !== String(g)) return;
+    if (!recValida(r) || recCatDe(r) !== "eeff" || eeffGestionDe(r) !== String(g) || !eeffCuenta(r)) return;
     const k = eeffPrecioKey(r); porPrecio[k] = (porPrecio[k] || 0) + 1; total++;
   });
   return { porPrecio, total };
@@ -4269,7 +4275,9 @@ function paintPasarela() {
     body = `${admin ? "" : `<p class="note">Solo un administrador puede cambiar esto.</p>`}
       <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Lanzamiento de la pasarela</h3>
         <p class="note" style="margin:0 0 8px">Antes de esta fecha y hora (Bolivia), los clientes ven una cuenta regresiva. Tú puedes probarla igual con <span class="mono">pagos.html?vista=previa</span>. Deja vacío para no mostrar cuenta regresiva.</p>
-        <input id="pa_lanz" type="datetime-local" value="${escape(lzLocal)}" ${dis}></div>
+        <input id="pa_lanz" type="datetime-local" value="${escape(lzLocal)}" ${dis}>
+        <div class="field" style="margin-top:10px;max-width:320px"><label>Contar balances para las fases desde</label><input id="pa_desde" type="date" value="${escape(eeffDesdeDe(c))}" ${dis}>
+        <div class="note" style="margin-top:3px">Los balances recepcionados antes de esta fecha (pruebas o de otra campaña) no ocupan cupos.</div></div></div>
       <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Balances (estados financieros)</h3>
         <p class="note" style="margin:0 0 10px">Nombre que ve el cliente y qué incluye cada balance (una línea por punto). "NIT desde" limita el balance a clientes con NIT abierto desde esa fecha (déjalo vacío para todos).</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
@@ -4354,10 +4362,13 @@ function paintPasarela() {
     V.querySelectorAll(".pa-bd").forEach(i => { PA_UI.cupos[+i.dataset.i].nitDesde = i.value || ""; });
     V.querySelectorAll(".pa-bi").forEach(i => { PA_UI.cupos[+i.dataset.i].incluye = lineas(i.value); });
     const lz = el("pa_lanz").value ? el("pa_lanz").value + ":00-04:00" : "";
+    const contarDesde = el("pa_desde").value || "";
     const beneficios = { basico: lineas(el("pa_ben_basico").value), estandar: lineas(el("pa_ben_estandar").value), premium: lineas(el("pa_ben_premium").value), fact: lineas(el("pa_ben_fact").value) };
     try {
-      await setDoc(doc(db, "config", "app"), { pasarela: { cupos: PA_UI.cupos, beneficios, lanzamiento: lz }, updatedAt: serverTimestamp() }, { merge: true });
-      Object.assign(PA_UI.cfg, { cupos: PA_UI.cupos, beneficios, lanzamiento: lz });
+      await setDoc(doc(db, "config", "app"), { pasarela: { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde }, updatedAt: serverTimestamp() }, { merge: true });
+      Object.assign(PA_UI.cfg, { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde });
+      EEFF_DESDE = eeffDesdeDe(PA_UI.cfg);
+      try { await eeffSincronizarConteo(PA_UI.cfg.eeffGestion, true); } catch (e) {}
       paintPasarela(); const m2 = el("pa_msg_bal"); if (m2) { m2.className = "msg ok"; m2.textContent = "Guardado. Los clientes ya lo ven en la pasarela."; }
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
