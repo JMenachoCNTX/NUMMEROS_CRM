@@ -31,8 +31,52 @@ var PAS_DEF = {
   eeffGestion: String(new Date().getFullYear()),
   cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }],
   destinoClaves: [],
-  campos: {}
+  campos: {},
+  // Lanzamiento: antes de esta fecha la página de pagos muestra una cuenta regresiva
+  lanzamiento: "2026-10-26T10:30:00-04:00",
+  // Beneficios de cada plan (se muestran en la pasarela; se editan en el panel)
+  beneficios: {
+    basico: ["Declaración sin movimiento (IVA e IT) presentada a tiempo", "Consolidación de tu RCV antes del día 9", "Tus formularios en tu Portal de Clientes NUMMEROS"],
+    estandar: ["Hasta 100 facturas de compras y ventas al mes", "Control de tu RCV y alertas de vencimiento", "Acceso a tu Portal de Clientes NUMMEROS con tus reportes", "Resumen mensual de tus compras y ventas", "Mes de tu cumpleaños sin cobro"],
+    premium: ["De 101 a 200 facturas al mes", "Todo lo del Plan Estándar", "Atención prioritaria", "Revisión de tu NIT, matrícula de comercio y ROE"],
+    fact: ["Facturación automática semanal (repartidores Yango)", "Tu factura lista antes del jueves", "Historial de tus facturas en tu Portal de Clientes NUMMEROS"]
+  },
+  // Premios: "fijo" = para todos los que pagan ese servicio/balance; "azar" = N ganadores entre los próximos M pagos
+  premios: [
+    { id: "p1", nombre: "¡Balance gratis!", descripcion: "Te devolvemos el 100% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p2", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p3", nombre: "10% de descuento en tus declaraciones por 1 año", descripcion: "Código de descuento para todas tus declaraciones durante 12 meses.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p4", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p5", nombre: "1 mes de Suscripción de Facturación gratis", descripcion: "Para usar cuando quieras durante la gestión.", servicio: "eeff", fase: 5, tipo: "fijo" },
+    { id: "p6", nombre: "Mes de tu cumpleaños sin cobro", descripcion: "Tu declaración del mes de tu cumpleaños no tiene costo.", servicio: "eeff", fase: 4, tipo: "fijo" }
+  ]
 };
+// Nombres y contenido por defecto de cada balance (fase). El admin los puede cambiar en el panel.
+var PAS_BAL_DEF = [
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026", "Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605"] },
+  { nombre: "Balance Esencial", incluye: ["Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605", "2 beneficios CONTAX"] },
+  { nombre: "Balance Plus", incluye: ["Todo lo del Balance Esencial", "Libro Diario y Libro Mayor", "5 beneficios CONTAX"] },
+  { nombre: "Balance Pro", incluye: ["Todo lo del Balance Plus", "Reunión para explicarte tu resultado", "7 beneficios CONTAX"] },
+  { nombre: "Balance Total", incluye: ["Todo lo del Balance Pro", "Atención prioritaria en la entrega", "Los 10 beneficios CONTAX"] }
+];
+function pasBalInfo_(c, i) {
+  var x = (c.cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {};
+  return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: (x.incluye && x.incluye.length) ? x.incluye : (d.incluye || []),
+           nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") };
+}
+// Fecha (aaaa-mm-dd) desde los formatos de la Base de Datos
+function pasFechaISO_(v) {
+  var t = String(v || "").trim(), m;
+  if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + "-" + m[2] + "-" + m[3];
+  if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+  return "";
+}
+// ¿Este cliente puede tomar este balance? (el ¡Nuevos! es solo para NIT abiertos desde cierta fecha)
+function pasBalAplica_(info, cli) {
+  if (!info.nitDesde) return true;
+  var f = cli ? pasFechaISO_(cli.fechaNit) : "";
+  return !!f && f >= info.nitDesde;
+}
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
@@ -126,7 +170,9 @@ function pasConfigPublica() {
     eeff: pasCupoActual_(c),
     ufv: pasUfv_(), multasEeff: { f500: 50, f605: 100 },
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
-    terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF
+    terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
+    beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "",
+    premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
 
@@ -142,7 +188,7 @@ function pasBuscar(nitRaw) {
     cliente: {
       nombre: cli.nombre, nit: nit, id: cli.codigoId,
       celular: pasOcultar_(cli.celular, "cel"), correo: pasOcultar_(cli.correo, "mail"),
-      brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli),
+      brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli), aperturaNit: pasFechaISO_(cli.fechaNit),
       diaVence: 13 + Number(nit.slice(-1))
     }
   };
@@ -303,7 +349,7 @@ function pasConteoEeff_(g) {
   var d = fsGet_("config/eeffConteo_" + g);
   return d && d.porPrecio ? d.porPrecio : null;
 }
-function pasCupoActual_(c, excluirNit) {
+function pasCupoActual_(c, excluirNit, cli) {
   var g = String(c.eeffGestion || PAS_DEF.eeffGestion);
   var res = pasReservas_(g), ahora = Date.now(), resPorFase = {}, reservados = 0;
   Object.keys(res).forEach(function (n) { if (n !== excluirNit && res[n].exp > ahora) { reservados++; resPorFase[res[n].precio] = (resPorFase[res[n].precio] || 0) + 1; } });
@@ -312,7 +358,8 @@ function pasCupoActual_(c, excluirNit) {
     cupos = (c.cupos || []).map(function (x, i) {
       var cap = Number(x.capacidad) || 0, pr = Number(x.precio) || 0;
       var ocup = Math.min(cap, (Number(porPrecio[String(Math.round(pr))]) || 0) + (resPorFase[pr] || 0));
-      return { n: i + 1, precio: pr, capacidad: cap, ocupados: ocup, libres: cap - ocup, reservados: resPorFase[pr] || 0 };
+      var inf = pasBalInfo_(c, i);
+      return { n: i + 1, precio: pr, capacidad: cap, ocupados: ocup, libres: cap - ocup, reservados: resPorFase[pr] || 0, nombre: inf.nombre, incluye: inf.incluye, nitDesde: inf.nitDesde };
     });
   } else {
     // Respaldo (si todavía no existe el conteo): se reparten en orden
@@ -320,11 +367,16 @@ function pasCupoActual_(c, excluirNit) {
     cupos = (c.cupos || []).map(function (x, i) {
       var cap = Number(x.capacidad) || 0, desde = acum; acum += cap;
       var ocup = Math.max(0, Math.min(cap, tomados - desde));
-      return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup };
+      var inf = pasBalInfo_(c, i);
+      return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup, nombre: inf.nombre, incluye: inf.incluye, nitDesde: inf.nitDesde };
     });
   }
   var actual = null;
-  for (var i = 0; i < cupos.length; i++) if (cupos[i].libres > 0) { actual = cupos[i]; break; }
+  for (var i = 0; i < cupos.length; i++) {
+    if (cupos[i].libres <= 0) continue;
+    if (cupos[i].nitDesde && (cli === undefined || !pasBalAplica_(cupos[i], cli))) continue;   // sin cliente, no se ofrece el ¡Nuevos!
+    actual = cupos[i]; break;
+  }
   return { gestion: g, cupos: cupos, actual: actual, agotado: !actual, reservados: reservados, reservaMin: PAS_RES_MIN };
 }
 // Suma 1 balance vendido en el conteo de su precio (al aprobar un pago de la pasarela)
@@ -346,19 +398,20 @@ function pasReservar(d) {
   try {
     var ahora = Date.now(), r = pasReservas_(g)[nit];
     if (!(r && r.exp > ahora)) {
-      var e = pasCupoActual_(c, nit);
+      var e = pasCupoActual_(c, nit, cli);
       if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + g + ". Escríbenos por WhatsApp." };
-      r = { gestion: g, fase: e.actual.n, precio: e.actual.precio, creado: ahora, exp: ahora + PAS_RES_MIN * 60000 };
+      r = { gestion: g, fase: e.actual.n, precio: e.actual.precio, nombre: e.actual.nombre, creado: ahora, exp: ahora + PAS_RES_MIN * 60000 };
       props.setProperty("res_" + nit, JSON.stringify(r));
     }
-    var cot = pasCotEeff_(g, r.precio, r.fase);
-    cot.reserva = { fase: r.fase, precio: r.precio, exp: r.exp, quedanSeg: Math.max(0, Math.round((r.exp - ahora) / 1000)) };
+    var cot = pasCotEeff_(g, r.precio, r.fase, r.nombre);
+    cot.reserva = { fase: r.fase, nombre: r.nombre || "", precio: r.precio, exp: r.exp, quedanSeg: Math.max(0, Math.round((r.exp - ahora) / 1000)) };
     return cot;
   } finally { lock.releaseLock(); }
 }
-function pasCotEeff_(g, precio, fase) {
-  return { ok: true, monto: precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: fase,
-           periodo: { tipo: "gestion", mes: "", anio: g, texto: "Gestión " + g }, resumen: "Estados financieros gestión " + g + " · Fase " + fase };
+function pasCotEeff_(g, precio, fase, nombre) {
+  if (!nombre) { try { nombre = pasBalInfo_(pasCfg(), Number(fase) - 1).nombre; } catch (e) { nombre = "Fase " + fase; } }
+  return { ok: true, monto: precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: fase, balance: nombre,
+           periodo: { tipo: "gestion", mes: "", anio: g, texto: "Gestión " + g }, resumen: "Estados financieros gestión " + g + " · " + nombre };
 }
 function pasCotizar(d) {
   var c = pasCfg(), hoy = pasHoy_(), s = d.servicio;
@@ -394,10 +447,10 @@ function pasCotizar(d) {
     }
     var nitE = String(d.nit || "").replace(/\D/g, ""), gE = String(c.eeffGestion || PAS_DEF.eeffGestion);
     var resE = nitE ? pasReservas_(gE)[nitE] : null;
-    if (resE && resE.exp > Date.now()) { var cr = pasCotEeff_(gE, resE.precio, resE.fase); cr.reserva = { fase: resE.fase, precio: resE.precio, exp: resE.exp, quedanSeg: Math.round((resE.exp - Date.now()) / 1000) }; return cr; }
-    var e = pasCupoActual_(c, nitE);
+    if (resE && resE.exp > Date.now()) { var cr = pasCotEeff_(gE, resE.precio, resE.fase, resE.nombre); cr.reserva = { fase: resE.fase, nombre: resE.nombre || "", precio: resE.precio, exp: resE.exp, quedanSeg: Math.round((resE.exp - Date.now()) / 1000) }; return cr; }
+    var e = pasCupoActual_(c, nitE, nitE ? pasClienteCache_(nitE) : undefined);
     if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + e.gestion + ". Escríbenos por WhatsApp." };
-    return pasCotEeff_(e.gestion, e.actual.precio, e.actual.n);
+    return pasCotEeff_(e.gestion, e.actual.precio, e.actual.n, e.actual.nombre);
   }
   if (s === "fact") {
     var t = PAS_MESES[hoy.mes - 1] + " " + hoy.anio;
@@ -441,7 +494,7 @@ function pasVerificar(d) {
     if (resV) {
       var tPago = pasMomentoPago_(x.fecha, x.hora);
       var dentro = tPago ? tPago <= resV.exp + 10 * 60000 : (Date.now() - resV.creado < 24 * 3600000);
-      if (dentro && Math.abs(pasNum_(x.importe) - resV.precio) < 0.01) { cot = pasCotEeff_(gV, resV.precio, resV.fase); cot.reservaRespetada = true; }
+      if (dentro && Math.abs(pasNum_(x.importe) - resV.precio) < 0.01) { cot = pasCotEeff_(gV, resV.precio, resV.fase, resV.nombre); cot.reservaRespetada = true; }
     }
   }
   if (lect.error) motivos.push("No se pudo leer el comprobante");
@@ -543,13 +596,16 @@ function pasConfirmar(token) {
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
       importe: cot.monto, tipoPago: "QR", atencion: "PASARELA", comentarios: v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", ")),
       compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: url,
-      tipo: cot.tipo, estado: "pendiente", estadoDeuda: "sin_deuda",
+      tipo: cot.tipo, balanceNombre: cot.balance || "", estado: "pendiente", estadoDeuda: "sin_deuda",
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: "", registradoPorNombre: "Pasarela (cliente)", origen: "pasarela",
       terminosAceptados: { servicio: cot.tipo, version: PAS_TERMINOS_VERSION, fecha: hoy.iso + " " + hoy.hora, advertenciaUtilidad: cot.tipo === "eeff" },
       pasarela: { estado: estadoPas, motivos: v.motivos, montoEsperado: cot.monto, montoLeido: pasNum_(x.importe), leido: x, cupo: cot.cupo || "" },
       _upd: Date.now()
     };
+    var premios = [];
+    if (v.aprobado) { try { premios = pasPremiosGanados_(cot); } catch (e) { console.error(e); } }
+    if (premios.length) { rec.premios = premios; rec.premiosEntregado = false; }
     fsCreate_("recepciones", rec);
     if (cot.tipo === "eeff") {
       try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
@@ -564,16 +620,41 @@ function pasConfirmar(token) {
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
           tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: "QR", atencion: "PASARELA", comentarios: "",
-          terminos: (PAS_TERMINOS[cot.tipo] || []).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []), terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
+          terminos: (PAS_TERMINOS[cot.tipo] || []).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []),
+          premios: premios, terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
         });
         enviado = true;
       } catch (e) {}
     }
-    var out = { ok: true, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail") };
+    var out = { ok: true, premios: premios, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail") };
     pasCachePut_("hecho_" + token, out, 1800);
     return out;
   } finally { lock.releaseLock(); }
+}
+// ---------------- Premios (fijos y al azar) ----------------
+// Azar: para cada premio se sortean de antemano N posiciones ganadoras entre los próximos M pagos que califican.
+// Nadie conoce las posiciones; cuando se completan los M pagos, se sortea una nueva ronda.
+function pasPremiosGanados_(cot) {
+  var c = pasCfg(), props = PropertiesService.getScriptProperties(), out = [];
+  (c.premios || []).forEach(function (p) {
+    if (p.activo === false) return;
+    if (p.servicio && p.servicio !== "todos" && p.servicio !== cot.tipo && !(p.servicio === "decl" && cot.tipo === "declaracion") && !(p.servicio === "fact" && cot.tipo === "facturacion")) return;
+    if (p.fase && !(cot.tipo === "eeff" && Number(cot.cupo) === Number(p.fase))) return;
+    if (p.plan && p.plan !== cot.plan) return;
+    if (p.tipo !== "azar") { out.push({ id: p.id, nombre: p.nombre, descripcion: p.descripcion || "", tipo: "fijo" }); return; }
+    var k = "prem_" + p.id, st = null; try { st = JSON.parse(props.getProperty(k) || "null"); } catch (e) {}
+    var M = Math.max(1, Number(p.entre) || 1), N = Math.min(M, Math.max(1, Number(p.ganadores) || 1));
+    if (!st || st.M !== M || st.N !== N || st.n >= M) {
+      var pos = [], nums = []; for (var i = 1; i <= M; i++) nums.push(i);
+      for (var j = 0; j < N; j++) pos.push(nums.splice(Math.floor(Math.random() * nums.length), 1)[0]);
+      st = { M: M, N: N, n: 0, ronda: (st && st.ronda ? st.ronda + 1 : 1), pos: pos };
+    }
+    st.n++;
+    if (st.pos.indexOf(st.n) >= 0) out.push({ id: p.id, nombre: p.nombre, descripcion: p.descripcion || "", tipo: "azar", ronda: st.ronda });
+    props.setProperty(k, JSON.stringify(st));
+  });
+  return out;
 }
 // Cliente Inactivo que paga y se aprueba → vuelve a ACTIVO, y queda en Movimientos como hecho por la pasarela
 function pasReactivar_(cli, cot) {

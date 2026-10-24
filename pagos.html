@@ -157,7 +157,24 @@ html.oscuro .app{background:var(--fondo)}
 .contador .de{font-size:14px;color:#DAF1DE}
 .contador .pr{margin-top:8px;display:inline-block;align-self:center;background:rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;font-weight:700;font-family:Akshar,sans-serif;font-size:20px}
 .contador.agot{background:linear-gradient(135deg,#B42318,#7A1A12)}
-.fases{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.fases{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.reloj{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.reloj div{background:linear-gradient(160deg,#235347,#0B2B26);color:#fff;border-radius:14px;padding:12px 4px;display:flex;flex-direction:column;align-items:center}
+.reloj b{font-family:Akshar,sans-serif;font-size:38px;line-height:40px}.reloj span{font-size:11px;color:#B7D9C0;letter-spacing:.5px;text-transform:uppercase}
+.pz{position:relative;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;min-height:150px;font-family:inherit;width:100%;background:linear-gradient(135deg,#F2C94C,#E3A008);color:#3A2A00;box-shadow:0 10px 26px rgba(227,160,8,.35)}
+.pz .cv,.pz .rv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px;transition:opacity .45s ease,transform .45s ease}
+.pz .cv b{font-family:Akshar,sans-serif;font-size:24px}.pz .cv span{font-size:13px}
+.pz .rv{opacity:0;transform:scale(.85);background:linear-gradient(135deg,#235347,#0B2B26);color:#fff;text-align:center}
+.pz .rv b{font-family:Akshar,sans-serif;font-size:22px;line-height:26px}.pz .rv span{font-size:13px;color:#DAF1DE}.pz .rv .nt{font-size:11px;color:#9DC2AA;margin-top:4px}
+.pz .tg{background:#F2C94C;color:#3A2A00!important;font-weight:800;font-size:11px!important;padding:3px 10px;border-radius:999px;letter-spacing:1px}
+.pz.abierto .cv{opacity:0;transform:scale(1.1)}.pz.abierto .rv{opacity:1;transform:none}
+.pz .cv{animation:latir 1.6s ease-in-out infinite}@keyframes latir{50%{transform:scale(1.04)}}
+.conf{position:absolute;top:-10px;width:8px;height:12px;border-radius:2px;animation:caer 1.4s ease-in forwards;pointer-events:none}
+@keyframes caer{to{transform:translateY(190px) rotate(540deg);opacity:0}}
+.fz .inc{margin:2px 0 0;padding-left:16px;font-size:12px;line-height:17px}.fz .inc li{margin:2px 0}
+.fz .prem{display:flex;gap:6px;align-items:flex-start;font-size:12px;font-weight:600;background:rgba(242,201,76,.22);border-radius:8px;padding:6px 8px;line-height:16px}
+.fz.noap{background:var(--campo);border-color:var(--borde);color:var(--suave)}.fz.noap .et{background:var(--borde);color:var(--suave)}
+.ben{margin:6px 0 0;padding:0;list-style:none;font-size:12px;line-height:17px;color:var(--suave)}.ben li{display:flex;gap:6px;margin:2px 0}.ben li:before{content:"";width:5px;height:9px;border:solid var(--acento);border-width:0 2px 2px 0;transform:rotate(45deg);margin:2px 4px 0 3px;flex-shrink:0}
 .fz{border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
 .fz .t{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px}
 .fz .et{font-size:10px;font-weight:800;letter-spacing:.6px;padding:3px 8px;border-radius:999px}
@@ -238,6 +255,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     no: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     big: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
     reloj: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    regaloG: '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8S10.5 3 8 3.5 7 8 12 8zm0 0s1.5-5 4-4.5S17 8 12 8z"/></svg>',
+    regalo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8S10.5 3 8 3.5 7 8 12 8zm0 0s1.5-5 4-4.5S17 8 12 8z"/></svg>',
     subir: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>'
   };
   // Descripciones tomadas del Manual CONTAX
@@ -290,13 +309,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     opcion: ["pitagoras-muestra-sistema.jpg", "Precios claros", "Elige lo que mejor te queda", "Sin letras chicas: ves el precio exacto antes de pagar."],
     pago: ["contrato-euclides-oscuro.jpg", "Pago seguro", "Paga con el QR de tu banco", "El QR ya trae el monto exacto. Después sube la captura de tu comprobante."],
     verif: ["arquimedes-saludo-claro.jpg", "Verificación", "Revisamos tu comprobante", "Nuestra IA lee tu captura y confirma el pago en segundos."],
+    cuenta: ["los-cuatro-oscuro.jpg", "Muy pronto", "La nueva pasarela de pagos CONTAX", "Paga con QR desde tu celular y recibe tu Orden de Recepción al instante. Cupos limitados en los balances y premios para quienes paguen."],
     fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS."]
   };
   Object.keys(ESCENA).forEach(function (k) { var im = new Image(); im.src = FOTOS + ESCENA[k][0]; });
   function escena() { return ESCENA[S.paso] || ESCENA.nit; }
   // Celular: imagen grande al inicio y al final; en los demás pasos una banda delgada para no estorbar
   function fotoMovil() {
-    var e = escena(), grande = S.paso === "nit" || S.paso === "fin";
+    var e = escena(), grande = S.paso === "nit" || S.paso === "fin" || S.paso === "cuenta";
     return '<div class="foto solo-movil ' + (grande ? "grande" : "banda") + '"><img src="' + FOTOS + e[0] + '" alt="Los clásicos de NUMMEROS junto a CONTAX"><span class="chip">' + esc(e[1]) + "</span></div>";
   }
   function lado() {
@@ -353,6 +373,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // Guarda el avance en el celular: si se va el internet o se recarga la página, el cliente sigue donde estaba
   function guardarEstado() {
     try {
+      if (S.paso === "cuenta") return;
       if (S.paso === "fin" || S.paso === "nit") { localStorage.removeItem("pas-estado"); return; }
       var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, acepta: S.acepta, aceptaUtil: S.aceptaUtil, resFin: S.resFin || 0 };
       localStorage.setItem("pas-estado", JSON.stringify(g));
@@ -370,7 +391,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function menu() {
     var n = document.getElementById("nav"); if (!n) return;
-    n.classList.toggle("oculto", S.paso === "nit");
+    n.classList.toggle("oculto", S.paso === "nit" || S.paso === "cuenta");
     document.getElementById("nServ").classList.toggle("oculto", !(S.cli && S.cfg) || S.paso === "servicio" || S.paso === "datos");
   }
   function cargando(txt) { main.innerHTML = '<div class="pila" style="padding-top:60px;text-align:center"><div class="spin"></div><p class="suave">' + esc(txt) + "</p></div>"; }
@@ -416,7 +437,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(x.texto) + " · se presenta en " + esc(String(x.seDeclara || "").toLowerCase()) + " (" + perEtq(x) + ")</option>"; }).join("") + "</select>" +
         '<p class="chico suave" style="margin-top:6px">Cada pago cubre un mes. Si debes varios, paga uno por uno.</p></div>' +
         '<p class="l" style="margin:4px 0 0">Elige tu plan</p>' +
-        planes.map(function (o) { return '<button class="opc' + (S.plan === o[0] ? " sel" : "") + '" data-plan="' + o[0] + '"><span class="t"><b>' + o[1] + (o[0] === "estandar" ? '<span class="etq">Repartidores</span>' : "") + "</b><span>" + o[2] + '</span></span><span class="precio">Bs ' + esc(o[3]) + "</span></button>"; }).join("") +
+        planes.map(function (o) { var bn = ((S.cfg.beneficios || {})[o[0]] || []); return '<button class="opc' + (S.plan === o[0] ? " sel" : "") + '" data-plan="' + o[0] + '" style="align-items:flex-start"><span class="t"><b>Plan ' + o[1] + (o[0] === "estandar" ? '<span class="etq">Repartidores</span>' : "") + "</b><span>" + o[2] + "</span>" + (bn.length ? '<ul class="ben">' + bn.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + '</span><span class="precio">Bs ' + esc(o[3]) + "</span></button>"; }).join("") +
         '<a class="chico" href="' + wa("Hola CONTAX, tengo más de 200 facturas al mes y quiero el Plan Personalizado.") + '" target="_blank" rel="noopener" style="text-align:center">¿Más de 200 facturas al mes? Pide el Plan Personalizado por WhatsApp</a>' +
         (S.plan && S.plan !== "basico" ? '<p class="l" style="margin:4px 0 0">¿Qué facturas tuviste?</p><div class="tipos">' +
           [["elec", "Electrónicas"], ["man", "Manuales"], ["mix", "Ambas"]].map(function (t) { return '<button data-tf="' + t[0] + '" class="' + (S.tipoFact === t[0] ? "sel" : "") + '">' + t[1] + "</button>"; }).join("") + "</div>" +
@@ -432,20 +453,29 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
           muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff, true) + errHtml() + pagar + "</div>";
       } else {
-        var A = E.actual;
-        var contador = A ? '<div class="contador"><span class="fase">Fase ' + A.n + ' habilitada</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + " en la Fase " + A.n + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
-          : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todas las fases. Escríbenos por WhatsApp.</span></div>';
+        var apNit = S.cli && S.cli.aperturaNit;
+        var aplica = function (c) { return !c.nitDesde || (!!apNit && apNit >= c.nitDesde); };
+        var A = null; E.cupos.forEach(function (c) { if (!A && c.libres > 0 && aplica(c)) A = c; });
+        var nomb = function (c) { return c.nombre || ("Balance " + c.n); };
+        var contador = A ? '<div class="contador"><span class="fase">' + esc(nomb(A)) + ' · habilitado</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
+          : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todos los balances. Escríbenos por WhatsApp.</span></div>';
+        var premiosDe = function (c) { return (S.cfg.premios || []).filter(function (p) { return p.servicio === "eeff" && (!p.fase || Number(p.fase) === c.n); }); };
         var fases = '<div class="fases">' + E.cupos.map(function (c) {
-          var lleno = c.libres <= 0, act = A && c.n === A.n, cls = lleno ? "agot" : act ? "act" : "pend";
-          var et = lleno ? "AGOTADO" : act ? "HABILITADA" : "PRÓXIMA";
-          var sub = lleno ? "Se llenaron los " + c.capacidad + " cupos" : act ? "Quedan " + c.libres + " de " + c.capacidad + " cupos" : c.capacidad + " cupos · se habilita al llenarse la anterior";
-          return '<div class="fz ' + cls + '"><div class="t"><span>Fase ' + c.n + '</span><span class="et">' + et + '</span></div><span class="p">Bs ' + esc(c.precio) + '</span><div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
+          var lleno = c.libres <= 0, act = A && c.n === A.n, noAp = !aplica(c);
+          var cls = lleno ? "agot" : act ? "act" : noAp ? "noap" : "pend";
+          var et = lleno ? "AGOTADO" : act ? "HABILITADO" : noAp ? "SOLO NIT NUEVOS" : "PRÓXIMO";
+          var sub = lleno ? "Se llenaron los " + c.capacidad + " cupos" : act ? "Quedan " + c.libres + " de " + c.capacidad + " cupos" : noAp ? "Para NIT abiertos desde " + esc(c.nitDesde.split("-").reverse().join("/")) : c.capacidad + " cupos · se habilita al llenarse el anterior";
+          var pr = premiosDe(c);
+          return '<div class="fz ' + cls + '"><div class="t"><span>' + esc(nomb(c)) + '</span><span class="et">' + et + '</span></div><span class="p">Bs ' + esc(c.precio) + "</span>" +
+            ((c.incluye || []).length ? '<ul class="inc">' + c.incluye.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") +
+            (pr.length ? '<div class="prem">' + ICON.regalo + "<span>" + pr.map(function (p) { return (p.tipo === "azar" ? "Puedes ganar: " : "Regalo: ") + esc(p.nombre); }).join(" · ") + "</span></div>" : "") +
+            '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
         }).join("") + "</div>";
-        h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube en cada fase. Mientras antes pagues, menos pagas.</p>" + contador + fases +
+        h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube en cada balance y cada uno incluye más. Mientras antes pagues, menos pagas.</p>" + contador + fases +
           muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff) + errHtml() + pagar + "</div>";
       }
     } else if (S.paso === "opcion" && S.serv === "fact") {
-      h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' +
+      h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' + (((S.cfg.beneficios || {}).fact || []).length ? '<ul class="ben" style="margin:8px 0 4px">' + S.cfg.beneficios.fact.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + '' +
         '<div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" + info("¿Qué incluye?", INFO.fact, true) + errHtml() +
         terminosHtml() + '<button class="btn" id="bPagar"' + (S.cot && S.cot.ok && S.acepta ? "" : " disabled") + ">Pagar " + (S.cot && S.cot.ok ? bs(S.cot.monto) : "") + '</button><button class="link" id="bVolver">Volver</button></div>';
     } else if (S.paso === "pago") {
@@ -470,12 +500,24 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         v.checks.map(function (k) { return '<div class="chk"><span class="d ' + (k.ok ? "ok" : "no") + '">' + (k.ok ? ICON.ok : ICON.no) + '</span><span class="v"><span>' + esc(k.label) + "</span><b>" + esc(k.valor) + '</b></span><span class="n" style="color:' + (k.ok ? "var(--acento)" : "#B42318") + '">' + esc(k.nota) + "</span></div>"; }).join("") + "</div>" +
         (v.aprobado ? '<button class="btn" id="bConf">Confirmar y recepcionar</button>'
           : '<div class="aviso warn">Algo no coincide (' + esc(v.motivos.join(", ")) + '). Puedes subir otra captura más clara, o enviarlo así: el equipo de CONTAX lo revisará y te escribirá por WhatsApp.</div><button class="btn" id="bOtra">Subir otra captura</button><button class="btn2" id="bConf">Enviar a revisión</button>') + errHtml() + "</div>";
+    } else if (S.paso === "cuenta") {
+      var bals = (S.cfg && S.cfg.eeff && S.cfg.eeff.cupos) || [], prs = (S.cfg && S.cfg.premios) || [];
+      h = '<div class="pila" style="text-align:center"><p class="c13 suave" style="margin-bottom:-6px">CONTAX · Contabilidad e Impuestos</p><h1>Muy pronto</h1>' +
+        '<p class="suave" style="font-size:15px;line-height:22px">Lanzamos la nueva forma de pagar tus servicios en CONTAX: con QR, desde tu celular y con recepción al instante.</p>' +
+        '<div class="reloj" id="reloj"><div><b id="cD">--</b><span>días</span></div><div><b id="cH">--</b><span>horas</span></div><div><b id="cM">--</b><span>minutos</span></div><div><b id="cS">--</b><span>segundos</span></div></div>' +
+        '<p class="c13" style="font-weight:700">' + esc(fechaLanzTxt()) + "</p>" +
+        (bals.length ? '<div class="card pila" style="text-align:left;gap:8px"><b style="font-size:16px">Balances de la gestión ' + esc(S.cfg.eeff.gestion) + '</b><p class="chico suave" style="margin-top:-4px">Cupos limitados: el precio sube cuando se llena cada balance.</p>' +
+          bals.map(function (c) { return '<div class="fila" style="border-bottom:1px solid var(--borde)"><span>' + esc(c.nombre || ("Balance " + c.n)) + (c.nitDesde ? ' <span class="etq">NIT nuevos</span>' : "") + "</span><b>Bs " + esc(c.precio) + " · " + c.capacidad + " cupos</b></div>"; }).join("") + "</div>" : "") +
+        (prs.length ? '<div class="card pila" style="text-align:left;gap:6px"><b style="font-size:16px;display:flex;gap:8px;align-items:center">' + ICON.regalo + 'Premios que puedes ganar</b>' +
+          prs.map(function (p) { return '<div class="c13">' + (p.tipo === "azar" ? "Al azar: " : "Regalo: ") + "<b>" + esc(p.nombre) + "</b></div>"; }).join("") + "</div>" : "") +
+        (WA ? '<a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="' + wa("Hola CONTAX, quiero que me avisen cuando abra la pasarela de pagos.") + '" target="_blank" rel="noopener">Avísame por WhatsApp</a>' : "") + "</div>";
     } else if (S.paso === "fin") {
       var f = S.fin, ok = f.estado === "aprobado";
       h = '<div class="pila" style="text-align:center;padding-top:16px"><div class="check' + (ok ? "" : " rev") + '">' + (ok ? ICON.big : ICON.reloj) + "</div>" +
         "<h2>" + (ok ? "¡Listo!" : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? "Tu pago fue recepcionado." : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
+        premiosHtml(f.premios) +
         '<p class="c13 suave" style="line-height:19px">' + (ok ? "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS." : "Guarda este número por si necesitas consultarnos.") + "</p>" +
         '<button class="btn2" id="bOtro">Hacer otro pago</button></div>';
     }
@@ -484,7 +526,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.paso === "fin") h = h.replace(/<\/div>$/, '<div class="galeria solo-movil">' + ["reunion-sala.jpg", "pitagoras-muestra-sistema.jpg", "apreton-arquimedes.jpg"].map(function (f) { return '<img src="' + FOTOS + f + '" alt="" loading="lazy">'; }).join("") + "</div>" + "</div>");
     h = h.replace(/<\/div>$/, ayuda() + "</div>");
     main.innerHTML = h;
-    lado(); menu(); guardarEstado(); relojReserva();
+    lado(); menu(); guardarEstado(); relojReserva(); relojCuenta();
     enlazar();
   }
   // Términos y condiciones del servicio elegido: hay que aceptarlos antes de ver el QR
@@ -622,11 +664,52 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function pintarTema() { var t = (window.pasTema && pasTema.get()) || "auto", d = TEMAS[t] || TEMAS.auto; var b = document.getElementById("bTema"); if (b) { b.innerHTML = d[1] + "<span>" + d[0] + "</span>"; b.title = "Modo: " + d[0] + " (toca para cambiar)"; } }
   document.getElementById("bTema").onclick = function () { var orden = ["auto", "claro", "oscuro"], t = pasTema.get(); pasTema.set(orden[(orden.indexOf(t) + 1) % 3]); pintarTema(); };
   pintarTema();
+  // ---- Premios al terminar el pago ----
+  function premiosHtml(l) {
+    if (!l || !l.length) return "";
+    return '<div class="pila" style="gap:10px">' + l.map(function (p, i) {
+      return '<button type="button" class="pz" data-pz="' + i + '"><span class="cv">' + ICON.regaloG + '<b>¡Tienes un premio!</b><span>Toca para descubrirlo</span></span>' +
+        '<span class="rv"><span class="tg">' + (p.tipo === "azar" ? "¡GANASTE!" : "REGALO") + "</span><b>" + esc(p.nombre) + "</b><span>" + esc(p.descripcion || "") + '</span><span class="nt">El equipo de CONTAX se comunicará contigo para la entrega. También te lo enviamos al correo.</span></span></button>';
+    }).join("") + "</div>";
+  }
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest && ev.target.closest(".pz"); if (!b || b.classList.contains("abierto")) return;
+    b.classList.add("abierto");
+    for (var k = 0; k < 24; k++) { var c = document.createElement("i"); c.className = "conf"; c.style.left = (Math.random() * 100) + "%"; c.style.background = ["#2E8B57", "#F2C94C", "#8EB69B", "#235347", "#FDB022"][k % 5]; c.style.animationDelay = (Math.random() * 0.3) + "s"; b.appendChild(c); }
+  });
+  // ---- Cuenta regresiva hasta el lanzamiento ----
+  function lanzMs() { var l = S.cfg && S.cfg.lanzamiento; var t = l ? Date.parse(l) : NaN; return isNaN(t) ? 0 : t; }
+  function fechaLanzTxt() {
+    var t = lanzMs(); if (!t) return "";
+    var d = new Date(t), dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"], meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    var bo = new Date(t - 4 * 3600000); // hora de Bolivia (UTC-4)
+    var hh = bo.getUTCHours(), mm = ("0" + bo.getUTCMinutes()).slice(-2), ap = hh >= 12 ? "p. m." : "a. m."; var h12 = hh % 12 || 12;
+    return "Abrimos el " + dias[bo.getUTCDay()] + " " + bo.getUTCDate() + " de " + meses[bo.getUTCMonth()] + " a las " + h12 + ":" + mm + " " + ap;
+  }
+  var relojCuentaT = null;
+  function relojCuenta() {
+    clearInterval(relojCuentaT);
+    if (S.paso !== "cuenta") return;
+    function tic() {
+      var q = Math.max(0, Math.floor((lanzMs() - Date.now()) / 1000));
+      var set = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = ("0" + v).slice(-2); };
+      set("cD", Math.floor(q / 86400)); set("cH", Math.floor(q % 86400 / 3600)); set("cM", Math.floor(q % 3600 / 60)); set("cS", q % 60);
+      if (q <= 0) { clearInterval(relojCuentaT); S.paso = "nit"; pintar(); }
+    }
+    tic(); relojCuentaT = setInterval(tic, 1000);
+  }
   // NIT por enlace: pagos.html?nit=123456
   var porEnlace = false;
   try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
   if (!porEnlace && recuperarEstado() && S.paso !== "nit") { try { history.replaceState({ paso: "nit" }, ""); history.pushState({ paso: S.paso }, ""); } catch (e) {} }
-  pintar();
+  var previa = false; try { previa = new URLSearchParams(location.search).get("vista") === "previa"; } catch (e) {}
+  if (S.paso === "nit" || !S.cfg) {
+    cargando("Cargando…");
+    api({ action: "pas_config" }).then(function (r) {
+      if (r && r.ok) { S.cfg = r; if (!previa && lanzMs() > Date.now()) S.paso = "cuenta"; }
+      pintar();
+    });
+  } else pintar();
 })();
 </script>
 </body>

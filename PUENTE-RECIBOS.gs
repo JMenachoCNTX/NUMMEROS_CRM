@@ -111,6 +111,10 @@ function buildCorreoHTML(d, empresaNombre) {
       fila("Importe", money(d.importe), true) +
     '</table></td></tr>' +
     // Términos y condiciones aceptados (pagos por la pasarela)
+    ((d.premios && d.premios.length) ? '<tr><td style="padding:18px 28px 0"><div style="border:2px solid #2E8B57;border-radius:10px;padding:12px 16px;background:#E8F6EE">' +
+      '<div style="color:#14532D;font-size:15px;font-weight:700;margin-bottom:4px">¡Ganaste un premio!</div>' +
+      d.premios.map(function (p) { return '<div style="color:#14532D;font-size:13px;margin:4px 0"><b>' + esc(p.nombre) + '</b>' + (p.descripcion ? ' — ' + esc(p.descripcion) : '') + '</div>'; }).join("") +
+      '<div style="color:#557363;font-size:12px;margin-top:6px">El equipo de CONTAX se comunicará contigo para hacerte la entrega.</div></div></td></tr>' : '') +
     ((d.terminos && d.terminos.length) ? '<tr><td style="padding:18px 28px 0"><div style="border:1px solid ' + linea + ';border-radius:8px;padding:12px 16px">' +
       '<div style="color:#1f2a3a;font-size:13px;font-weight:700;margin-bottom:6px">' + esc(d.terminosTitulo || "Términos y condiciones") + '</div>' +
       '<ul style="margin:0;padding-left:18px;color:' + gris + ';font-size:12px;line-height:1.55">' + d.terminos.map(function (t) { return '<li style="margin:3px 0">' + esc(t) + '</li>'; }).join("") + '</ul></div></td></tr>' : '') +

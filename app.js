@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "43";
+const APP_VERSION = "44";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3997,6 +3997,28 @@ function paintControl() {
 //  de Apps Script (PASARELA.gs, en el mismo proyecto que los recibos).
 //  Config: config/app.pasarela  ·  QR por importe: config/pasarelaQR (campos m30, m50…)
 // ============================================================
+const PAS_BAL_DEF = [
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026", "Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605"] },
+  { nombre: "Balance Esencial", incluye: ["Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605", "2 beneficios CONTAX"] },
+  { nombre: "Balance Plus", incluye: ["Todo lo del Balance Esencial", "Libro Diario y Libro Mayor", "5 beneficios CONTAX"] },
+  { nombre: "Balance Pro", incluye: ["Todo lo del Balance Plus", "Reunión para explicarte tu resultado", "7 beneficios CONTAX"] },
+  { nombre: "Balance Total", incluye: ["Todo lo del Balance Pro", "Atención prioritaria en la entrega", "Los 10 beneficios CONTAX"] }
+];
+const PAS_BEN_DEF = {
+  basico: ["Declaración sin movimiento (IVA e IT) presentada a tiempo", "Consolidación de tu RCV antes del día 9", "Tus formularios en tu Portal de Clientes NUMMEROS"],
+  estandar: ["Hasta 100 facturas de compras y ventas al mes", "Control de tu RCV y alertas de vencimiento", "Acceso a tu Portal de Clientes NUMMEROS con tus reportes", "Resumen mensual de tus compras y ventas", "Mes de tu cumpleaños sin cobro"],
+  premium: ["De 101 a 200 facturas al mes", "Todo lo del Plan Estándar", "Atención prioritaria", "Revisión de tu NIT, matrícula de comercio y ROE"],
+  fact: ["Facturación automática semanal (repartidores Yango)", "Tu factura lista antes del jueves", "Historial de tus facturas en tu Portal de Clientes NUMMEROS"]
+};
+const PAS_PREM_DEF = [
+  { id: "p1", nombre: "¡Balance gratis!", descripcion: "Te devolvemos el 100% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+  { id: "p2", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+  { id: "p3", nombre: "10% de descuento en tus declaraciones por 1 año", descripcion: "Código de descuento para todas tus declaraciones durante 12 meses.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+  { id: "p4", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+  { id: "p5", nombre: "1 mes de Suscripción de Facturación gratis", descripcion: "Para usar cuando quieras durante la gestión.", servicio: "eeff", fase: 5, tipo: "fijo" },
+  { id: "p6", nombre: "Mes de tu cumpleaños sin cobro", descripcion: "Tu declaración del mes de tu cumpleaños no tiene costo.", servicio: "eeff", fase: 4, tipo: "fijo" }
+];
+function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: (x.incluye && x.incluye.length) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
 const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 }, diaDesde: 25, diaHasta: 31, diaCierre: 5, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }], destinoClaves: [] };
 const PA_UI = { tab: "revision", cfg: null, qr: null, cupos: null };
 async function renderPasarela() {
@@ -4005,6 +4027,7 @@ async function renderPasarela() {
   const p = cfg.pasarela || {};
   PA_UI.cfg = Object.assign(JSON.parse(JSON.stringify(PAS_DEF)), p, { precios: Object.assign({}, PAS_DEF.precios, p.precios || {}) });
   PA_UI.cupos = (PA_UI.cfg.cupos || []).map(c => Object.assign({}, c));
+  PA_UI.premios = null;
   // Cada QR vive en su propio documento (config/qr_m50, config/qr_m60…) para no pasar el límite de 1 MB por documento
   PA_UI.qr = {};
   try { const q = await getDoc(doc(db, "config", "pasarelaQR")); if (q.exists()) Object.assign(PA_UI.qr, q.data()); } catch (e) {}
@@ -4061,18 +4084,19 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
     const lista = recs[key] || [], ven = lista.length, res = Number(reservas[key]) || 0;
     const libres = Math.max(0, cap - ven - res), proy = pr * cap, cob = pr * ven, pend = pr * libres;
     tCap += cap; tVen += ven; tRes += res; tProy += proy; tCob += cob; tPend += pend;
-    if (!activa && libres > 0) activa = i + 1;
-    const est = libres <= 0 ? '<span class="badge" style="background:#B42318;color:#fff">Agotada</span>' : (activa === i + 1 ? '<span class="badge ok">Habilitada</span>' : '<span class="badge" style="background:#F2C94C;color:#5A4200">Próxima</span>');
+    const inf = balInfo(cupos, i);
+    if (!activa && libres > 0 && !inf.nitDesde) activa = i + 1;
+    const est = (libres > 0 && inf.nitDesde) ? '<span class="badge" style="background:#DDE7E1;color:#335">Solo NIT nuevos</span>' : libres <= 0 ? '<span class="badge" style="background:#B42318;color:#fff">Agotada</span>' : (activa === i + 1 ? '<span class="badge ok">Habilitada</span>' : '<span class="badge" style="background:#F2C94C;color:#5A4200">Próxima</span>');
     const celPr = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:80px" ${opts.dis || ""}>` : `<span class="mono">${money(pr)}</span>`;
     const celCap = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:70px" ${opts.dis || ""}>` : `<span class="mono">${cap}</span>`;
     const detalle = `<tr class="ef-det" data-fase="${i}" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${lista.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Origen</th></tr></thead><tbody>${lista.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${escape(r.fecha || String(r.fechaISO || "").slice(0, 10))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td>${escape(r.clienteNombre || "")}</td><td class="mono">${escape(String(r.nit || ""))}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${r.origen === "pasarela" ? "Pasarela" : "Panel"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó en esta fase.</span>'}</td></tr>`;
-    return `<tr><td><b>${i + 1}</b></td><td>${celPr}</td><td>${celCap}</td>
+    return `<tr><td><b>${escape(inf.nombre)}</b>${inf.nitDesde ? `<div class="note" style="margin:0">NIT desde ${escape(inf.nitDesde.split("-").reverse().join("/"))}</div>` : ""}</td><td>${celPr}</td><td>${celCap}</td>
       <td class="mono">${ven}${ven > cap ? ` <span class="note" style="color:#B42318">(+${ven - cap})</span>` : ""}</td><td class="mono">${res || 0}</td><td class="mono">${libres}</td><td>${est}</td>
       ${conM ? `<td class="mono" style="text-align:right">${money(proy)}</td><td class="mono" style="text-align:right">${money(cob)}</td><td class="mono" style="text-align:right">${money(pend)}</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="${i}" ${ven ? "" : "disabled"}>Ver (${ven})</button>${opts.editable && isAdmin() ? ` <button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>` + detalle;
   }).join("");
   const fuera = Object.keys(recs).filter(k => precios.indexOf(k) < 0);
-  return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fase</th><th>Precio${opts.editable ? " (Bs)" : ""}</th><th>Cupos</th><th>Vendidos</th><th>Reservados</th><th>Libres</th><th>Estado</th>${conM ? '<th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th>' : ""}<th></th></tr></thead><tbody>${filas}
+  return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Balance</th><th>Precio${opts.editable ? " (Bs)" : ""}</th><th>Cupos</th><th>Vendidos</th><th>Reservados</th><th>Libres</th><th>Estado</th>${conM ? '<th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th>' : ""}<th></th></tr></thead><tbody>${filas}
     <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">Total · ${tCap} cupos</td><td class="mono">${tVen}</td><td class="mono">${tRes}</td><td class="mono">${Math.max(0, tCap - tVen - tRes)}</td><td></td>${conM ? `<td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td>` : ""}<td></td></tr></tbody></table></div>
     <p class="note" style="margin:8px 0 0">Reservados = clientes que están pagando ahora en la pasarela (tienen 30 minutos). Toca «Ver» para la lista de quienes pagaron en cada fase.${conM ? " Ingreso proyectado = precio × cupos · Ya vendido = precio × vendidos · Por vender = precio × libres." : ""}</p>
     ${dup.length ? `<p class="msg err" style="margin:6px 0 0">Dos fases tienen el mismo precio (Bs ${escape(dup.join(", "))}). Cada fase debe tener un precio distinto para contar bien los cupos.</p>` : ""}
@@ -4095,26 +4119,29 @@ async function eeffFasesBloque(contId, conMontos) {
   } catch (e) { box.innerHTML = '<p class="note">No se pudo cargar el cuadro de fases.</p>'; }
 }
 // ===== Recepción en el panel: ayuda de fases para Estados financieros =====
-function eeffEstadoFases(cupos, recs, reservas) {
+function eeffEstadoFases(cupos, recs, reservas, cliente) {
   let activa = null;
+  const apNit = cliente ? recFechaISO(bdV(cliente, "fechaNit")) : "";
   const l = cupos.map((x, i) => {
     const pr = Number(x.precio) || 0, cap = Number(x.capacidad) || 0, key = String(Math.round(pr));
     const ven = (recs[key] || []).length, res = Number(reservas[key]) || 0, libres = Math.max(0, cap - ven - res);
-    const o = { n: i + 1, precio: pr, capacidad: cap, vendidos: ven, reservados: res, libres };
-    if (!activa && libres > 0) activa = o;
+    const inf = balInfo(cupos, i);
+    const o = { n: i + 1, nombre: inf.nombre, nitDesde: inf.nitDesde, precio: pr, capacidad: cap, vendidos: ven, reservados: res, libres };
+    if (!activa && libres > 0 && (!inf.nitDesde || (apNit && apNit >= inf.nitDesde))) activa = o;
     return o;
   });
   return { fases: l, activa };
 }
 function esRepartidorCli(c) { return !!c && /YANGO|PEDIDOS|TADA|DELIVERY|MTG|MILTHAGOR|PARTNER|REPARTID|FLOTA|UBER|INDRIVE/i.test((bdV(c, "brinda") || "") + " " + (bdV(c, "actP") || "")); }
 let REC_FASE = null;
+function recFechaISO(v) { const t = String(v || "").trim(); let m; if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[1] + "-" + m[2] + "-" + m[3]; if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); return ""; }
 async function recFaseCargar() {
   const box = el("r_fase"); if (!box) return;
   box.innerHTML = '<span class="note"><span class="cx-spin"></span> Revisando la fase habilitada…</span>';
   try {
     const f = await eeffFasesCfg();
     const [res] = await Promise.all([eeffReservasScript(), recSync().catch(() => null)]);
-    REC_FASE = Object.assign(f, eeffEstadoFases(f.cupos, eeffRecsPorPrecio(f.gestion), res));
+    REC_FASE = Object.assign(f, { recs: eeffRecsPorPrecio(f.gestion), res }, eeffEstadoFases(f.cupos, eeffRecsPorPrecio(f.gestion), res, recCli));
     // Por defecto, la gestión que se está recepcionando con fases (la misma de la pasarela)
     const pa = el("r_peranio"); if (pa && [...pa.options].some(o => o.value === String(f.gestion))) pa.value = String(f.gestion);
     recFasePintar(true);
@@ -4122,6 +4149,7 @@ async function recFaseCargar() {
 }
 function recFasePintar(autollenar) {
   const box = el("r_fase"); if (!box || !REC_FASE) return;
+  if (REC_FASE.recs) Object.assign(REC_FASE, eeffEstadoFases(REC_FASE.cupos, REC_FASE.recs, REC_FASE.res || {}, recCli));
   const F = REC_FASE, gSel = el("r_peranio") ? String(el("r_peranio").value) : "", tot = el("r_total");
   const caja = (color, html) => `<div style="border:2px solid ${color};border-radius:10px;padding:10px 12px;font-size:13px;line-height:19px;margin-top:6px">${html}</div>`;
   if (gSel !== String(F.gestion)) { box.innerHTML = caja("var(--line)", `Las fases de balances son de la <b>gestión ${escape(F.gestion)}</b>. Para la gestión ${escape(gSel)} el monto es libre y no ocupa cupo.`); return; }
@@ -4130,15 +4158,15 @@ function recFasePintar(autollenar) {
   if (autollenar && tot && sugerido && (!tot.value || tot.dataset.auto === "1")) { tot.value = sugerido; tot.dataset.auto = "1"; }
   let html = otros
     ? `<b>Cliente de otro rubro (no repartidor):</b> precio de balance Bs ${escape(String(F.otros))}. No ocupa cupo de las fases.`
-    : (F.activa ? `<b style="color:var(--ok)">Fase ${F.activa.n} habilitada · ${money(F.activa.precio)}</b> · quedan <b>${F.activa.libres}</b> de ${F.activa.capacidad} cupos${F.activa.reservados ? ` (${F.activa.reservados} ${F.activa.reservados === 1 ? "reservado" : "reservados"} ahora en la pasarela)` : ""}.`
+    : (F.activa ? `<b style="color:var(--ok)">${escape(F.activa.nombre)} habilitado · ${money(F.activa.precio)}</b> · quedan <b>${F.activa.libres}</b> de ${F.activa.capacidad} cupos${F.activa.reservados ? ` (${F.activa.reservados} ${F.activa.reservados === 1 ? "reservado" : "reservados"} ahora en la pasarela)` : ""}.`
       : '<b style="color:var(--bad,#B42318)">Todas las fases están agotadas.</b> Puedes agregar cupos en Pasarela de pagos.');
   // Validación del monto escrito
   const v = Math.round(Number(tot && tot.value) || 0);
   if (v && !otros) {
     const fz = F.fases.find(x => Math.round(x.precio) === v);
     if (!fz) html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> Bs ${v} no es el precio de ninguna fase, así que este balance <b>no ocupará cupo</b>.</div>`;
-    else if (fz.libres <= 0) html += `<div style="margin-top:6px;color:#B42318"><b>Atención:</b> la Fase ${fz.n} (Bs ${v}) ya está agotada. Si lo registras, quedará por encima del cupo (+1).</div>`;
-    else if (F.activa && fz.n !== F.activa.n) html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> Bs ${v} es el precio de la Fase ${fz.n}, pero la habilitada es la Fase ${F.activa.n} (${money(F.activa.precio)}).</div>`;
+    else if (fz.libres <= 0) html += `<div style="margin-top:6px;color:#B42318"><b>Atención:</b> el ${escape(fz.nombre)} (Bs ${v}) ya está agotado. Si lo registras, quedará por encima del cupo (+1).</div>`;
+    else if (F.activa && fz.n !== F.activa.n) html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> Bs ${v} es el precio del ${escape(fz.nombre)}, pero el habilitado para este cliente es el ${escape(F.activa.nombre)} (${money(F.activa.precio)}).</div>`;
   } else if (v && otros && v !== Math.round(F.otros)) {
     html += `<div style="margin-top:6px;color:#93370D"><b>Atención:</b> el precio de otros rubros es Bs ${escape(String(F.otros))}.</div>`;
   }
@@ -4187,7 +4215,8 @@ function paintPasarela() {
   const conteo = eeffConteoLocal(c.eeffGestion);
   const usadosEeff = conteo.total;
   const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "pagos.html";
-  const tabs = [["revision", `Pagos en revisión (${revision.length})`], ["ultimos", "Últimos pagos"], ["config", "Precios y cupos"], ["qr", "QR por importe"]];
+  const conPremio = todos.filter(r => r.premios && r.premios.length).sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
+  const tabs = [["revision", `Pagos en revisión (${revision.length})`], ["ultimos", "Últimos pagos"], ["config", "Precios y cupos"], ["balances", "Balances y beneficios"], ["premios", `Premios (${conPremio.filter(r => !r.premiosEntregado).length} por entregar)`], ["qr", "QR por importe"]];
   let body = "";
   if (PA_UI.tab === "revision") {
     body = `<p class="note" style="margin:0 0 10px">La IA no pudo confirmar estos comprobantes. Revisa la imagen y apruébalos (pasan a la lista que corresponde y se envía el correo) o recházalos.</p>
@@ -4231,6 +4260,64 @@ function paintPasarela() {
         ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar fase</button>` : ""}
       </div></div>
       ${admin ? `<div style="margin-top:14px"><button class="btn" id="pa_save">Guardar configuración</button> <span class="msg" id="pa_msg"></span></div>` : ""}`;
+  } else if (PA_UI.tab === "balances") {
+    const dis = admin ? "" : "disabled";
+    const ben = Object.assign({}, PAS_BEN_DEF, c.beneficios || {});
+    const lz = String(c.lanzamiento || "2026-10-26T10:30:00-04:00");
+    const lzLocal = lz.slice(0, 16);
+    const ta = (id, l) => `<textarea id="${id}" rows="5" style="width:100%;font-size:13px" ${dis}>${escape((l || []).join("\n"))}</textarea>`;
+    body = `${admin ? "" : `<p class="note">Solo un administrador puede cambiar esto.</p>`}
+      <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Lanzamiento de la pasarela</h3>
+        <p class="note" style="margin:0 0 8px">Antes de esta fecha y hora (Bolivia), los clientes ven una cuenta regresiva. Tú puedes probarla igual con <span class="mono">pagos.html?vista=previa</span>. Deja vacío para no mostrar cuenta regresiva.</p>
+        <input id="pa_lanz" type="datetime-local" value="${escape(lzLocal)}" ${dis}></div>
+      <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Balances (estados financieros)</h3>
+        <p class="note" style="margin:0 0 10px">Nombre que ve el cliente y qué incluye cada balance (una línea por punto). "NIT desde" limita el balance a clientes con NIT abierto desde esa fecha (déjalo vacío para todos).</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+        ${PA_UI.cupos.map((x, i) => { const inf = balInfo(PA_UI.cupos, i); return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px">
+          <div class="note" style="margin:0 0 4px">Fase ${i + 1} · Bs ${escape(String(x.precio))} · ${escape(String(x.capacidad))} cupos</div>
+          <div class="field"><label>Nombre</label><input class="pa-bn" data-i="${i}" value="${escape(inf.nombre)}" ${dis}></div>
+          <div class="field"><label>NIT desde (opcional)</label><input class="pa-bd" data-i="${i}" type="date" value="${escape(inf.nitDesde || "")}" ${dis}></div>
+          <div class="field"><label>Qué incluye</label><textarea class="pa-bi" data-i="${i}" rows="4" style="width:100%;font-size:13px" ${dis}>${escape(inf.incluye.join("\n"))}</textarea></div></div>`; }).join("")}
+        </div></div>
+      <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Beneficios de los planes</h3>
+        <p class="note" style="margin:0 0 10px">Se muestran dentro de cada plan en la pasarela. Una línea por beneficio.</p>
+        <div class="grid2" style="gap:12px">
+          <div class="field"><label>Plan Básico (declaración sin movimiento)</label>${ta("pa_ben_basico", ben.basico)}</div>
+          <div class="field"><label>Plan Estándar</label>${ta("pa_ben_estandar", ben.estandar)}</div>
+          <div class="field"><label>Plan Premium</label>${ta("pa_ben_premium", ben.premium)}</div>
+          <div class="field"><label>Suscripción Facturación</label>${ta("pa_ben_fact", ben.fact)}</div>
+        </div></div>
+      ${admin ? `<button class="btn" id="pa_save_bal">Guardar balances y beneficios</button> <span class="msg" id="pa_msg_bal"></span>` : ""}`;
+  } else if (PA_UI.tab === "premios") {
+    const dis = admin ? "" : "disabled";
+    PA_UI.premios = PA_UI.premios || JSON.parse(JSON.stringify(c.premios && c.premios.length ? c.premios : PAS_PREM_DEF));
+    const nFases = PA_UI.cupos.length;
+    const opt = (v, l, sel) => `<option value="${v}" ${String(sel) === String(v) ? "selected" : ""}>${l}</option>`;
+    body = `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
+        <p class="note" style="margin:0 0 10px">Clientes que ganaron un premio al pagar por la pasarela. Marca "Entregado" cuando les hagas la devolución o les des el beneficio.</p>
+        ${conPremio.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Celular</th><th>Servicio</th><th style="text-align:right">Pagó</th><th>Premio</th><th>Entregado</th></tr></thead><tbody>
+          ${conPremio.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td><td class="mono">${escape(r.clienteCelular || "")}</td>
+            <td style="font-size:12px">${escape(r.balanceNombre || r.detalleServicio || r.servicio || "")}</td><td class="mono" style="text-align:right">${money(r.importe)}</td>
+            <td>${r.premios.map(p => `<div><span class="badge ${p.tipo === "azar" ? "ok" : ""}">${p.tipo === "azar" ? "Azar" : "Fijo"}</span> <b>${escape(p.nombre)}</b></div>`).join("")}</td>
+            <td><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="pa-ent" data-id="${escape(r.id)}" ${r.premiosEntregado ? "checked" : ""} ${canEdit ? "" : "disabled"} style="width:auto">${r.premiosEntregado ? `<span class="note" style="margin:0">${escape(r.premiosEntregadoPor || "")}</span>` : ""}</label></td></tr>`).join("")}
+          </tbody></table></div>` : `<p class="note">Todavía no hay ganadores.</p>`}</div>
+      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 6px">Premios configurados</h3>
+        <p class="note" style="margin:0 0 10px"><b>Fijo:</b> lo reciben todos los que pagan ese servicio o balance. <b>Al azar:</b> se sortean de antemano los ganadores entre los próximos pagos (ej. 1 ganador entre 30 pagos); nadie sabe cuál pago gana, ni el equipo. Al completar los pagos se sortea otra ronda.</p>
+        <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Activo</th><th>Premio</th><th>Descripción</th><th>Servicio</th><th>Balance / plan</th><th>Tipo</th><th>Ganadores</th><th>Entre pagos</th><th></th></tr></thead><tbody>
+        ${PA_UI.premios.map((p, i) => `<tr>
+          <td><input type="checkbox" class="pm" data-i="${i}" data-k="activo" ${p.activo === false ? "" : "checked"} ${dis} style="width:auto"></td>
+          <td><input class="pm" data-i="${i}" data-k="nombre" value="${escape(p.nombre || "")}" style="min-width:180px" ${dis}></td>
+          <td><input class="pm" data-i="${i}" data-k="descripcion" value="${escape(p.descripcion || "")}" style="min-width:200px" ${dis}></td>
+          <td><select class="pm" data-i="${i}" data-k="servicio" ${dis}>${opt("eeff", "Balances", p.servicio)}${opt("decl", "Declaraciones", p.servicio)}${opt("fact", "Facturación", p.servicio)}${opt("todos", "Todos", p.servicio)}</select></td>
+          <td>${p.servicio === "eeff" ? `<select class="pm" data-i="${i}" data-k="fase" ${dis}>${opt(0, "Todos los balances", p.fase || 0)}${PA_UI.cupos.map((x, k) => opt(k + 1, escape(balInfo(PA_UI.cupos, k).nombre), p.fase)).join("")}</select>`
+                : p.servicio === "decl" ? `<select class="pm" data-i="${i}" data-k="plan" ${dis}>${opt("", "Todos los planes", p.plan || "")}${opt("basico", "Básico", p.plan)}${opt("estandar", "Estándar", p.plan)}${opt("premium", "Premium", p.plan)}</select>` : "—"}</td>
+          <td><select class="pm" data-i="${i}" data-k="tipo" ${dis}>${opt("fijo", "Fijo", p.tipo)}${opt("azar", "Al azar", p.tipo)}</select></td>
+          <td>${p.tipo === "azar" ? `<input class="pm" data-i="${i}" data-k="ganadores" type="number" min="1" value="${escape(String(p.ganadores || 1))}" style="width:60px" ${dis}>` : "Todos"}</td>
+          <td>${p.tipo === "azar" ? `<input class="pm" data-i="${i}" data-k="entre" type="number" min="1" value="${escape(String(p.entre || 30))}" style="width:70px" ${dis}>` : "—"}</td>
+          <td>${admin ? `<button class="mini pm-del" data-i="${i}">Quitar</button>` : ""}</td></tr>`).join("")}
+        </tbody></table></div>
+        ${admin ? `<button class="mini" id="pm_add" style="margin-top:8px">+ Agregar premio</button>
+        <div style="margin-top:12px"><button class="btn" id="pm_save">Guardar premios</button> <span class="msg" id="pm_msg"></span></div>` : ""}</div>`;
   } else {
     const ms = paMontos();
     body = `<p class="note" style="margin:0 0 10px">Sube el QR de tu banco para cada importe (con el monto ya fijado). La página de pagos muestra el que corresponde. Si cambias un precio, sube el QR del nuevo monto.</p>
@@ -4259,6 +4346,43 @@ function paintPasarela() {
   el("pa_copy").onclick = () => { try { navigator.clipboard.writeText(link); el("pa_copy").textContent = "✓ Copiado"; } catch (e) {} };
   V.querySelectorAll("[data-aprobar]").forEach(b => b.onclick = () => paResolver(b.dataset.aprobar, true));
   V.querySelectorAll("[data-rechazar]").forEach(b => b.onclick = () => paResolver(b.dataset.rechazar, false));
+  // Balances y beneficios
+  if (el("pa_save_bal")) el("pa_save_bal").onclick = async () => {
+    const m = el("pa_msg_bal"); m.className = "msg"; m.textContent = "Guardando…";
+    const lineas = t => String(t || "").split("\n").map(x => x.trim()).filter(Boolean);
+    V.querySelectorAll(".pa-bn").forEach(i => { PA_UI.cupos[+i.dataset.i].nombre = i.value.trim(); });
+    V.querySelectorAll(".pa-bd").forEach(i => { PA_UI.cupos[+i.dataset.i].nitDesde = i.value || ""; });
+    V.querySelectorAll(".pa-bi").forEach(i => { PA_UI.cupos[+i.dataset.i].incluye = lineas(i.value); });
+    const lz = el("pa_lanz").value ? el("pa_lanz").value + ":00-04:00" : "";
+    const beneficios = { basico: lineas(el("pa_ben_basico").value), estandar: lineas(el("pa_ben_estandar").value), premium: lineas(el("pa_ben_premium").value), fact: lineas(el("pa_ben_fact").value) };
+    try {
+      await setDoc(doc(db, "config", "app"), { pasarela: { cupos: PA_UI.cupos, beneficios, lanzamiento: lz }, updatedAt: serverTimestamp() }, { merge: true });
+      Object.assign(PA_UI.cfg, { cupos: PA_UI.cupos, beneficios, lanzamiento: lz });
+      paintPasarela(); const m2 = el("pa_msg_bal"); if (m2) { m2.className = "msg ok"; m2.textContent = "Guardado. Los clientes ya lo ven en la pasarela."; }
+    } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+  };
+  // Premios
+  V.querySelectorAll(".pm").forEach(i => i.onchange = () => {
+    const p = PA_UI.premios[+i.dataset.i], k = i.dataset.k;
+    p[k] = i.type === "checkbox" ? i.checked : (i.type === "number" || k === "fase") ? Number(i.value) || 0 : i.value;
+    if (k === "servicio" || k === "tipo") paintPasarela();
+  });
+  V.querySelectorAll(".pm-del").forEach(b => b.onclick = () => { PA_UI.premios.splice(+b.dataset.i, 1); paintPasarela(); });
+  if (el("pm_add")) el("pm_add").onclick = () => { PA_UI.premios.push({ id: "p" + Date.now().toString(36), nombre: "Nuevo premio", descripcion: "", servicio: "eeff", fase: 0, tipo: "fijo", ganadores: 1, entre: 30 }); paintPasarela(); };
+  if (el("pm_save")) el("pm_save").onclick = async () => {
+    const m = el("pm_msg"); m.className = "msg"; m.textContent = "Guardando…";
+    try {
+      await setDoc(doc(db, "config", "app"), { pasarela: { premios: PA_UI.premios }, updatedAt: serverTimestamp() }, { merge: true });
+      PA_UI.cfg.premios = JSON.parse(JSON.stringify(PA_UI.premios));
+      m.className = "msg ok"; m.textContent = "Guardado.";
+    } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+  };
+  V.querySelectorAll(".pa-ent").forEach(c => c.onchange = async () => {
+    const quien = (ME && (ME.name || ME.email)) || "";
+    const datos = { premiosEntregado: c.checked, premiosEntregadoPor: c.checked ? quien : "", premiosEntregadoAt: c.checked ? Date.now() : 0, _upd: Date.now() };
+    try { await setDoc(doc(db, "recepciones", c.dataset.id), datos, { merge: true }); rcPoner(c.dataset.id, datos); paintPasarela(); }
+    catch (e) { alert("No se pudo guardar: " + (e.code || e.message)); c.checked = !c.checked; }
+  });
   V.querySelectorAll(".pa-cp").forEach(i => i.onchange = () => { PA_UI.cupos[Number(i.dataset.i)][i.dataset.k] = Number(i.value) || 0; paintPasarela(); });
   eeffFasesEnlazar(V);
   V.querySelectorAll(".pa-del").forEach(b => b.onclick = () => { PA_UI.cupos.splice(Number(b.dataset.i), 1); paintPasarela(); });
