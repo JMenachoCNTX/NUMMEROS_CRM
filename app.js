@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "42";
+const APP_VERSION = "43";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1526,6 +1526,7 @@ function paintBaseDatos() {
       <button class="btn sec" id="bd_download" style="border:1px solid var(--line)">⬇ Descargar</button>
       <button class="btn sec" id="bd_reload" style="border:1px solid var(--line)">Actualizar</button>
       ${(isAdmin() && !bdEnFirebaseFlag) ? '<button class="btn" id="bd_migrar" style="background:var(--green);border-color:var(--green)" title="Copiar todo a Firebase y dejar de usar Google Sheets">⬆ Migrar a Firebase</button>' : ''}
+      ${(isAdmin() && bdEnFirebaseFlag) ? '<label class="btn sec" id="bd_xls" style="border:1px solid var(--line);cursor:pointer" title="Sube el Excel actualizado: solo se guarda lo nuevo y lo que cambió">Importar Excel<input type="file" id="bd_xls_in" accept=".xlsx,.xls" style="display:none"></label>' : ''}
       ${(isAdmin() && bdEnFirebaseFlag) ? '<button class="btn sec" id="bd_sync" style="border:1px solid var(--line)" title="Trae del Google Sheet solo los clientes nuevos y los cambios">Sincronizar con Sheets</button>' : ''}
       ${bdEnFirebaseFlag ? '<span class="badge ok" style="align-self:center;padding:4px 10px">⚡ En Firebase</span>' : ''}
       <span class="msg" id="bd_msg" style="align-self:center"></span>
@@ -1558,6 +1559,7 @@ function paintBaseDatos() {
   if (el("bd_reload")) el("bd_reload").onclick = () =>renderBaseDatos(true);
   if (el("bd_migrar")) el("bd_migrar").onclick = () => migrarBDaFirebase();
   if (el("bd_sync")) el("bd_sync").onclick = () => bdSincronizarSheet();
+  if (el("bd_xls_in")) el("bd_xls_in").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) bdImportarExcel(f); };
   el("v-basedatos").querySelectorAll(".bd-kpi").forEach(k => { k.style.cursor = "pointer"; k.onclick = () => { const g = "g:" + k.dataset.gfilter; bdEstado = (bdEstado === g) ? "" : g; bdSubtab = "general"; paintBaseDatos(); }; });
   if (el("bd_download")) el("bd_download").onclick = () => openBDDownloadModal(list);
   el("v-basedatos").querySelectorAll("[data-edit]").forEach(b =>b.onclick = (e) => { e.stopPropagation(); openBDModal(BD[+b.dataset.edit]); });
@@ -1767,8 +1769,45 @@ async function bdSincronizarSheet() {
   const data = await new Promise(res => bdFetch(res));
   if (!data || data.error) { fin(); alert("No se pudo leer el Google Sheet (" + ((data && data.error) || "") + "). Revisa en Configuración la URL del puente de la Base de Datos."); return; }
   const header = (data.header && data.header.length) ? data.header : ((data.rows && data.rows.length) ? Object.keys(data.rows[0]) : []);
-  const filas = (data.rows || []).filter(r => Object.values(r).some(v => String(v == null ? "" : v).trim() !== ""));
+  fin();
+  await bdSincronizarFilas(header, data.rows || [], "Google Sheets");
+}
+// Importa un Excel (.xlsx) de la Base de Datos: misma vista previa, solo escribe lo que cambió
+async function bdImportarExcel(file) {
+  if (!isAdmin()) { alert("Solo el administrador puede importar."); return; }
+  const btn = el("bd_xls"); const txt0 = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Leyendo el Excel…"; }
+  try {
+    const X = await arqLoadXLSX();
+    const wb = X.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const matriz = X.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+    const header = (matriz[0] || []).map(h => String(h).trim()).filter(Boolean);
+    const filas = matriz.slice(1).map(r => { const o = {}; header.forEach((h, i) => { o[h] = r[i] instanceof Date ? r[i] : (r[i] == null ? "" : r[i]); }); return o; });
+    if (btn) { btn.disabled = false; btn.innerHTML = txt0; }
+    await bdSincronizarFilas(header, filas, "Excel (" + file.name + ")", true);
+  } catch (e) { if (btn) { btn.disabled = false; btn.innerHTML = txt0; } alert("No se pudo leer el Excel: " + (e.message || e)); }
+}
+async function bdSincronizarFilas(header, filasIn, origenTxt, permitirBorrar) {
+  const filas = filasIn.filter(r => Object.values(r).some(v => String(v == null ? "" : v).trim() !== ""));
+  // Fechas: se comparan como día (aaaa-mm-dd) y se guardan con el mismo formato que ya usa la Base de Datos
+  const pad = n => String(n).padStart(2, "0");
+  const diaDe = v => {
+    if (v instanceof Date && !isNaN(v)) return v.getFullYear() + "-" + pad(v.getMonth() + 1) + "-" + pad(v.getDate());
+    const t = String(v == null ? "" : v).trim(); let m;
+    if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})(T(\d{2}):\d{2})?/))) { if (m[4]) { const d = new Date(t); if (!isNaN(d)) return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); } return m[1] + "-" + m[2] + "-" + m[3]; }
+    if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return m[3] + "-" + pad(m[2]) + "-" + pad(m[1]);
+    return null;
+  };
+  const formatoFecha = {};
+  header.forEach(h => { const ej = BD.map(r => r[h]).find(v => v && diaDe(v)); formatoFecha[h] = !ej ? "dmy" : /^\d{4}-\d{2}-\d{2}T/.test(String(ej)) ? "iso" : /^\d{4}-\d{2}-\d{2}$/.test(String(ej)) ? "ymd" : "dmy"; });
+  const aTexto = (h, v) => {
+    if (v instanceof Date && !isNaN(v)) { const d = diaDe(v), [y, mo, da] = d.split("-"); return formatoFecha[h] === "iso" ? new Date(Date.UTC(+y, +mo - 1, +da, 4)).toISOString() : formatoFecha[h] === "ymd" ? d : da + "/" + mo + "/" + y; }
+    return String(v == null ? "" : v).trim();
+  };
+  filas.forEach(f => header.forEach(h => { f[h] = aTexto(h, f[h]); }));
   const norm = v => String(v == null ? "" : v).trim();
+  const igual = (a, b) => { const x = norm(a), y = norm(b); if (x === y) return true; const da = diaDe(x), db = diaDe(y); if (da && db) return da === db; const na = Number(x), nb = Number(y); return x !== "" && y !== "" && !isNaN(na) && !isNaN(nb) && na === nb; };
   const soloDig = v => norm(v).replace(/\D/g, "");
   const porCod = {}, porNit = {};
   BD.forEach(r => { const c = norm(bdV(r, "codigoId")); if (c) porCod[c] = r; const n = soloDig(bdV(r, "nit")); if (n && !porNit[n]) porNit[n] = r; });
@@ -1783,28 +1822,33 @@ async function bdSincronizarSheet() {
       usados.add(id); nuevos.push({ id: id, datos: f, nombre: bdV(f, "nombre") || bdV(f, "razon") || cod }); return;
     }
     const dif = {};
-    header.forEach(h => { if (norm(f[h]) !== norm(ex[h])) dif[h] = f[h] == null ? "" : f[h]; });
+    header.forEach(h => { if (!igual(f[h], ex[h])) dif[h] = f[h] == null ? "" : f[h]; });
     if (Object.keys(dif).length) cambios.push({ id: ex._docid, ex: ex, dif: dif, nombre: bdV(ex, "nombre") || bdV(ex, "razon") || cod });
   });
-  fin();
+  const enArchivo = new Set();
+  filas.forEach(f => { const cod = norm(bdV(f, "codigoId")), nit = soloDig(bdV(f, "nit")); const ex = (cod && porCod[cod]) || (nit && porNit[nit]); if (ex) enArchivo.add(ex._docid); });
+  const sobran = permitirBorrar ? BD.filter(r => !enArchivo.has(r._docid)) : [];
+  if (typeof fin === "function") fin();
   const hEst = (bdKey2Header && bdKey2Header["estado"]) || BD_KEY2LBL["estado"];
   const total = nuevos.length + cambios.length;
+  const totalConBorrar = total + sobran.length;
   const lineas = cambios.slice(0, 150).map(c => `<tr><td>${escape(c.nombre)}</td><td>${Object.keys(c.dif).map(h => `<div><b>${escape(h)}:</b> <span style="color:var(--muted);text-decoration:line-through">${escape(norm(c.ex[h]) || "(vacío)")}</span> → ${escape(norm(c.dif[h]) || "(vacío)")}</div>`).join("")}</td></tr>`).join("");
   const bg = document.createElement("div");
   bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px";
   bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
-    <h3 style="margin:0 0 6px">Sincronizar con Google Sheets</h3>
-    <p class="note" style="margin:0 0 12px">Sheet: <b>${filas.length}</b> registros · Panel: <b>${BD.length}</b> registros.<br>
-      Se guardarán solo <b>${nuevos.length}</b> cliente(s) nuevo(s) y <b>${cambios.length}</b> con cambios = <b>${total}</b> escrituras en Firebase (el límite gratis es 20.000 por día). No se borra nada.</p>
+    <h3 style="margin:0 0 6px">Actualizar Base de Datos desde ${escape(origenTxt)}</h3>
+    <p class="note" style="margin:0 0 12px">Archivo: <b>${filas.length}</b> registros · Panel: <b>${BD.length}</b> registros.<br>
+      Se guardarán solo <b>${nuevos.length}</b> cliente(s) nuevo(s) y <b>${cambios.length}</b> con cambios = <b>${total}</b> escrituras en Firebase (el límite gratis es 20.000 por día).${sobran.length ? "" : " No se borra nada."}</p>
+    ${sobran.length ? `<label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 10px"><input type="checkbox" id="sy_borrar" style="width:auto;margin-top:2px"> <span><b>Eliminar ${sobran.length} cliente(s) que están en el panel pero no en el archivo</b> (para que quede exactamente igual al Excel). Revisa la lista antes de marcar: ${sobran.slice(0, 60).map(r => escape(bdV(r, "nombre") || bdV(r, "razon") || bdV(r, "codigoId") || r._docid)).join(", ")}${sobran.length > 60 ? "…" : ""}</span></label>` : ""}
     <div style="overflow:auto;flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12.5px">
       ${nuevos.length ? `<p style="margin:4px 0 8px"><b>Nuevos:</b> ${nuevos.map(n => escape(n.nombre)).join(", ")}</p>` : ""}
       ${cambios.length ? `<table class="bd-table" style="width:100%"><thead><tr><th>Cliente</th><th>Cambios (antes → Sheet)</th></tr></thead><tbody>${lineas}</tbody></table>${cambios.length > 150 ? `<p class="note">…y ${cambios.length - 150} más.</p>` : ""}` : ""}
-      ${!total ? '<p>Todo está igual. No hay nada que actualizar.</p>' : ""}
+      ${!total ? '<p>No hay datos nuevos ni cambios.</p>' : ""}
     </div>
     <p class="msg" id="sy_msg" style="margin:10px 0 0"></p>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button class="btn sec" id="sy_x" style="border:1px solid var(--line)">Cancelar</button>
-      ${total ? `<button class="btn" id="sy_ok">Aplicar ${total} cambio(s)</button>` : ""}
+      ${totalConBorrar ? `<button class="btn" id="sy_ok">Aplicar cambios</button>` : ""}
     </div></div>`;
   document.body.appendChild(bg);
   bg.querySelector("#sy_x").onclick = () => bg.remove();
@@ -1820,10 +1864,17 @@ async function bdSincronizarSheet() {
         try {
           const d = Object.assign({}, t.datos, { _upd: Date.now() });
           await setDoc(doc(db, BD_COLL, t.id), d, { merge: true }); bdcPoner(t.id, d); hechos++;
-          if (t.log) await bdLog(Object.assign(t.log, { detalle: "Sincronizado desde Google Sheets" }));
+          if (t.log) await bdLog(Object.assign(t.log, { detalle: "Actualizado desde " + origenTxt }));
         } catch (e) { errores++; }
       }));
       msg.className = "msg"; msg.textContent = `Guardando… ${hechos}/${tareas.length}`;
+    }
+    if (sobran.length && bg.querySelector("#sy_borrar") && bg.querySelector("#sy_borrar").checked) {
+      for (const r of sobran) {
+        try { await deleteDoc(doc(db, BD_COLL, r._docid)); if (BDC.docs) BDC.docs = BDC.docs.filter(x => x._docid !== r._docid); hechos++; await bdLog({ accion: "baja_registro", nombre: bdV(r, "nombre") || bdV(r, "razon") || r._docid, estadoAnterior: norm(r[hEst]), detalle: "Eliminado al actualizar desde " + origenTxt }); }
+        catch (e) { errores++; }
+      }
+      bdcGuardar();
     }
     if (header.length) { try { await setDoc(doc(db, "config", "app"), { bdHeader: header }, { merge: true }); } catch (e) {} }
     bg.remove(); bdLoaded = false;
