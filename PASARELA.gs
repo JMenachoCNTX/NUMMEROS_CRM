@@ -36,7 +36,7 @@ var PAS_DEF = {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-23d";
+var PAS_TERMINOS_VERSION = "2026-10-24";
 // Advertencia de balances (se muestra aparte, en rojo, y se acepta con su propia casilla; también va en el correo)
 var PAS_ADVERTENCIA_EEFF = [
   "Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de Impuestos Nacionales. Nuestro sistema contable NUMMEROS los genera de forma automática.",
@@ -51,7 +51,7 @@ var PAS_TERMINOS = {
     "No hay hora ni fecha fija de entrega: presentamos tu declaración antes de su vencimiento, que depende del último dígito de tu NIT (del día 13 al 22).",
     "Las facturas manuales deben dejarse a tiempo en nuestro buzón (Av. Alemana, 7mo anillo). Las electrónicas las tomamos del portal de Impuestos Nacionales.",
     "Plan Estándar: hasta 100 facturas al mes. Plan Premium: de 101 a 200. Más de 200 facturas requiere el Plan Personalizado.",
-    "Los impuestos que resulten (IVA e IT) los pagas tú directamente; te enviamos el QR de pago por WhatsApp junto con los formularios.",
+    "Los impuestos que resulten (IVA e IT) los pagas tú directamente. Tus formularios y el QR de pago los encuentras en tu Portal de Clientes NUMMEROS (no se envían por WhatsApp).",
     "Las multas por meses atrasados o por entregar la documentación fuera de tiempo corren por tu cuenta.",
     "CONTAX no se responsabiliza por facturas que no sean válidas para tu actividad registrada."
   ],
@@ -61,6 +61,7 @@ var PAS_TERMINOS = {
     "El precio corresponde a la fase habilitada al momento de tu pago; cuando se llenan los cupos de una fase, el precio sube a la siguiente fase.",
     "Debes entregarnos a tiempo toda la información y documentación que te solicitemos.",
     "El IUE que resulte a pagar lo pagas tú directamente.",
+    "Tus estados financieros y formularios se entregan en tu Portal de Clientes NUMMEROS (no se envían por WhatsApp).",
     "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
   ],
   facturacion: [
@@ -68,7 +69,8 @@ var PAS_TERMINOS = {
     "Repartidores de Yango: emitimos tu factura semanal por el importe autorizado por la aplicación y la dejamos lista antes del jueves (la verificación cierra el jueves a las 18:00).",
     "Si la aplicación no autoriza tu pago de la semana (por ejemplo, por no cumplir el mínimo de horas), esa semana no se emite factura.",
     "Repartidores de PedidosYa: emitimos aproximadamente dos facturas al mes. Otros clientes: emitimos las facturas que nos solicites.",
-    "Debes mantener al día tus datos y tu acceso a Impuestos Nacionales para poder emitir."
+    "Debes mantener al día tus datos y tu acceso a Impuestos Nacionales para poder emitir.",
+    "Tus facturas emitidas las encuentras en tu Portal de Clientes NUMMEROS (no se envían por WhatsApp)."
   ]
 };
 

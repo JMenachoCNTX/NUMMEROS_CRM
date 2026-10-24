@@ -244,7 +244,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   var INFO = {
     decl: '<p>Cada mes hacemos tu declaración ante Impuestos Nacionales: consolidamos tu <b>RCV</b> (Registro de Compras y Ventas) y presentamos los <b>Formularios 200 (IVA)</b> y <b>400 (IT)</b>.</p>' +
       '<ul><li>Si tienes facturas manuales, déjalas en nuestro <b>buzón (Av. Alemana, 7mo anillo)</b>, disponible a toda hora. Las electrónicas no hace falta.</li>' +
-      '<li>Al terminar, te enviamos por WhatsApp los formularios en PDF, el QR de pago de impuestos (si corresponde) y un resumen de tus compras y ventas.</li>' +
+      '<li>Al terminar, encontrarás en tu <b>Portal de Clientes NUMMEROS</b> tus formularios, el QR de pago de impuestos (si corresponde) y un resumen de tus compras y ventas.</li>' +
       '<li>Cada pago cubre <b>un mes</b>. Si debes meses atrasados, se paga cada uno.</li></ul>' +
       '<p><b>Fechas:</b> recibimos del <b>25 al 30</b> (precio normal) y del <b>1 al 5</b> (recepción tardía). Presentamos antes de tu vencimiento, que depende del último dígito de tu NIT (del día 13 al 22).</p>' +
       '<p class="suave">No declarar a tiempo genera multas: RCV 100 UFV, Formulario 200 50 UFV y Formulario 400 50 UFV, que se acumulan cada mes.</p>',
@@ -290,7 +290,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     opcion: ["pitagoras-muestra-sistema.jpg", "Precios claros", "Elige lo que mejor te queda", "Sin letras chicas: ves el precio exacto antes de pagar."],
     pago: ["contrato-euclides-oscuro.jpg", "Pago seguro", "Paga con el QR de tu banco", "El QR ya trae el monto exacto. Después sube la captura de tu comprobante."],
     verif: ["arquimedes-saludo-claro.jpg", "Verificación", "Revisamos tu comprobante", "Nuestra IA lee tu captura y confirma el pago en segundos."],
-    fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Te avisaremos por WhatsApp cuando esté listo."]
+    fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS."]
   };
   Object.keys(ESCENA).forEach(function (k) { var im = new Image(); im.src = FOTOS + ESCENA[k][0]; });
   function escena() { return ESCENA[S.paso] || ESCENA.nit; }
@@ -476,7 +476,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         "<h2>" + (ok ? "¡Listo!" : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? "Tu pago fue recepcionado." : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
-        '<p class="c13 suave" style="line-height:19px">' + (ok ? "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Te avisaremos por WhatsApp cuando esté listo." : "Guarda este número por si necesitas consultarnos.") + "</p>" +
+        '<p class="c13 suave" style="line-height:19px">' + (ok ? "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS." : "Guarda este número por si necesitas consultarnos.") + "</p>" +
         '<button class="btn2" id="bOtro">Hacer otro pago</button></div>';
     }
     // Imagen del paso (en celular va arriba del contenido; en computadora va en el panel de la izquierda)
@@ -501,7 +501,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // Ejemplo real (con datos ficticios) de cómo entregamos los estados financieros
   function muestraEeff() {
     var pag = [["portada", "Portada"], ["balance", "Balance general"], ["resultados", "Estado de resultados"], ["flujo", "Flujo de efectivo"], ["notas", "Notas a los EEFF"]];
-    return '<div class="card pila" style="gap:10px"><div><b style="font-size:16px">Así recibirás tus estados financieros</b><p class="chico suave" style="margin-top:2px">Ejemplo con datos ficticios. Son 7 reportes en un solo PDF, con firma del contador.</p></div>' +
+    return '<div class="card pila" style="gap:10px"><div><b style="font-size:16px">Así recibirás tus estados financieros</b><p class="chico suave" style="margin-top:2px">Ejemplo con datos ficticios. Son 7 reportes con firma del contador. Los descargas desde tu Portal de Clientes NUMMEROS.</p></div>' +
       '<div class="muestra">' + pag.map(function (x) { return '<a href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener"><img src="marca/ejemplos/eeff-' + x[0] + '.jpg" alt="Ejemplo: ' + x[1] + '" loading="lazy">' + x[1] + "</a>"; }).join("") + "</div>" +
       '<a class="btn2" href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>Ver el ejemplo completo (PDF)</a></div>';
   }
