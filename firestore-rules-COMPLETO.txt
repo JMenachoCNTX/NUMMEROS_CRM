@@ -146,8 +146,12 @@ service cloud.firestore {
     // Agenda compartida del equipo. La ve todo el portal; crean/editan/borran
     // los roles de edición (el rol 'lector' solo puede ver).
     match /eventos/{id} {
-      allow read: if portalView();
+      // Agenda y tareas del panel. Los agentes del CRM ven las tareas y pueden terminar las que tienen asignadas.
+      allow read: if portalView() || isAgent();
       allow create, update, delete: if portalEdit();
+      allow update: if isAgent() && resource.data.asignadoUid == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['done', 'terminadoPor', 'terminadoPorUid', 'terminadoAt', 'reabiertoPor', 'reabiertoAt', 'notaAgente']);
     }
 
     // ----- Egresos / gastos de la empresa (pestaña Egresos) -----

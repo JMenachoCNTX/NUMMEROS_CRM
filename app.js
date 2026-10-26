@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "50";
+const APP_VERSION = "51";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2970,7 +2970,7 @@ function recNuevoCliente() {
     const falta = ["Código de ID", nit ? "" : "NIT", "Tipo de contribuyente", "Actividad / rubro", "Fecha de apertura del NIT", cel ? "" : "Celular", correo ? "" : "Correo"].filter(Boolean);
     try {
       await setDoc(doc(collection(db, "eventos")), {
-        titulo: "Completar datos del nuevo cliente: " + nombre, fechaISO: todayISO(), hora: "", tipo: "tarea", cliente: nombre,
+        titulo: "Completar datos del nuevo cliente: " + nombre, fechaISO: todayISO(), hora: "", tipo: "tarea", cliente: nombre, clienteNit: nit, clienteBdId: docid,
         nota: "Cliente creado desde Recepción. Falta: " + falta.join(", ") + "." + (nota ? " Nota: " + nota : ""),
         origen: "recepcion", bdDocid: docid, done: false,
         createdByUid: (ME && ME.uid) || "", createdByNombre: (ME && (ME.name || ME.email)) || "", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
@@ -3870,6 +3870,7 @@ async function renderFicha() {
 async function fiCargar(nit) {
   FI_UI.nit = nit; FI_UI.recs = []; FI_UI.cargando = true; paintFicha();
   try {
+    if (!evLoaded) await evLoad();
     FI_UI.recs = (await recSync()).filter(r => fiNit(r.nit) === nit);
     const anios = [...new Set(FI_UI.recs.map(r => (recPeriodoKey(r) || String(r.fechaISO || "")).slice(0, 4)).filter(Boolean))].sort();
     if (anios.length && anios.indexOf(FI_UI.anio) < 0) FI_UI.anio = anios[anios.length - 1];
@@ -3945,6 +3946,7 @@ function paintFicha() {
     <tbody>${filasMes}</tbody>
     <tfoot><tr><td></td><td><b>TOTAL</b></td><td colspan="3"></td><td class="mono" style="text-align:right"><b>${fx(sv)}</b></td><td class="mono" style="text-align:right"><b>${fx(sc)}</b></td><td colspan="3"></td></tr></tfoot></table></div>
     <p class="note">Toca un mes para abrir su declaración. Los meses anteriores a octubre 2026 vienen de la importación y solo muestran que se recepcionaron.</p>
+    ${fiTareasHTML(c)}
     <h3 style="margin:20px 0 8px">Otros servicios recepcionados</h3>
     <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Servicio</th><th>Detalle</th><th>Período / Gestión</th><th>Atención</th></tr></thead><tbody>
     ${otros.map(r => `<tr><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td>${escape(r.servicio || r.servicioNombre || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td>${escape(r.mesRecepcion || "—")}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="5" class="note">Sin otros servicios.</td></tr>`}
@@ -3952,7 +3954,22 @@ function paintFicha() {
   fiBind();
   if (el("fi_anio")) el("fi_anio").onchange = e => { FI_UI.anio = e.target.value; paintFicha(); };
   el("v-ficha").querySelectorAll(".fi-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(secretos[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+  el("v-ficha").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true));
+  el("v-ficha").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false));
+  el("v-ficha").querySelectorAll(".ev-edit").forEach(b => b.onclick = () => { const e = EVENTOS.find(x => x.id === b.dataset.id); if (e) openEventoModal(e); });
+  if (el("fi_newt")) el("fi_newt").onclick = () => openEventoModal({ tipo: "tarea", fechaISO: todayISO(), cliente: c ? (bdV(c, "nombre") || bdV(c, "razon")) : "", clienteNit: FI_UI.nit, _nueva: true });
   el("v-ficha").querySelectorAll(".fi-dj").forEach(tr => tr.onclick = () => openDDJJ(FI_UI.recs.find(x => x.id === tr.dataset.id), () => { LT_DATA = null; paintFicha(); }));
+}
+// Tareas relacionadas al cliente (por NIT, código de la BD o nombre)
+function fiTareasHTML(c) {
+  const nom = c ? (bdV(c, "nombre") || bdV(c, "razon")).toUpperCase() : "";
+  const T = EVENTOS.filter(e => e.tipo === "tarea" && ((e.clienteNit && fiNit(e.clienteNit) === FI_UI.nit) || (c && c._docid && e.clienteBdId === c._docid) || (nom && String(e.cliente || "").toUpperCase() === nom)));
+  const pend = T.filter(e => !e.done).sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
+  const hechas = T.filter(e => e.done).sort((a, b) => (b.terminadoAt || 0) - (a.terminadoAt || 0));
+  const hoy = todayISO();
+  return `<div style="display:flex;gap:8px;align-items:center;margin:20px 0 8px"><h3 style="margin:0 auto 0 0">Tareas del cliente (${pend.length} pendiente${pend.length === 1 ? "" : "s"})</h3>${canEditClientes() ? '<button class="btn sec" id="fi_newt" style="border:1px solid var(--line)">+ Nueva tarea</button>' : ""}</div>
+    ${pend.map(e => calTareaFila(e, false, hoy)).join("") || '<p class="note">No tiene tareas pendientes.</p>'}
+    ${hechas.length ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">Ver ${hechas.length} tarea${hechas.length === 1 ? "" : "s"} terminada${hechas.length === 1 ? "" : "s"}</summary><div style="margin-top:8px">${hechas.map(e => calTareaFila(e, true, hoy)).join("")}</div></details>` : ""}`;
 }
 function fiBind() {
   const q = el("fi_q"); if (!q) return;
@@ -4666,7 +4683,7 @@ function paintFacturacion() {
 //  MÓDULO CALENDARIO (Operaciones) — agenda del equipo
 //  Colección Firestore: "eventos"
 // ============================================================
-let EVENTOS = [], evLoaded = false, calYear = 0, calMonth = 0, calSubtab = "cal";
+let EVENTOS = [], evLoaded = false, calYear = 0, calMonth = 0, calSubtab = "cal", calTarFiltro = "todas";
 const EV_TIPOS = [
   ["tarea",       "Tarea",            "#235347"],
   ["vencimiento", "Vencimiento",      "#B4453C"],
@@ -4706,19 +4723,18 @@ async function evTerminar(id, terminar) {
   const datos = terminar
     ? { done: true, terminadoPor: (ME && (ME.name || ME.email)) || "", terminadoPorUid: (ME && ME.uid) || "", terminadoAt: Date.now() }
     : { done: false, terminadoPor: "", terminadoPorUid: "", terminadoAt: 0, reabiertoPor: (ME && (ME.name || ME.email)) || "", reabiertoAt: Date.now() };
-  try { await setDoc(doc(db, "eventos", id), datos, { merge: true }); Object.assign(e, datos); paintCalendario(); } catch (err) { alert("No se pudo actualizar: " + (err.code || err.message)); }
+  try { await setDoc(doc(db, "eventos", id), datos, { merge: true }); Object.assign(e, datos); if (el("v-ficha") && el("v-ficha").offsetParent !== null) paintFicha(); else paintCalendario(); } catch (err) { alert("No se pudo actualizar: " + (err.code || err.message)); }
 }
 // Subpestañas Tareas pendientes / Tareas terminadas (registro de avance del equipo)
-function calTareasHTML(hechas) {
-  const L = EVENTOS.filter(e => e.tipo === "tarea" && !!e.done === hechas);
-  if (hechas) L.sort((a, b) => (b.terminadoAt || 0) - (a.terminadoAt || 0)); else L.sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
-  const hoy = todayISO();
-  const filas = L.map(e => {
+// Una tarea (para la lista del calendario y para la Ficha del cliente)
+function calTareaFila(e, hechas, hoy) {
     const vencida = !hechas && e.fechaISO && e.fechaISO < hoy;
+    const paraMi = e.asignadoUid && ME && e.asignadoUid === ME.uid;
     return `<div class="ev-row" style="border-left:3px solid ${hechas ? "#2E7D5B" : vencida ? "#B4453C" : evColor("tarea")}">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;${hechas ? "opacity:.75" : ""}">${escape(e.titulo || "")}</div>
-        ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">Cliente: ${escape(e.cliente)}</div>` : ""}
+        ${e.asignadoUid ? `<div style="margin:3px 0"><span class="badge ${paraMi ? "danger" : "mut"}" style="display:inline-flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Asignada a ${paraMi ? "ti" : escape(e.asignadoNombre || "—")}</span>${e.asignadoPor ? ` <span style="font-size:11.5px;color:var(--muted)">por ${escape(e.asignadoPor)}</span>` : ""}</div>` : ""}
+        ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">Cliente: ${escape(e.cliente)}${e.clienteNit ? " · NIT " + escape(e.clienteNit) : ""}</div>` : ""}
         ${e.nota ? `<div style="font-size:12.5px;margin-top:3px">${escape(e.nota)}</div>` : ""}
         <div style="font-size:12px;color:var(--muted);margin-top:5px">Para el ${escape(e.fechaISO ? e.fechaISO.split("-").reverse().join("/") : "—")}${vencida ? ' · <b style="color:#B4453C">Atrasada</b>' : ""}
           · Creada por <b>${escape(e.createdByNombre || "—")}</b>${evFechaTs(e.createdAt) ? " el " + escape(evFechaTs(e.createdAt)) : ""}${e.origen === "recepcion" ? " · desde Recepción" : ""}</div>
@@ -4730,12 +4746,28 @@ function calTareasHTML(hechas) {
           : `<button class="btn ev-term" data-id="${e.id}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#2E7D5B;border-color:#2E7D5B;color:#fff">${EV_ICO_OK}Terminar</button>
              <button class="mini ev-edit" data-id="${e.id}">Editar</button>`}
       </div></div>`;
-  }).join("");
+}
+function calTareasHTML(hechas) {
+  let L = EVENTOS.filter(e => e.tipo === "tarea" && !!e.done === hechas);
+  const uid = ME && ME.uid;
+  const nMias = L.filter(e => e.asignadoUid === uid).length, nYo = L.filter(e => e.createdByUid === uid).length, nSin = L.filter(e => !e.asignadoUid).length;
+  if (calTarFiltro === "mias") L = L.filter(e => e.asignadoUid === uid);
+  else if (calTarFiltro === "creadas") L = L.filter(e => e.createdByUid === uid);
+  else if (calTarFiltro === "sin") L = L.filter(e => !e.asignadoUid);
+  if (hechas) L.sort((a, b) => (b.terminadoAt || 0) - (a.terminadoAt || 0)); else L.sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
+  const hoy = todayISO();
+  const filas = L.map(e => calTareaFila(e, hechas, hoy)).join("");
   return `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0 10px">
       <p class="lead" style="margin:0">${hechas ? "Registro de todo lo que el equipo ya terminó, con quién lo hizo y cuándo." : "Tareas por hacer del equipo. Al terminar una, dale a Terminar y queda en el registro de Tareas terminadas."}</p>
       ${hechas ? "" : '<button class="btn" id="ev_newt">+ Nueva tarea</button>'}
     </div>
-    ${filas || `<p class="note">${hechas ? "Todavía no hay tareas terminadas." : "No hay tareas pendientes."}</p>`}`;
+    <div class="subtabs" id="tarfil" style="margin:0 0 10px">
+      <button class="subtab ${calTarFiltro === "todas" ? "on" : ""}" data-tf="todas">Todas</button>
+      <button class="subtab ${calTarFiltro === "mias" ? "on" : ""}" data-tf="mias">Asignadas a mí (${nMias})</button>
+      <button class="subtab ${calTarFiltro === "creadas" ? "on" : ""}" data-tf="creadas">Creadas por mí (${nYo})</button>
+      <button class="subtab ${calTarFiltro === "sin" ? "on" : ""}" data-tf="sin">Sin asignar (${nSin})</button>
+    </div>
+    ${filas || `<p class="note">${hechas ? "No hay tareas terminadas en este filtro." : "No hay tareas pendientes en este filtro."}</p>`}`;
 }
 
 function paintCalendario() {
@@ -4817,6 +4849,7 @@ function paintCalendario() {
     ${proxRows || `<p class="note">No hay eventos próximos. Usa "+ Nuevo evento" o toca un día del calendario para agregar uno.</p>`}`}
   `;
   el("v-calendario").querySelectorAll("#caltabs .subtab").forEach(b => b.onclick = () => { calSubtab = b.dataset.ct; paintCalendario(); });
+  el("v-calendario").querySelectorAll("#tarfil .subtab").forEach(b => b.onclick = () => { calTarFiltro = b.dataset.tf; paintCalendario(); });
   el("v-calendario").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true));
   el("v-calendario").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false));
   if (el("ev_newt")) el("ev_newt").onclick = () => openEventoModal(null, todayISO());
@@ -4837,19 +4870,36 @@ function paintCalendario() {
   });
 }
 
+// Opciones de cliente desde la Base de Datos: "NOMBRE — NIT 123"
+function evCliOpts() { return BD.map(c => (bdV(c, "nombre") || bdV(c, "razon")) + (bdV(c, "nit") ? " — NIT " + bdV(c, "nit") : "")).filter(x => x.trim()).sort(); }
+function evCliParse(v) {
+  const t = String(v || "").trim(); const m = t.match(/^(.*?)\s+—\s+NIT\s+(\S+)\s*$/);
+  if (m) { const c = BD.find(x => bdV(x, "nit") === m[2]); return { nombre: m[1].trim(), nit: m[2], bdId: c ? c._docid || "" : "" }; }
+  const c = t ? BD.find(x => (bdV(x, "nombre") || bdV(x, "razon")).toUpperCase() === t.toUpperCase()) : null;
+  return { nombre: t, nit: c ? bdV(c, "nit") : "", bdId: c ? c._docid || "" : "" };
+}
+function evAsignables() { return USERS.filter(u => u.active !== false && (u.name || u.email)).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))); }
 function openEventoModal(e, fechaDefault) {
   const bg = document.createElement("div");
   bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px";
-  const clientesList = (typeof CLIENTES !== "undefined" && CLIENTES.length) ? CLIENTES.map(c => `<option value="${escape(c.nombre || "")}">`).join("") : "";
+  const clientesList = evCliOpts().map(o => `<option value="${escape(o)}">`).join("");
+  const cliVal = e && e.cliente ? e.cliente + (e.clienteNit ? " — NIT " + e.clienteNit : "") : "";
+  const asig = evAsignables();
   bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;width:500px;max-width:96vw;max-height:92vh;overflow:auto">
-    <h3 style="margin:0 0 14px">${e ? 'Editar' : 'Nuevo'} evento</h3>
+    <h3 style="margin:0 0 14px">${e && e.id ? 'Editar' : 'Nuevo'} evento</h3>
     <div class="field"><label>Título</label><input id="ev_titulo" value="${e ? escape(e.titulo || '') : ''}" placeholder="Ej. Vencimiento IVA / Turno mañana / Clase de facturación"></div>
     <div class="grid2">
       <div class="field"><label>Fecha</label><input id="ev_fecha" type="date" value="${e ? escape(e.fechaISO || '') : (fechaDefault || todayISO())}"></div>
       <div class="field"><label>Hora (opcional)</label><input id="ev_hora" type="time" value="${e ? escape(e.hora || '') : ''}"></div>
     </div>
     <div class="field"><label>Tipo</label><select id="ev_tipo">${EV_TIPOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
-    <div class="field"><label>Cliente (opcional)</label><input id="ev_cliente" list="ev_clist" value="${e ? escape(e.cliente || '') : ''}" placeholder="Relacionado a un cliente"><datalist id="ev_clist">${clientesList}</datalist></div>
+    <div class="field"><label>Cliente (opcional)</label><input id="ev_cliente" list="ev_clist" value="${escape(cliVal)}" placeholder="Escribe o elige de la lista de la Base de Datos" autocomplete="off"><datalist id="ev_clist">${clientesList}</datalist>
+      <div class="note" id="ev_clinote" style="margin:4px 0 0">Toca el campo o escribe para ver los clientes. Si eliges uno, la tarea aparece también en su Ficha del cliente.</div></div>
+    <div class="field" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin:0;font-weight:600"><input type="checkbox" id="ev_asig_chk" ${e && e.asignadoUid ? "checked" : ""} style="width:18px;height:18px;margin:0">Asignar a alguien del equipo</label>
+      <select id="ev_asig" style="margin-top:8px;${e && e.asignadoUid ? "" : "display:none"}"><option value="">— elegir a quién —</option>${asig.map(u => `<option value="${escape(u.uid)}" ${e && e.asignadoUid === u.uid ? "selected" : ""}>${escape(u.name || u.email)}${u.role ? " · " + escape(ROLE_LABELS[u.role] || u.role) : ""}</option>`).join("")}</select>
+      <div class="note" style="margin:6px 0 0">La persona asignada la verá en sus tareas del panel y en el CRM.</div>
+    </div>
     <div class="field"><label>Nota (opcional)</label><textarea id="ev_nota" style="min-height:70px">${e ? escape(e.nota || '') : ''}</textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn sec" id="ev_cancel">Cancelar</button>
@@ -4857,6 +4907,9 @@ function openEventoModal(e, fechaDefault) {
     </div><div class="msg" id="ev_mmsg"></div></div>`;
   document.body.appendChild(bg);
   bg.querySelector("#ev_tipo").value = e ? (e.tipo || "tarea") : "tarea";
+  bg.querySelector("#ev_asig_chk").onchange = function () { bg.querySelector("#ev_asig").style.display = this.checked ? "" : "none"; };
+  // Si la Base de Datos aún no se cargó, se carga y se llena la lista
+  if (!BD.length) bdEnsureLoaded(ok => { const dl = bg.querySelector("#ev_clist"); if (ok && dl) dl.innerHTML = evCliOpts().map(o => `<option value="${escape(o)}">`).join(""); });
   const close = () => bg.remove();
   bg.onclick = ev => { if (ev.target === bg) close(); };
   bg.querySelector("#ev_cancel").onclick = close;
@@ -4866,16 +4919,24 @@ function openEventoModal(e, fechaDefault) {
     const m = bg.querySelector("#ev_mmsg");
     if (!titulo) { m.className = "msg err"; m.textContent = "Ponle un título al evento."; return; }
     if (!fecha) { m.className = "msg err"; m.textContent = "Elige una fecha."; return; }
+    const cli = evCliParse(bg.querySelector("#ev_cliente").value);
+    const conAsig = bg.querySelector("#ev_asig_chk").checked, asigUid = conAsig ? bg.querySelector("#ev_asig").value : "";
+    if (conAsig && !asigUid) { m.className = "msg err"; m.textContent = "Elige a quién asignar la tarea (o quita el check)."; return; }
+    const au = asigUid ? (USERS.find(u => u.uid === asigUid) || {}) : null;
     const item = {
       titulo, fechaISO: fecha, hora: bg.querySelector("#ev_hora").value || "",
-      tipo: bg.querySelector("#ev_tipo").value, cliente: bg.querySelector("#ev_cliente").value.trim(),
-      nota: bg.querySelector("#ev_nota").value.trim(), updatedAt: serverTimestamp()
+      tipo: bg.querySelector("#ev_tipo").value, cliente: cli.nombre, clienteNit: cli.nit, clienteBdId: cli.bdId,
+      nota: bg.querySelector("#ev_nota").value.trim(), updatedAt: serverTimestamp(),
+      asignadoUid: asigUid, asignadoNombre: au ? (au.name || au.email || "") : "", asignadoEmail: au ? (au.email || "") : ""
     };
+    if (asigUid && (!e || e.asignadoUid !== asigUid)) { item.asignadoPor = (ME && (ME.name || ME.email)) || ""; item.asignadoPorUid = (ME && ME.uid) || ""; item.asignadoAt = Date.now(); }
     const btn = bg.querySelector("#ev_save"); btn.disabled = true; btn.textContent = "Guardando…";
     try {
       if (e && e.id) await setDoc(doc(db, "eventos", e.id), item, { merge: true });
       else await setDoc(doc(collection(db, "eventos")), { ...item, done: false, createdByUid: ME.uid, createdByNombre: ME.name || ME.email, createdAt: serverTimestamp() });
-      await evLoad(); close(); paintCalendario();
+      await evLoad(); close();
+      if (el("v-calendario") && el("v-calendario").offsetParent !== null) paintCalendario();
+      if (el("v-ficha") && el("v-ficha").offsetParent !== null) paintFicha();
     } catch (err) { btn.disabled = false; btn.textContent = "Guardar"; m.className = "msg err"; m.textContent = "Error: " + (err.code || err.message); }
   };
 }
