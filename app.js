@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "49";
+const APP_VERSION = "50";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2740,7 +2740,7 @@ function paintRecepcion() {
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
       <div class="formcard" style="max-width:none">
-        <div class="field"><label>Cliente (escribe para buscar)</label><input id="r_clibusca" list="r_cli_dl" placeholder="Escribe el nombre o código y elige de la lista" autocomplete="off"><datalist id="r_cli_dl">${cliDL}</datalist></div>
+        <div class="field"><label>Cliente (escribe para buscar)</label><div style="display:flex;gap:8px"><input id="r_clibusca" list="r_cli_dl" placeholder="Escribe el nombre o código y elige de la lista" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn sec" id="r_newcli" style="border:1px solid var(--line);white-space:nowrap;display:inline-flex;align-items:center;gap:6px" title="El cliente no está en la Base de Datos"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>Nuevo cliente</button></div><datalist id="r_cli_dl">${cliDL}</datalist></div>
         <div id="r_estado_box" style="margin:-4px 0 6px"></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px;align-items:start;margin-top:6px">
 
@@ -2902,6 +2902,7 @@ function paintRecepcion() {
       };
       document.addEventListener("paste", recPasteHandler);
       if (el("r_save")) el("r_save").onclick = registrarRecepcion;
+      if (el("r_newcli")) el("r_newcli").onclick = recNuevoCliente;
       if (recFlash && el("r_msg")) {
         el("r_msg").className = "msg ok"; el("r_msg").innerHTML = escape(recFlash) + (recLastRec ? ` <button class="btn sec" id="r_vercomp" style="border:1px solid var(--line);margin-left:8px;padding:3px 10px">👁 Ver comprobante</button>` : "");
         recFlash = "";
@@ -2919,6 +2920,70 @@ function paintRecepcion() {
       el("v-recepcion").querySelectorAll("[data-delr]").forEach(b => b.onclick = () => delRecepcion(RECEP.find(x => x.id === b.dataset.delr)));
     }
   });
+}
+// Nuevo cliente desde Recepción: lo crea en la Base de Datos con lo mínimo (nombre) y deja una Tarea
+// pendiente en Calendario para completar sus datos. Así se puede recepcionar al momento.
+function recNuevoCliente() {
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;display:flex;align-items:center;justify-content:center;padding:20px";
+  const pre = (el("r_clibusca") && el("r_clibusca").value.trim()) || "";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;width:480px;max-width:96vw;max-height:92vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Nuevo cliente</h3>
+    <p class="note" style="margin:0 0 14px">Basta con el nombre completo para recepcionarlo ahora. Se agrega a la Base de Datos y se crea una <b>Tarea pendiente</b> en Calendario para completar el resto de sus datos.</p>
+    <div class="field"><label>Nombre completo / Razón social *</label><input id="nc_nombre" value="${escape(pre.indexOf(" · ") >= 0 ? "" : pre)}" placeholder="Ej. JUAN PEREZ LOPEZ"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field"><label>NIT (opcional)</label><input id="nc_nit" inputmode="numeric"></div>
+      <div class="field"><label>Celular (opcional)</label><input id="nc_cel" inputmode="tel"></div>
+    </div>
+    <div class="field"><label>Correo (opcional)</label><input id="nc_correo" type="email"></div>
+    <div class="field"><label>Nota para la tarea (opcional)</label><textarea id="nc_nota" style="min-height:60px" placeholder="Ej. Trae su carnet el lunes"></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn sec" id="nc_cancel" style="border:1px solid var(--line)">Cancelar</button>
+      <button class="btn" id="nc_save">Crear y usar en la recepción</button>
+    </div><div class="msg" id="nc_msg"></div></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.onclick = ev => { if (ev.target === bg) close(); };
+  bg.querySelector("#nc_cancel").onclick = close;
+  setTimeout(() => { const i = bg.querySelector("#nc_nombre"); if (i) i.focus(); }, 50);
+  bg.querySelector("#nc_save").onclick = async () => {
+    const v = id => bg.querySelector(id).value.trim();
+    const nombre = v("#nc_nombre").toUpperCase(), nit = v("#nc_nit"), cel = v("#nc_cel"), correo = v("#nc_correo"), nota = v("#nc_nota");
+    const m = bg.querySelector("#nc_msg");
+    if (nombre.length < 3) { m.className = "msg err"; m.textContent = "Escribe el nombre completo del cliente."; return; }
+    const repe = BD.find(x => (nit && bdV(x, "nit") === nit) || (bdV(x, "nombre") || bdV(x, "razon")).toUpperCase() === nombre);
+    if (repe && !confirm("Ya existe en la Base de Datos un cliente con ese " + (nit && bdV(repe, "nit") === nit ? "NIT" : "nombre") + ": " + (bdV(repe, "nombre") || bdV(repe, "razon")) + ".\n\n¿Crear otro de todas formas?")) return;
+    const btn = bg.querySelector("#nc_save"); btn.disabled = true; btn.textContent = "Creando…";
+    const H = k => (bdKey2Header && bdKey2Header[k]) || BD_KEY2LBL[k];
+    const fila = {};
+    fila[H("nombre")] = nombre; if (nit) fila[H("nit")] = nit; if (cel) fila[H("celular")] = cel; if (correo) fila[H("correo")] = correo;
+    fila[H("estado")] = "ACTIVO";
+    fila["_altaISO"] = new Date().toISOString(); fila["_altaDesde"] = "recepcion"; fila["_datosIncompletos"] = true;
+    fila["_creadoPor"] = (ME && (ME.name || ME.email)) || "";
+    const docid = "nuevo_" + Date.now();
+    const ok = await bdSave({}, "", fila, docid);
+    if (!ok) { btn.disabled = false; btn.textContent = "Crear y usar en la recepción"; m.className = "msg err"; m.textContent = "No se pudo guardar en la Base de Datos."; return; }
+    const cli = Object.assign({ _docid: docid }, fila);
+    if (!BD.find(x => x._docid === docid)) BD.unshift(cli);
+    bdLog({ accion: "alta", nombre, estadoNuevo: "ACTIVO", detalle: "Creado desde Recepción (datos por completar)" });
+    // Tarea pendiente para completar los datos
+    const falta = ["Código de ID", nit ? "" : "NIT", "Tipo de contribuyente", "Actividad / rubro", "Fecha de apertura del NIT", cel ? "" : "Celular", correo ? "" : "Correo"].filter(Boolean);
+    try {
+      await setDoc(doc(collection(db, "eventos")), {
+        titulo: "Completar datos del nuevo cliente: " + nombre, fechaISO: todayISO(), hora: "", tipo: "tarea", cliente: nombre,
+        nota: "Cliente creado desde Recepción. Falta: " + falta.join(", ") + "." + (nota ? " Nota: " + nota : ""),
+        origen: "recepcion", bdDocid: docid, done: false,
+        createdByUid: (ME && ME.uid) || "", createdByNombre: (ME && (ME.name || ME.email)) || "", createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+      evLoaded = false;
+    } catch (e) {}
+    close();
+    recCli = cli;
+    recFill("r_clibusca", nombre); recFill("r_nombre", nombre); recFill("r_nit", nit); recFill("r_ult", nit ? nitUltimo(nit) : "");
+    recFill("r_cel", cel); recFill("r_correo", correo); recFill("r_idcli", ""); recFill("r_rubro", "");
+    recPintarEstado();
+    const rm = el("r_msg"); if (rm) { rm.className = "msg ok"; rm.textContent = "Cliente nuevo creado y listo para recepcionar. Se creó una tarea en Calendario > Tareas pendientes para completar sus datos."; }
+  };
 }
 // Si el cliente de la BD está dado de baja, lo pone ACTIVO (y lo registra en Movimientos)
 async function recReactivarSiInactivo(cli) {
@@ -4601,7 +4666,7 @@ function paintFacturacion() {
 //  MÓDULO CALENDARIO (Operaciones) — agenda del equipo
 //  Colección Firestore: "eventos"
 // ============================================================
-let EVENTOS = [], evLoaded = false, calYear = 0, calMonth = 0;
+let EVENTOS = [], evLoaded = false, calYear = 0, calMonth = 0, calSubtab = "cal";
 const EV_TIPOS = [
   ["tarea",       "Tarea",            "#235347"],
   ["vencimiento", "Vencimiento",      "#B4453C"],
@@ -4631,6 +4696,46 @@ async function renderCalendario() {
   await evLoad();
   if (!calYear) { const d = new Date(); calYear = d.getFullYear(); calMonth = d.getMonth(); }
   paintCalendario();
+}
+
+function evFechaTs(t) { if (!t) return ""; try { const d = t.toDate ? t.toDate() : new Date(t.seconds ? t.seconds * 1000 : t); return isNaN(d) ? "" : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+const EV_ICO_OK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+const EV_ICO_RE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+async function evTerminar(id, terminar) {
+  const e = EVENTOS.find(x => x.id === id); if (!e) return;
+  const datos = terminar
+    ? { done: true, terminadoPor: (ME && (ME.name || ME.email)) || "", terminadoPorUid: (ME && ME.uid) || "", terminadoAt: Date.now() }
+    : { done: false, terminadoPor: "", terminadoPorUid: "", terminadoAt: 0, reabiertoPor: (ME && (ME.name || ME.email)) || "", reabiertoAt: Date.now() };
+  try { await setDoc(doc(db, "eventos", id), datos, { merge: true }); Object.assign(e, datos); paintCalendario(); } catch (err) { alert("No se pudo actualizar: " + (err.code || err.message)); }
+}
+// Subpestañas Tareas pendientes / Tareas terminadas (registro de avance del equipo)
+function calTareasHTML(hechas) {
+  const L = EVENTOS.filter(e => e.tipo === "tarea" && !!e.done === hechas);
+  if (hechas) L.sort((a, b) => (b.terminadoAt || 0) - (a.terminadoAt || 0)); else L.sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
+  const hoy = todayISO();
+  const filas = L.map(e => {
+    const vencida = !hechas && e.fechaISO && e.fechaISO < hoy;
+    return `<div class="ev-row" style="border-left:3px solid ${hechas ? "#2E7D5B" : vencida ? "#B4453C" : evColor("tarea")}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;${hechas ? "opacity:.75" : ""}">${escape(e.titulo || "")}</div>
+        ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">Cliente: ${escape(e.cliente)}</div>` : ""}
+        ${e.nota ? `<div style="font-size:12.5px;margin-top:3px">${escape(e.nota)}</div>` : ""}
+        <div style="font-size:12px;color:var(--muted);margin-top:5px">Para el ${escape(e.fechaISO ? e.fechaISO.split("-").reverse().join("/") : "—")}${vencida ? ' · <b style="color:#B4453C">Atrasada</b>' : ""}
+          · Creada por <b>${escape(e.createdByNombre || "—")}</b>${evFechaTs(e.createdAt) ? " el " + escape(evFechaTs(e.createdAt)) : ""}${e.origen === "recepcion" ? " · desde Recepción" : ""}</div>
+        ${hechas ? `<div style="font-size:12px;color:#2E7D5B;margin-top:2px">Terminada por <b>${escape(e.terminadoPor || "—")}</b>${e.terminadoAt ? " el " + escape(evFechaTs(e.terminadoAt)) : ""}</div>` : ""}
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
+        ${hechas
+          ? `<button class="mini ev-reab" data-id="${e.id}" style="display:inline-flex;align-items:center;gap:5px">${EV_ICO_RE}Reabrir</button>`
+          : `<button class="btn ev-term" data-id="${e.id}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#2E7D5B;border-color:#2E7D5B;color:#fff">${EV_ICO_OK}Terminar</button>
+             <button class="mini ev-edit" data-id="${e.id}">Editar</button>`}
+      </div></div>`;
+  }).join("");
+  return `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0 10px">
+      <p class="lead" style="margin:0">${hechas ? "Registro de todo lo que el equipo ya terminó, con quién lo hizo y cuándo." : "Tareas por hacer del equipo. Al terminar una, dale a Terminar y queda en el registro de Tareas terminadas."}</p>
+      ${hechas ? "" : '<button class="btn" id="ev_newt">+ Nueva tarea</button>'}
+    </div>
+    ${filas || `<p class="note">${hechas ? "Todavía no hay tareas terminadas." : "No hay tareas pendientes."}</p>`}`;
 }
 
 function paintCalendario() {
@@ -4663,6 +4768,7 @@ function paintCalendario() {
         <div style="font-weight:600;${e.done ? 'opacity:.5;text-decoration:line-through' : ''}">${escape(e.titulo || '')}</div>
         ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">${escape(e.cliente)}</div>` : ''}
         ${e.nota ? `<div style="font-size:12px;color:var(--muted)">${escape(e.nota)}</div>` : ''}
+        ${e.createdByNombre ? `<div style="font-size:11.5px;color:var(--muted)">Creado por ${escape(e.createdByNombre)}${e.done && e.terminadoPor ? " · Terminado por " + escape(e.terminadoPor) : ""}</div>` : ''}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0">
         <button class="mini ev-done" data-id="${e.id}" title="Marcar hecho/pendiente">${e.done ? '↺' : '✓'}</button>
@@ -4692,6 +4798,12 @@ function paintCalendario() {
       <div><h1 style="margin:0 0 2px">Calendario</h1><p class="lead" style="margin:0">Agenda compartida del equipo: tareas, vencimientos, turnos de atención, clases y reuniones.</p></div>
       <button class="btn" id="ev_new">+ Nuevo evento</button>
     </div>
+    <div class="subtabs" id="caltabs" style="margin-top:12px">
+      <button class="subtab ${calSubtab === "cal" ? "on" : ""}" data-ct="cal">Calendario</button>
+      <button class="subtab ${calSubtab === "pend" ? "on" : ""}" data-ct="pend">Tareas pendientes (${EVENTOS.filter(e => e.tipo === "tarea" && !e.done).length})</button>
+      <button class="subtab ${calSubtab === "hechas" ? "on" : ""}" data-ct="hechas">Tareas terminadas (${EVENTOS.filter(e => e.tipo === "tarea" && e.done).length})</button>
+    </div>
+    ${calSubtab !== "cal" ? calTareasHTML(calSubtab === "hechas") : `
     <div style="margin:14px 0">${leyenda}</div>
     <div class="cal-head">
       <button class="btn sec" id="cal_prev">‹</button>
@@ -4702,8 +4814,15 @@ function paintCalendario() {
     <div class="cal-grid">${DIAS.map(d => `<div class="cal-dow">${d}</div>`).join("")}</div>
     <div class="cal-grid" style="margin-top:6px">${cells}</div>
     <h2 style="margin:26px 0 10px;font-size:17px">Próximos eventos</h2>
-    ${proxRows || `<p class="note">No hay eventos próximos. Usa "+ Nuevo evento" o toca un día del calendario para agregar uno.</p>`}
+    ${proxRows || `<p class="note">No hay eventos próximos. Usa "+ Nuevo evento" o toca un día del calendario para agregar uno.</p>`}`}
   `;
+  el("v-calendario").querySelectorAll("#caltabs .subtab").forEach(b => b.onclick = () => { calSubtab = b.dataset.ct; paintCalendario(); });
+  el("v-calendario").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true));
+  el("v-calendario").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false));
+  if (el("ev_newt")) el("ev_newt").onclick = () => openEventoModal(null, todayISO());
+  el("v-calendario").querySelectorAll(".ev-edit").forEach(b => b.onclick = () => { const e = EVENTOS.find(x => x.id === b.dataset.id); if (e) openEventoModal(e); });
+  el("ev_new").onclick = () => openEventoModal(null, today);
+  if (calSubtab !== "cal") return;
 
   el("cal_prev").onclick = () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } paintCalendario(); };
   el("cal_next").onclick = () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } paintCalendario(); };
@@ -4714,7 +4833,7 @@ function paintCalendario() {
   el("v-calendario").querySelectorAll(".ev-del").forEach(b => b.onclick = () => delEvento(b.dataset.id));
   el("v-calendario").querySelectorAll(".ev-done").forEach(b => b.onclick = async () => {
     const e = EVENTOS.find(x => x.id === b.dataset.id); if (!e) return;
-    try { await setDoc(doc(db, "eventos", e.id), { done: !e.done }, { merge: true }); e.done = !e.done; paintCalendario(); } catch (err) { alert("No se pudo actualizar."); }
+    evTerminar(e.id, !e.done);
   });
 }
 
