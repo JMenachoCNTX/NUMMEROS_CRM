@@ -177,6 +177,8 @@ html.oscuro .app{background:var(--fondo)}
 .conf{position:absolute;top:-10px;width:8px;height:12px;border-radius:2px;animation:caer 1.4s ease-in forwards;pointer-events:none}
 @keyframes caer{to{transform:translateY(190px) rotate(540deg);opacity:0}}
 .compara{background:var(--sup);border:2px solid var(--acento);border-radius:14px;padding:0 14px}
+.compara .ctit{padding:13px 0 6px;font-size:17px;font-weight:700;color:var(--acento);display:flex;gap:8px;align-items:center;font-family:Akshar,sans-serif}
+.bloque h3{margin:0 0 8px;font-family:Akshar,sans-serif;font-size:21px;line-height:24px}.bloque p,.bloque li{font-size:13.5px;line-height:20px}.bloque ul{margin:8px 0;padding-left:18px}.bloque li{margin:4px 0}
 .compara summary{cursor:pointer;padding:13px 0;font-size:15px;font-weight:700;color:var(--acento);list-style:none;display:flex;gap:8px;align-items:center}
 .compara summary::after{content:"+";margin-left:auto;font-size:18px}.compara[open] summary::after{content:"–"}
 .cmp-scroll{overflow-x:auto;margin:0 -14px 14px;padding:0 14px}
@@ -300,12 +302,20 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<p>Luego presentamos el <b>Formulario 500 (IUE, 25% de las utilidades)</b> y enviamos los estados financieros en digital con el <b>Formulario 605</b>. Con eso queda culminado y sin multa.</p>' +
       '<p>Todo NIT abierto durante la gestión debe presentarlos, aunque se haya abierto el último día del año.</p>' +
       '<p class="suave">Si no se presentan a tiempo, la multa es de 150 UFV (Formulario 500: 50 UFV y Formulario 605: 100 UFV). Pagando temprano aprovechas el precio más bajo: el precio sube en cada fase a medida que se llenan los cupos.</p>',
+    porque: '<p><b>Es una obligación ante Impuestos Nacionales.</b> Todo NIT que estuvo abierto durante la gestión debe presentar sus estados financieros una vez al año, aunque se haya abierto el último día del año. Por ejemplo, si abriste tu NIT el 28 de noviembre, igual debes presentarlos por el período del 28 de noviembre al 31 de diciembre.</p>' +
+      '<ul><li>Se presentan una vez al año, hasta fines de abril, con el <b>Formulario 500 (IUE)</b> y el envío digital de los estados financieros con el <b>Formulario 605</b>. Con eso queda todo culminado y sin multa.</li>' +
+      '<li>Si no los presentas, Impuestos Nacionales te cobra una <b>multa de 150 UFV</b> (50 UFV por el Formulario 500 y 100 UFV por el Formulario 605), que sube cada día con la UFV. Más abajo la ves en bolivianos con la UFV de hoy.</li>' +
+      '<li>Si tu empresa tuvo utilidad, corresponde pagar el IUE (25% de la utilidad). Si no tuvo, igual debes presentarlos.</li>' +
+      '<li>Tener tus estados financieros al día te deja tu NIT en regla y te sirve de respaldo cuando un banco u otra entidad te los pida.</li></ul>' +
+      '<p class="suave">Pagando temprano aprovechas el precio más bajo: el precio sube cuando se llena cada balance.</p>',
     fact: '<p>Durante todo el mes emitimos por ti tus facturas pendientes:</p>' +
       '<ul><li><b>Repartidores de Yango:</b> una factura cada semana con el importe autorizado. Cada martes actualizamos tu portal NUMMEROS y la dejamos lista antes del jueves, para que cobres sin demoras.</li>' +
       '<li><b>Repartidores de PedidosYa:</b> aproximadamente dos facturas al mes.</li>' +
       '<li><b>Otros clientes:</b> si necesitas emitir una factura a uno de tus clientes, la emitimos nosotros.</li></ul>' +
       '<p class="suave">Si la app no autoriza tu pago de la semana (por ejemplo, por no cumplir el mínimo de horas), no se emite factura esa semana.</p>'
   };
+  // Bloque fijo (no se oculta)
+  function bloque(titulo, html) { return '<div class="card bloque"><h3>' + titulo + "</h3>" + html + "</div>"; }
   function info(titulo, html, abierto) { return '<details class="info"' + (abierto ? " open" : "") + "><summary>" + titulo + '</summary><div class="c">' + html + "</div></details>"; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function bs(n) { return "Bs " + (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -450,7 +460,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT · ' + (ven.tipo === "adelantado" ? "puedes pagar por adelantado · " : "") + "desde Bs " + esc(p.sinMov) + "</span></span></button>" +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
         '<button class="opc" data-s="eeff"' + (rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
-        info("¿En qué consisten los estados financieros?", INFO.eeff) +
+        info("¿Por qué debo hacer Estados Financieros?", INFO.porque) +
         '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
         info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
         '<button class="link" id="bVolver">Volver</button></div>';
@@ -476,8 +486,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var notaRes = esRepE ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Al continuar te reservamos el cupo por ' + esc(E.reservaMin || 30) + " minutos a este precio, para que nadie más lo tome mientras pagas.</p>" : "";
       var pagar = advertenciaEeff() + terminosHtml() + '<button class="btn" id="bPagar"' + (puedePagar() ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : "Calculando…") + "</button>" + notaRes;
       if (!esRepE) {
-        h = '<div class="pila"><h2>Estados financieros</h2><div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
-          virtualHtml() + muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff, true) + errHtml() + pagar + "</div>";
+        h = '<div class="pila"><h2>Estados financieros</h2>' + bloque("¿Por qué debo hacer Estados Financieros?", INFO.porque) + '<div class="card"><div class="fila"><span>Gestión</span><b>' + esc(E.gestion) + '</b></div><div class="fila" style="border-top:1px solid var(--borde);margin-top:6px;padding-top:12px"><span>Total</span><b class="precio" style="font-size:26px">' + (S.cot && S.cot.ok ? bs(S.cot.monto) : "…") + "</b></div></div>" +
+          virtualHtml() + muestraEeff() + multasHtml() + errHtml() + pagar + "</div>";
       } else {
         var apNit = S.cli && S.cli.aperturaNit;
         var aplica = function (c) { return !c.nitDesde || (!!apNit && apNit >= c.nitDesde); };
@@ -496,9 +506,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
             (incluyeDe(c).length ? '<details class="incd"' + (act ? " open" : "") + '><summary>Incluye (' + incluyeDe(c).length + ')</summary><ul class="inc">' + incluyeDe(c).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") +
             (pr.length ? '<div class="prem">' + ICON.regalo + "<span>" + pr.map(function (p) { return (p.tipo === "azar" ? "Puedes ganar: " : "Regalo: ") + esc(p.nombre); }).join(" · ") + "</span></div>" : "") +
             '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
-        }).join("") + "</div>" + comparaHtml(E.cupos, A, aplica, premiosDe);
-        h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube cuando se llena cada balance. Mientras antes pagues, menos pagas.</p>" + contador + fases +
-          virtualHtml() + muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff) + errHtml() + pagar + "</div>";
+        }).join("") + "</div>";
+        h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube cuando se llena cada balance. Mientras antes pagues, menos pagas.</p>" +
+          bloque("¿Por qué debo hacer Estados Financieros?", INFO.porque) + comparaHtml(E.cupos, A, aplica, premiosDe) + contador + fases +
+          virtualHtml() + muestraEeff() + multasHtml() + errHtml() + pagar + "</div>";
       }
     } else if (S.paso === "opcion" && S.serv === "fact") {
       h = '<div class="pila"><h2>Suscripción de facturación</h2><div class="card"><div class="fila"><span>Mes</span><b>' + esc(S.cfg.periodoFact.texto) + '</b></div><div class="fila"><span>Incluye</span><b>Emisión de tus facturas durante todo el mes</b></div>' + (((S.cfg.beneficios || {}).fact || []).length ? '<ul class="ben" style="margin:8px 0 4px">' + S.cfg.beneficios.fact.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + '' +
@@ -615,7 +626,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var filaComun = comunes.length ? '<tr><td><b>Los 7 estados financieros, formularios 500 y 605, firma digital y portal</b> <span class="chico suave">(' + comunes.length + ' puntos, ver "Incluye" en cada balance)</span></td>' + cupos.map(function (c) { return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + si + "</td>"; }).join("") + "</tr>" : "";
     var cuerpo = filas.map(function (f) { return "<tr><td>" + esc(f) + "</td>" + cupos.map(function (c) { return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + (incluyeDe(c).indexOf(f) >= 0 ? si : no) + "</td>"; }).join("") + "</tr>"; }).join("");
     var prem = '<tr><td>Puedes ganar (al azar)</td>' + cupos.map(function (c) { var p = premiosDe(c); return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + (p.length ? p.map(function (x) { return '<span class="pz2">' + esc(x.nombre) + "</span>"; }).join("") : no) + "</td>"; }).join("") + "</tr>";
-    return '<details class="compara"><summary>' + ICON.eeff + 'Comparar balances</summary><p class="chico suave" style="margin:6px 0 8px">Desliza la tabla a los lados. Si te conviene más el siguiente balance, puedes esperar a que se habilite.</p><div class="cmp-scroll"><table class="cmp"><thead>' + cab + "</thead><tbody>" + precio + estado + cuerpo + prem + filaComun + "</tbody></table></div></details>";
+    return '<div class="compara"><div class="ctit">' + ICON.eeff + 'Comparar balances</div><p class="chico suave" style="margin:0 0 8px">Desliza la tabla a los lados. Si te conviene más el siguiente balance, puedes esperar a que se habilite.</p><div class="cmp-scroll"><table class="cmp"><thead>' + cab + "</thead><tbody>" + precio + estado + cuerpo + prem + filaComun + "</tbody></table></div></div>";
   }
   // Balance que le toca a este cliente (el ¡Nuevos! solo si su NIT es nuevo)
   function balanceDelCliente() {
