@@ -139,9 +139,11 @@ main > .pila{animation:entra .35s ease both}
 .nav button{display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1.5px solid var(--borde);border-radius:999px;background:var(--sup);color:var(--acento);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
 .nav button:active{transform:scale(.97)}
 .nav.oculto{display:none}
-.cbar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:9px 14px;background:linear-gradient(90deg,#0B2B26,#235347);color:#DAF1DE;font-size:12.5px;position:sticky;top:0;z-index:25}
-.cbar b{font-family:Akshar,sans-serif;font-size:18px;color:#fff;letter-spacing:.5px}
-.cbar .u{display:inline-flex;align-items:baseline;gap:2px}.cbar .u small{font-size:10px;color:#9DC2AA;margin-right:4px}
+.cbar{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:12px 14px;background:linear-gradient(90deg,#0B2B26,#235347 50%,#0B2B26);color:#DAF1DE;font-size:13px;position:sticky;top:0;z-index:25;border-bottom:3px solid #FDB022;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.cbar .cbT{font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A;font-size:12.5px}
+.cbar b{font-family:Akshar,sans-serif;font-size:28px;line-height:30px;color:#fff;letter-spacing:.5px}
+.cbar .u{display:inline-flex;align-items:baseline;gap:3px}.cbar .u small{font-size:11px;color:#B7D9C0;margin-right:4px}
+@media(max-width:400px){.cbar{gap:8px}.cbar .cbT{width:100%;text-align:center}.cbar b{font-size:26px}}
 .cbar.oculto{display:none}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
 .opc,.subir,.btn2,.link,.seg,.ayuda{color:var(--acento)}
@@ -175,6 +177,13 @@ html.oscuro .app{background:var(--fondo)}
 .contador.poco{background:linear-gradient(135deg,#D92D20,#7A1A12)}.contador.poco .num{animation:latir 1.2s ease-in-out infinite}
 .contador.agot{background:linear-gradient(135deg,#B42318,#7A1A12)}
 .fases{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.cuentaGr{background:linear-gradient(160deg,#0B2B26,#235347);border-radius:20px;padding:18px 14px 14px;text-align:center;color:#DAF1DE;margin-bottom:16px;box-shadow:0 10px 30px rgba(11,43,38,.35);animation:cgLat 2.4s ease-in-out infinite}
+.cuentaGr .cgT{margin:0 0 10px;font-size:14px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A}
+.cuentaGr .cgF{margin:10px 0 0;font-size:13.5px;font-weight:600;color:#fff}
+.cuentaGr .reloj div{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)}
+.cuentaGr .reloj b{font-size:46px;line-height:50px;color:#fff}
+@keyframes cgLat{0%,100%{box-shadow:0 10px 30px rgba(11,43,38,.35)}50%{box-shadow:0 10px 40px rgba(253,176,34,.45)}}
+@media(prefers-reduced-motion:reduce){.cuentaGr{animation:none}}
 .reloj{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .reloj div{background:linear-gradient(160deg,#235347,#0B2B26);color:#fff;border-radius:14px;padding:12px 4px;display:flex;flex-direction:column;align-items:center}
 .reloj b{font-family:Akshar,sans-serif;font-size:38px;line-height:40px}.reloj span{font-size:11px;color:#B7D9C0;letter-spacing:.5px;text-transform:uppercase}
@@ -412,7 +421,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   window.addEventListener("popstate", function (ev) {
     var p = ev.state && ev.state.paso;
     if (!p) p = "nit";
-    if (!previa && lanzMs() > Date.now() && S.serv === "eeff" && /^(opcion|eeff\d|pago|verif)$/.test(p)) p = "cuenta";
+    if (antesLanz() && S.serv === "eeff" && /^(pago|verif)$/.test(p)) p = "eeff4";
     if (S.fin && p !== "fin") { reiniciarServicio(); p = "servicio"; }
     if (!pasoValido(p)) p = S.cli && S.cfg ? "servicio" : "nit";
     ir(p, "", true);
@@ -461,10 +470,11 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     barras();
     var h = "";
     if (S.paso === "nit") {
-      h = '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
+      h = (antesLanz() ? relojHtml("Venta de balances · gestión " + esc((S.cfg && S.cfg.eeff && S.cfg.eeff.gestion) || "")) : "") + '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
         '<p class="suave solo-movil" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
-        '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form></div>';
+        '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
+        (antesLanz() ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Declaraciones y facturación ya puedes pagarlas. Los balances puedes revisarlos desde ahora y pagarlos desde la apertura.</p>' : "") + "</div>";
     } else if (S.paso === "datos") {
       var c = S.cli;
       var pn = String((c.nombre || "").trim().split(/\s+/).slice(-1)[0] || ""); pn = pn.charAt(0).toUpperCase() + pn.slice(1).toLowerCase();
@@ -480,12 +490,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     } else if (S.paso === "servicio") {
       var p = S.cfg.precios, e = S.cfg.eeff, ven = S.cfg.ventana || { abierta: true }, rep_ = !S.cli || S.cli.repartidor !== false;
       var balCli = balanceDelCliente();
-      var antesLanz = !previa && lanzMs() > Date.now();
-      var eeffTxt = antesLanz ? "Disponible desde el " + esc(fechaLanzTxt().replace(/^Abrimos el /, "")) : rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
+      var antesL = antesLanz();
+      var eeffTxt = antesL ? "Revisa los balances · pago desde el " + esc(fechaLanzTxt().replace(/^Abrimos el /, "")) : rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
         '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT · ' + (ven.tipo === "adelantado" ? "puedes pagar por adelantado · " : "") + "desde Bs " + esc(p.sinMov) + "</span></span></button>" +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
-        '<button class="opc" data-s="eeff"' + (!antesLanz && rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
+        '<button class="opc" data-s="eeff"' + (!antesL && rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
         info("¿Por qué debo hacer Estados Financieros?", INFO.porque) +
         '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
         info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
@@ -536,6 +546,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
           (incluyeDe(c).length ? '<details class="incd"' + (act ? " open" : "") + '><summary>Incluye (' + incluyeDe(c).length + ')</summary><ul class="inc">' + incluyeDe(c).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") +
           (pr.length ? '<div class="prem">' + ICON.regalo + "<span>" + pr.map(function (p) { return (p.tipo === "azar" ? "Puedes ganar: " : "Regalo: ") + esc(p.nombre); }).join(" · ") + "</span></div>" : "") +
           '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span>" +
+          (S.paso === "eeff2" && c.nitDesde && !lleno && noAp ? '<button class="btn" disabled style="margin-top:10px">No aplica: tu NIT figura abierto el ' + esc(String(apNit).split("-").reverse().join("/")) + "</button>" : "") +
           (act && S.paso === "eeff2" ? '<button class="btn" data-fase="' + c.n + '"' + (c.nitDesde ? ' data-nue="1"' : "") + ' style="margin-top:10px">Elegir ' + esc(nomb(c)) + " · Bs " + esc(c.precio) + "</button>" : "") + "</div>";
       }).join("") + "</div>";
       var ICO_SIG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="vertical-align:-3px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
@@ -560,7 +571,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       } else {
         var notaRes = esRepE ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Al continuar te reservamos el cupo por ' + esc(E.reservaMin || 30) + " minutos a este precio, para que nadie más lo tome mientras pagas.</p>" : "";
         h = tit + elegido("") + advertenciaEeff() + terminosHtml() + errHtml() +
-          '<button class="btn" id="bPagar"' + (puedePagar() ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : (S.cot ? "No disponible" : "Calculando…")) + "</button>" + notaRes +
+          (antesLanz() ? relojHtml("El pago de balances se habilita en") + '<button class="btn" id="bPagar" disabled>Pago disponible desde la apertura</button><p class="chico suave" style="text-align:center;margin-top:-4px">Ya puedes revisar todo. El botón de pago se activa solo cuando termine la cuenta regresiva.</p>'
+            : '<button class="btn" id="bPagar"' + (puedePagar() ? "" : " disabled") + ">" + (S.cot && S.cot.ok ? (esRepE ? "Reservar mi cupo · Pagar " : "Pagar ") + bs(S.cot.monto) : (S.cot ? "No disponible" : "Calculando…")) + "</button>" + notaRes) +
           '<button class="link" data-ir="eeff3">Volver</button></div>';
       }
     } else if (S.paso === "opcion" && S.serv === "fact") {
@@ -670,7 +682,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function avisoNuevosHtml() {
     return '<div class="aviso warn"><b>Balance ¡Nuevos!: pago sujeto a revisión.</b><br>Solo aplica a NIT abiertos en octubre, noviembre o diciembre de 2026. Cuando recibamos tu pago verificaremos en tu portal de Impuestos Nacionales la fecha de apertura de tu NIT. Si no corresponde, rechazaremos la solicitud y te devolveremos tu dinero.</div>';
   }
-  function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || S.aceptaUtil); }
+  function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || (S.aceptaUtil && !antesLanz())); }
   // Qué incluye cada balance (si la pasarela todavía trae los textos antiguos, se usa esta lista)
   var BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
   var BAL_EXTRAS = [[], [], ["Libro Mayor"], ["Libro Mayor", "Libro Diario"], ["Libro Mayor", "Libro Diario", "Atención prioritaria", "Reunión virtual para explicarte tus resultados"]];
@@ -766,7 +778,6 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
-      if (b.dataset.s === "eeff" && !previa && lanzMs() > Date.now()) { ir("cuenta"); return; }
       S.serv = b.dataset.s; S.eeffFase = 0; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
@@ -835,6 +846,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     for (var k = 0; k < 24; k++) { var c = document.createElement("i"); c.className = "conf"; c.style.left = (Math.random() * 100) + "%"; c.style.background = ["#2E8B57", "#F2C94C", "#8EB69B", "#235347", "#FDB022"][k % 5]; c.style.animationDelay = (Math.random() * 0.3) + "s"; b.appendChild(c); }
   });
   // ---- Cuenta regresiva hasta el lanzamiento ----
+  function antesLanz() { return !previa && lanzMs() > Date.now(); }
+  function relojHtml(tit) {
+    return '<div class="cuentaGr"><p class="cgT">' + tit + '</p><div class="reloj" id="reloj"><div><b id="cD">--</b><span>días</span></div><div><b id="cH">--</b><span>horas</span></div><div><b id="cM">--</b><span>minutos</span></div><div><b id="cS">--</b><span>segundos</span></div></div><p class="cgF">' + esc(fechaLanzTxt()) + "</p></div>";
+  }
   function lanzMs() { var l = S.cfg && S.cfg.lanzamiento; var t = l ? Date.parse(l) : NaN; return isNaN(t) ? 0 : t; }
   function fechaLanzTxt() {
     var t = lanzMs(); if (!t) return "";
@@ -849,10 +864,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var bar = document.getElementById("cbar"); if (!bar) return;
     function tic() {
       var q = Math.floor((lanzMs() - Date.now()) / 1000);
-      if (!lanzMs() || q <= 0 || S.paso === "cuenta") { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) { document.title = tituloBase; clearInterval(cbarT); } return; }
+      if (!lanzMs() || q <= 0 || S.paso === "cuenta" || (S.paso === "nit" && document.getElementById("reloj"))) { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) { document.title = tituloBase; clearInterval(cbarT); } return; }
       var d = Math.floor(q / 86400), h = Math.floor(q % 86400 / 3600), m = Math.floor(q % 3600 / 60), sg = q % 60, z = function (n) { return ("0" + n).slice(-2); };
       bar.classList.remove("oculto");
-      bar.innerHTML = "<span>Balances en</span>" + '<span class="u"><b>' + z(d) + "</b><small>días</small></span>" + '<span class="u"><b>' + z(h) + "</b><small>h</small></span>" + '<span class="u"><b>' + z(m) + "</b><small>min</small></span>" + '<span class="u"><b>' + z(sg) + "</b><small>s</small></span>";
+      bar.innerHTML = '<span class="cbT">Venta de balances en</span>' + '<span class="u"><b>' + z(d) + "</b><small>días</small></span>" + '<span class="u"><b>' + z(h) + "</b><small>h</small></span>" + '<span class="u"><b>' + z(m) + "</b><small>min</small></span>" + '<span class="u"><b>' + z(sg) + "</b><small>s</small></span>";
       document.title = z(d) + "d " + z(h) + "h " + z(m) + "m · " + tituloBase;
     }
     clearInterval(cbarT); tic(); cbarT = setInterval(tic, 1000);
@@ -860,13 +875,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   var relojCuentaT = null;
   function relojCuenta() {
     clearInterval(relojCuentaT);
-    if (S.paso !== "cuenta") return;
+    if (S.paso !== "cuenta" && !document.getElementById("reloj")) return;
     function tic() {
       var q = Math.max(0, Math.floor((lanzMs() - Date.now()) / 1000));
       var set = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = ("0" + v).slice(-2); };
       set("cD", Math.floor(q / 86400)); set("cH", Math.floor(q % 86400 / 3600)); set("cM", Math.floor(q % 3600 / 60)); set("cS", q % 60);
       document.title = ("0" + Math.floor(q / 86400)).slice(-2) + "d " + ("0" + Math.floor(q % 86400 / 3600)).slice(-2) + "h " + ("0" + Math.floor(q % 3600 / 60)).slice(-2) + "m · " + tituloBase;
-      if (q <= 0) { clearInterval(relojCuentaT); document.title = tituloBase; S.paso = S.cli && S.cfg ? "servicio" : "nit"; pintar(); }
+      if (q <= 0) { clearInterval(relojCuentaT); document.title = tituloBase; if (S.paso === "cuenta") S.paso = S.cli && S.cfg ? "servicio" : "nit"; var y = window.scrollY; pintar(); window.scrollTo(0, y); }
     }
     tic(); relojCuentaT = setInterval(tic, 1000);
   }
@@ -878,7 +893,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   cargando("Cargando…");
   api({ action: "pas_config" }).then(function (r) {
     if (r && r.ok) { var guardado = S.cfg; S.cfg = r; if (guardado && guardado.eeff && S.paso !== "nit") S.cfg = Object.assign({}, r); }
-    if (!previa && lanzMs() > Date.now() && S.serv === "eeff" && S.paso !== "nit") { S.paso = "cuenta"; try { history.replaceState({ paso: "cuenta" }, ""); } catch (e) {} }
+    if (antesLanz() && S.serv === "eeff" && /^(pago|verif|cuenta)$/.test(S.paso)) { S.paso = "eeff4"; try { history.replaceState({ paso: "eeff4" }, ""); } catch (e) {} }
     pintar();
   });
 })();

@@ -145,6 +145,10 @@ function pasarelaHandle_(d) {
   if (a === "pas_config") return pasConfigPublica();
   if (a === "pas_buscar") return pasBuscar(d.nit);
   if (a === "pas_cotizar") { var r = pasCotizar(d); if (r.ok) r.qr = pasQR_(r.monto); return r; }
+  if ((a === "pas_reservar" || a === "pas_verificar") && d.servicio === "eeff") {
+    var lz = Date.parse(pasCfg().lanzamiento || "");
+    if (!isNaN(lz) && Date.now() < lz) return { ok: false, error: "La venta de balances todavía no abrió. Podrás pagar cuando termine la cuenta regresiva." };
+  }
   if (a === "pas_reservar") { var rr = pasReservar(d); if (rr.ok) rr.qr = pasQR_(rr.monto); return rr; }
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
