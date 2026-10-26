@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "51";
+const APP_VERSION = "52";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4148,14 +4148,21 @@ function paMontos() {
   return o.sort((a, b) => a.m - b.m);
 }
 // ===== Balances por fase: tabla reutilizable (Pasarela editable · Dashboard y Reportes solo lectura) =====
-let EEFF_RES = { t: 0, porPrecio: {} };
+let EEFF_RES = { t: 0, porPrecio: {}, lista: null };
 async function eeffReservasScript() {
   if (Date.now() - EEFF_RES.t < 60000) return EEFF_RES.porPrecio;
   try {
     const url = await recibosUrlGet(); if (!url) return {};
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "pas_config" }) }).then(x => x.json());
     const m = {}; ((r && r.eeff && r.eeff.cupos) || []).forEach(c => { if (c.reservados) m[String(Math.round(c.precio))] = c.reservados; });
-    EEFF_RES = { t: Date.now(), porPrecio: m };
+    // Quién reservó (necesita la sesión del panel; si el script aún no tiene esta función, se muestra solo la cantidad)
+    let lista = null;
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const l = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_reservas", idToken }) }).then(x => x.json());
+      if (l && l.ok && Array.isArray(l.reservas)) lista = l.reservas;
+    } catch (e) {}
+    EEFF_RES = { t: Date.now(), porPrecio: m, lista };
   } catch (e) {}
   return EEFF_RES.porPrecio;
 }
@@ -4190,9 +4197,12 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
     const est = (libres > 0 && inf.nitDesde) ? '<span class="badge" style="background:#DDE7E1;color:#335">Solo NIT nuevos</span>' : libres <= 0 ? '<span class="badge" style="background:#B42318;color:#fff">Agotada</span>' : (activa === i + 1 ? '<span class="badge ok">Habilitada</span>' : '<span class="badge" style="background:#F2C94C;color:#5A4200">Próxima</span>');
     const celPr = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="precio" type="number" value="${escape(String(x.precio))}" style="width:80px" ${opts.dis || ""}>` : `<span class="mono">${money(pr)}</span>`;
     const celCap = opts.editable ? `<input class="pa-cp" data-i="${i}" data-k="capacidad" type="number" value="${escape(String(x.capacidad))}" style="width:70px" ${opts.dis || ""}>` : `<span class="mono">${cap}</span>`;
-    const detalle = `<tr class="ef-det" data-fase="${i}" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${lista.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Origen</th></tr></thead><tbody>${lista.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${escape(r.fecha || String(r.fechaISO || "").slice(0, 10))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td>${escape(r.clienteNombre || "")}</td><td class="mono">${escape(String(r.nit || ""))}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${r.origen === "pasarela" ? "Pasarela" : "Panel"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó en esta fase.</span>'}</td></tr>`;
+    const rl = (EEFF_RES.lista || []).filter(r => Math.round(Number(r.precio) || 0) === Math.round(pr));
+    const hm = t => { try { return new Date(t).toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } };
+    const detRes = rl.length ? `<tr class="ef-resdet" data-fase="${i}" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)"><table style="font-size:12.5px;margin:4px 0"><thead><tr><th>Cliente</th><th>NIT</th><th>Reservó</th><th>Estado</th></tr></thead><tbody>${rl.map(r => `<tr><td>${escape(r.cliente || "—")}</td><td class="mono">${escape(r.nit)}</td><td>${escape(hm(r.creado))}</td><td>${r.vigente ? `<span class="badge ok">Pagando · vence ${escape(hm(r.exp).split(" ").pop())}</span>` : '<span class="badge off">Venció sin completar el pago</span>'}</td></tr>`).join("")}</tbody></table><p class="note" style="margin:2px 0 4px">Las reservas vencidas se guardan 48 horas: sirven para llamar a quien no terminó de pagar.</p></td></tr>` : "";
+    const detalle = detRes + `<tr class="ef-det" data-fase="${i}" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${lista.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Origen</th></tr></thead><tbody>${lista.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${escape(r.fecha || String(r.fechaISO || "").slice(0, 10))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td>${escape(r.clienteNombre || "")}</td><td class="mono">${escape(String(r.nit || ""))}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${r.origen === "pasarela" ? "Pasarela" : "Panel"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó en esta fase.</span>'}</td></tr>`;
     return `<tr><td><b>${escape(inf.nombre)}</b>${inf.nitDesde ? `<div class="note" style="margin:0">NIT desde ${escape(inf.nitDesde.split("-").reverse().join("/"))}</div>` : ""}</td><td>${celPr}</td><td>${celCap}</td>
-      <td class="mono">${ven}${ven > cap ? ` <span class="note" style="color:#B42318">(+${ven - cap})</span>` : ""}</td><td class="mono">${res || 0}</td><td class="mono">${libres}</td><td>${est}</td>
+      <td class="mono">${ven}${ven > cap ? ` <span class="note" style="color:#B42318">(+${ven - cap})</span>` : ""}</td><td class="mono">${res || 0}${rl.length ? ` <button class="mini ef-rver" data-fase="${i}">Ver${rl.length !== res ? " (" + rl.length + ")" : ""}</button>` : ""}</td><td class="mono">${libres}</td><td>${est}</td>
       ${conM ? `<td class="mono" style="text-align:right">${money(proy)}</td><td class="mono" style="text-align:right">${money(cob)}</td><td class="mono" style="text-align:right">${money(pend)}</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="${i}" ${ven ? "" : "disabled"}>Ver (${ven})</button>${opts.editable && isAdmin() ? ` <button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>` + detalle;
   }).join("");
@@ -4204,6 +4214,10 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
     ${fuera.length ? `<p class="note" style="margin:6px 0 0">Balances con precios que no son de ninguna fase (no ocupan cupos): ${fuera.map(k => `Bs ${escape(k)} × ${recs[k].length}`).join(" · ")}.</p>` : ""}`;
 }
 function eeffFasesEnlazar(raiz) {
+  (raiz || document).querySelectorAll(".ef-rver").forEach(b => b.onclick = () => {
+    const d = b.closest("table").querySelector(`.ef-resdet[data-fase="${b.dataset.fase}"]`); if (!d) return;
+    const ab = d.style.display === "none"; d.style.display = ab ? "" : "none"; b.classList.toggle("on", ab);
+  });
   (raiz || document).querySelectorAll(".ef-ver").forEach(b => b.onclick = () => {
     const d = b.closest("table").querySelector(`.ef-det[data-fase="${b.dataset.fase}"]`); if (!d) return;
     const ab = d.style.display === "none"; d.style.display = ab ? "" : "none"; b.classList.toggle("on", ab);
@@ -4908,6 +4922,10 @@ function openEventoModal(e, fechaDefault) {
   document.body.appendChild(bg);
   bg.querySelector("#ev_tipo").value = e ? (e.tipo || "tarea") : "tarea";
   bg.querySelector("#ev_asig_chk").onchange = function () { bg.querySelector("#ev_asig").style.display = this.checked ? "" : "none"; };
+  // La lista de usuarios se carga si todavía no se abrió la pestaña Usuarios
+  const pintarAsig = () => { const sel = bg.querySelector("#ev_asig"); if (!sel) return; const cur = sel.value || (e && e.asignadoUid) || "";
+    sel.innerHTML = '<option value="">— elegir a quién —</option>' + evAsignables().map(u => `<option value="${escape(u.uid)}" ${cur === u.uid ? "selected" : ""}>${escape(u.name || u.email)}${u.role ? " · " + escape(ROLE_LABELS[u.role] || u.role) : ""}</option>`).join(""); };
+  if (!USERS.length) { const sel = bg.querySelector("#ev_asig"); if (sel) sel.innerHTML = '<option value="">Cargando usuarios…</option>'; getDocs(collection(db, "users")).then(sn => { if (!USERS.length) sn.forEach(d => USERS.push({ ...d.data(), uid: d.id })); pintarAsig(); }).catch(pintarAsig); }
   // Si la Base de Datos aún no se cargó, se carga y se llena la lista
   if (!BD.length) bdEnsureLoaded(ok => { const dl = bg.querySelector("#ev_clist"); if (ok && dl) dl.innerHTML = evCliOpts().map(o => `<option value="${escape(o)}">`).join(""); });
   const close = () => bg.remove();

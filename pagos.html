@@ -407,7 +407,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ir(p, "", true);
   });
   try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
-  function reiniciarServicio() { S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; }
+  function reiniciarServicio() { S.eeffFase = 0; S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; }
   var relojT = null;
   function relojReserva() {
     clearInterval(relojT);
@@ -424,7 +424,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     try {
       if (S.paso === "cuenta") return;
       if (S.paso === "fin" || S.paso === "nit") { localStorage.removeItem("pas-estado"); return; }
-      var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, acepta: S.acepta, aceptaUtil: S.aceptaUtil, resFin: S.resFin || 0 };
+      var g = { t: Date.now(), paso: S.paso === "verif" ? "pago" : S.paso, nit: S.nit, cli: S.cli, cfg: S.cfg, serv: S.serv, plan: S.plan, tipoFact: S.tipoFact, per: S.per, cot: S.cot, eeffFase: S.eeffFase || 0, acepta: S.acepta, aceptaUtil: S.aceptaUtil, resFin: S.resFin || 0 };
       localStorage.setItem("pas-estado", JSON.stringify(g));
     } catch (e) {}
   }
@@ -432,7 +432,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     try {
       var g = JSON.parse(localStorage.getItem("pas-estado") || "null");
       if (!g || Date.now() - g.t > 6 * 3600000 || !g.cli || !g.cfg) return false;
-      ["nit", "cli", "cfg", "serv", "plan", "tipoFact", "per", "cot", "acepta", "aceptaUtil", "resFin"].forEach(function (k) { S[k] = g[k]; });
+      ["nit", "cli", "cfg", "serv", "plan", "tipoFact", "per", "cot", "eeffFase", "acepta", "aceptaUtil", "resFin"].forEach(function (k) { S[k] = g[k]; });
       S.paso = g.paso || "servicio";
       try { history.replaceState({ paso: S.paso }, ""); } catch (e) {}
       return true;
@@ -506,14 +506,15 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var E = S.cfg.eeff;
       var esRepE = !S.cli || S.cli.repartidor !== false;
       var apNit = S.cli && S.cli.aperturaNit;
-      var aplica = function (c) { return !c.nitDesde || (!!apNit && apNit >= c.nitDesde); };
-      var A = null; E.cupos.forEach(function (c) { if (!A && c.libres > 0 && aplica(c)) A = c; });
+      var aplica = function (c) { return !c.nitDesde || !apNit || apNit >= c.nitDesde; };
+      var OPC = [], hayGen = false; E.cupos.forEach(function (c) { if (c.libres <= 0 || !aplica(c)) return; if (c.nitDesde) OPC.push(c); else if (!hayGen) { OPC.push(c); hayGen = true; } });
+      var A = OPC[0] || null; OPC.forEach(function (c) { if (S.eeffFase && c.n === S.eeffFase) A = c; });
       var nomb = function (c) { return c.nombre || ("Balance " + c.n); };
       var contador = A ? '<div class="contador' + (A.libres <= 10 ? " poco" : "") + '">' + (A.libres <= 10 ? '<span class="fase" style="color:#FFE1DC">¡Últimos cupos!</span>' : "") + '<span class="fase">' + esc(nomb(A)) + ' · habilitado</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
         : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todos los balances. Escríbenos por WhatsApp.</span></div>';
       var premiosDe = function (c) { return (S.cfg.premios || []).filter(function (p) { return p.servicio === "eeff" && (!p.fase || Number(p.fase) === c.n); }); };
       var fases = '<div class="fases">' + E.cupos.map(function (c) {
-        var lleno = c.libres <= 0, act = A && c.n === A.n, noAp = !aplica(c);
+        var lleno = c.libres <= 0, act = OPC.indexOf(c) >= 0, noAp = !aplica(c), elegida = A && c.n === A.n;
         var cls = lleno ? "agot" : act ? "act" : noAp ? "noap" : "pend";
         var et = lleno ? "AGOTADO" : act ? "HABILITADO" : noAp ? "SOLO NIT NUEVOS" : "PRÓXIMO";
         var sub = lleno ? "Se llenaron los " + c.capacidad + " cupos" : act ? "Quedan " + c.libres + " de " + c.capacidad + " cupos" : noAp ? "Para NIT abiertos desde " + esc(c.nitDesde.split("-").reverse().join("/")) : c.capacidad + " cupos · se habilita al llenarse el anterior";
@@ -522,7 +523,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
           (incluyeDe(c).length ? '<details class="incd"' + (act ? " open" : "") + '><summary>Incluye (' + incluyeDe(c).length + ')</summary><ul class="inc">' + incluyeDe(c).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") +
           (pr.length ? '<div class="prem">' + ICON.regalo + "<span>" + pr.map(function (p) { return (p.tipo === "azar" ? "Puedes ganar: " : "Regalo: ") + esc(p.nombre); }).join(" · ") + "</span></div>" : "") +
           (c.nitDesde && !lleno ? '<div class="prem" style="background:rgba(147,55,13,.12)"><span>Pago sujeto a revisión: verificamos la fecha de apertura de tu NIT. Si no aplica, te devolvemos el dinero.</span></div>' : "") +
-          '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
+          '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span>" +
+          (act && S.paso === "eeff2" ? '<button class="btn" data-fase="' + c.n + '" style="margin-top:10px">Elegir ' + esc(nomb(c)) + " · Bs " + esc(c.precio) + "</button>" : "") + "</div>";
       }).join("") + "</div>";
       var ICO_SIG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="vertical-align:-3px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
       var precioEl = S.cot && S.cot.ok ? bs(S.cot.monto) : (A ? "Bs " + esc(A.precio) : "…");
@@ -536,9 +538,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
           bloque("¿Por qué debo hacer Estados Financieros?", INFO.porque) + (esRepE ? comparaHtml(E.cupos, A, aplica, premiosDe) : "") + multasHtml() + errHtml() +
           '<button class="btn" data-ir="' + (esRepE ? "eeff2" : "eeff3") + '">Siguiente' + ICO_SIG + "</button></div>";
       } else if (S.paso === "eeff2") {
-        h = tit + '<p class="l" style="margin:4px 0 0">Elige tu balance</p><p class="chico suave" style="margin:-4px 0 0">Solo se puede elegir el balance habilitado. El siguiente se habilita cuando se llenan los cupos del anterior.</p>' +
+        h = tit + '<p class="l" style="margin:4px 0 0">Elige tu balance</p><p class="chico suave" style="margin:-4px 0 0">' + (OPC.length > 1 ? "Tienes " + OPC.length + " balances habilitados: elige el que prefieras." : "Solo se puede elegir el balance habilitado.") + " El siguiente se habilita cuando se llenan los cupos del anterior.</p>" +
           contador + fases + errHtml() +
-          (A ? '<button class="btn" data-ir="eeff3">Elegir ' + esc(nomb(A)) + " · Bs " + esc(A.precio) + "</button>" : '<a class="btn" href="' + wa("Hola CONTAX, quiero mis estados financieros y ya no hay cupos en la pasarela.") + '" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">Escríbenos por WhatsApp</a>') +
+          (A ? "" : '<a class="btn" href="' + wa("Hola CONTAX, quiero mis estados financieros y ya no hay cupos en la pasarela.") + '" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">Escríbenos por WhatsApp</a>') +
           '<button class="link" data-ir="opcion">Volver</button></div>';
       } else if (S.paso === "eeff3") {
         h = tit + elegido(esRepE ? "eeff2" : "") + virtualHtml() + muestraEeff() + (esRepE && A && A.nitDesde ? avisoNuevosHtml() : "") + errHtml() +
@@ -697,7 +699,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function cotizar() {
     S.cot = null; pintar();
-    var d = { action: "pas_cotizar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact };
+    var d = { action: "pas_cotizar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "" };
     if (S.serv === "decl") { if (!S.plan || (S.plan !== "basico" && !S.tipoFact)) { pintar(); return; } d.anio = S.per.anio; d.mes = S.per.mes; }
     api(d).then(function (r) { S.cot = r; S.error = r.ok ? "" : r.error; pintar(); });
   }
@@ -735,7 +737,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
-      S.serv = b.dataset.s; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
+      S.serv = b.dataset.s; S.eeffFase = 0; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
     document.querySelectorAll("[data-plan]").forEach(function (b) { b.onclick = function () { if (S.plan !== b.dataset.plan) { S.acepta = false; S.tipoFact = ""; } S.plan = b.dataset.plan; ir("detalle"); cotizar(); }; });
@@ -747,12 +749,15 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       if (!puedePagar()) return;
       if (S.serv !== "eeff") { ir("pago"); return; }
       cargando("Reservando tu cupo…");
-      api({ action: "pas_reservar", nit: S.nit, servicio: "eeff" }).then(function (r) {
+      api({ action: "pas_reservar", nit: S.nit, servicio: "eeff", fase: S.eeffFase || "" }).then(function (r) {
         if (!r.ok) { ir("eeff4", r.error); return; }
         S.cot = r; if (r.reserva) S.resFin = Date.now() + r.reserva.quedanSeg * 1000; ir("pago");
       });
     };
     if ($("bReservar")) $("bReservar").onclick = function () { S.cot = null; S.resFin = 0; S.img = ""; ir(S.serv === "eeff" ? "eeff4" : "opcion"); cotizar(); };
+    document.querySelectorAll("[data-fase]").forEach(function (b) { b.onclick = function () {
+      var f = Number(b.dataset.fase); if (S.eeffFase !== f) { S.eeffFase = f; S.aceptaUtil = false; S.acepta = false; cotizar(); } ir("eeff3");
+    }; });
     document.querySelectorAll("[data-ir]").forEach(function (b) { b.onclick = function () { ir(b.dataset.ir); }; });
     if ($("bVolverPlan")) $("bVolverPlan").onclick = function () { ir("opcion"); };
     if ($("bCambiarPlan")) $("bCambiarPlan").onclick = function () { ir("opcion"); };
@@ -763,7 +768,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     };
     if ($("bVerif")) $("bVerif").onclick = function () {
       cargando("Leyendo tu comprobante con IA… (unos segundos)");
-      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
+      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "", imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
       if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
       api(d).then(function (r) { if (!r.ok) { ir("pago", r.error); return; } S.ver = r; ir("verif"); });
     };

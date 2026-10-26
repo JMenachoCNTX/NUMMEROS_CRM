@@ -81,8 +81,9 @@ function pasFechaISO_(v) {
 // ¿Este cliente puede tomar este balance? (el ¡Nuevos! es solo para NIT abiertos desde cierta fecha)
 function pasBalAplica_(info, cli) {
   if (!info.nitDesde) return true;
-  var f = cli ? pasFechaISO_(cli.fechaNit) : "";
-  return !!f && f >= info.nitDesde;
+  if (!cli) return false;
+  var f = pasFechaISO_(cli.fechaNit);
+  return !f || f >= info.nitDesde;   // sin fecha de apertura registrada: se permite, y se verifica en la revisión
 }
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
@@ -359,7 +360,7 @@ function pasConteoEeff_(g) {
   var d = fsGet_("config/eeffConteo_" + g);
   return d && d.porPrecio ? d.porPrecio : null;
 }
-function pasCupoActual_(c, excluirNit, cli) {
+function pasCupoActual_(c, excluirNit, cli, faseQuiere) {
   var g = String(c.eeffGestion || PAS_DEF.eeffGestion);
   var res = pasReservas_(g), ahora = Date.now(), resPorFase = {}, reservados = 0;
   Object.keys(res).forEach(function (n) { if (n !== excluirNit && res[n].exp > ahora) { reservados++; resPorFase[res[n].precio] = (resPorFase[res[n].precio] || 0) + 1; } });
@@ -381,13 +382,16 @@ function pasCupoActual_(c, excluirNit, cli) {
       return { n: i + 1, precio: Number(x.precio) || 0, capacidad: cap, ocupados: ocup, libres: cap - ocup, nombre: inf.nombre, incluye: inf.incluye, nitDesde: inf.nitDesde };
     });
   }
-  var actual = null;
+  // Opciones que puede elegir el cliente: el ¡Nuevos! (si le corresponde) y el primer balance general con cupos
+  var opciones = [], general = false;
   for (var i = 0; i < cupos.length; i++) {
     if (cupos[i].libres <= 0) continue;
-    if (cupos[i].nitDesde && (cli === undefined || !pasBalAplica_(cupos[i], cli))) continue;   // sin cliente, no se ofrece el ¡Nuevos!
-    actual = cupos[i]; break;
+    if (cupos[i].nitDesde) { if (cli !== undefined && pasBalAplica_(cupos[i], cli)) opciones.push(cupos[i]); continue; }   // sin cliente, no se ofrece el ¡Nuevos!
+    if (!general) { opciones.push(cupos[i]); general = true; }
   }
-  return { gestion: g, cupos: cupos, actual: actual, agotado: !actual, reservados: reservados, reservaMin: PAS_RES_MIN };
+  var actual = opciones[0] || null;
+  if (faseQuiere) opciones.forEach(function (o) { if (o.n === Number(faseQuiere)) actual = o; });
+  return { gestion: g, cupos: cupos, actual: actual, opciones: opciones.map(function (o) { return o.n; }), agotado: !actual, reservados: reservados, reservaMin: PAS_RES_MIN };
 }
 // Suma 1 balance vendido en el conteo de su precio (al aprobar un pago de la pasarela)
 function pasContarEeff_(g, precio) {
@@ -407,10 +411,11 @@ function pasReservar(d) {
   var lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
     var ahora = Date.now(), r = pasReservas_(g)[nit];
-    if (!(r && r.exp > ahora)) {
-      var e = pasCupoActual_(c, nit, cli);
+    if (!(r && r.exp > ahora) || (d.fase && Number(d.fase) !== Number(r.fase))) {
+      var e = pasCupoActual_(c, nit, cli, d.fase);
       if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + g + ". Escríbenos por WhatsApp." };
-      r = { gestion: g, fase: e.actual.n, precio: e.actual.precio, nombre: e.actual.nombre, creado: ahora, exp: ahora + PAS_RES_MIN * 60000 };
+      if (d.fase && e.actual.n !== Number(d.fase)) return { ok: false, error: "Ese balance ya no está disponible para ti. Vuelve a elegir tu balance." };
+      r = { gestion: g, fase: e.actual.n, precio: e.actual.precio, nombre: e.actual.nombre, creado: ahora, exp: ahora + PAS_RES_MIN * 60000, cliente: cli.nombre || "", nit: nit };
       props.setProperty("res_" + nit, JSON.stringify(r));
     }
     var cot = pasCotEeff_(g, r.precio, r.fase, r.nombre);
@@ -457,8 +462,8 @@ function pasCotizar(d) {
     }
     var nitE = String(d.nit || "").replace(/\D/g, ""), gE = String(c.eeffGestion || PAS_DEF.eeffGestion);
     var resE = nitE ? pasReservas_(gE)[nitE] : null;
-    if (resE && resE.exp > Date.now()) { var cr = pasCotEeff_(gE, resE.precio, resE.fase, resE.nombre); cr.reserva = { fase: resE.fase, nombre: resE.nombre || "", precio: resE.precio, exp: resE.exp, quedanSeg: Math.round((resE.exp - Date.now()) / 1000) }; return cr; }
-    var e = pasCupoActual_(c, nitE, nitE ? pasClienteCache_(nitE) : undefined);
+    if (resE && resE.exp > Date.now() && (!d.fase || Number(d.fase) === Number(resE.fase))) { var cr = pasCotEeff_(gE, resE.precio, resE.fase, resE.nombre); cr.reserva = { fase: resE.fase, nombre: resE.nombre || "", precio: resE.precio, exp: resE.exp, quedanSeg: Math.round((resE.exp - Date.now()) / 1000) }; return cr; }
+    var e = pasCupoActual_(c, nitE, nitE ? pasClienteCache_(nitE) : undefined, d.fase);
     if (e.agotado) return { ok: false, error: "Se agotaron los cupos de balance de la gestión " + e.gestion + ". Escríbenos por WhatsApp." };
     return pasCotEeff_(e.gestion, e.actual.precio, e.actual.n, e.actual.nombre);
   }
@@ -799,12 +804,24 @@ function probarPasarela() {
 var ADM_API_KEY = "AIzaSyBPUgVMi3IQCow6pJiQwaC-WsH_mMf_arI"; // clave web pública de Firebase (la misma de config.js)
 function adminHandle(d) {
   try {
+    if (d.action === "admin_reservas") { admVerificar_(d.idToken, true); return admReservas_(); }
     var yo = admVerificar_(d.idToken);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
     return { ok: false, error: "accion_desconocida" };
   } catch (e) { console.error(e); return { ok: false, error: String(e && e.message || e) }; }
 }
-function admVerificar_(idToken) {
+// Reservas de cupo de balance vigentes y recientes (para ver en el panel quién reservó)
+function admReservas_() {
+  var c = pasCfg(), g = String(c.eeffGestion || PAS_DEF.eeffGestion), res = pasReservas_(g), ahora = Date.now(), out = [];
+  Object.keys(res).forEach(function (nit) {
+    var r = res[nit], nom = r.cliente;
+    if (!nom) { try { var cl = pasClienteCache_(nit); nom = cl ? cl.nombre : ""; } catch (e) {} }
+    out.push({ nit: nit, cliente: nom || "", fase: r.fase, nombre: r.nombre || "", precio: r.precio, creado: r.creado, exp: r.exp, vigente: r.exp > ahora });
+  });
+  out.sort(function (a, b) { return b.creado - a.creado; });
+  return { ok: true, gestion: g, reservas: out, ahora: ahora };
+}
+function admVerificar_(idToken, cualquierRol) {
   if (!idToken) throw new Error("Falta la sesión. Vuelve a iniciar sesión en el panel.");
   var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + ADM_API_KEY,
     { method: "post", contentType: "application/json", payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true });
@@ -812,7 +829,8 @@ function admVerificar_(idToken) {
   var u = (JSON.parse(r.getContentText()).users || [])[0];
   if (!u) throw new Error("Sesión no válida.");
   var perfil = fsGet_("users/" + u.localId) || {};
-  if (perfil.role !== "admin" || perfil.active !== true) throw new Error("Solo un Admin puede cambiar contraseñas.");
+  if (perfil.active !== true) throw new Error("Tu usuario no está activo.");
+  if (cualquierRol ? ["admin", "supervisor", "editor", "cajero", "lector"].indexOf(perfil.role) < 0 : perfil.role !== "admin") throw new Error(cualquierRol ? "Tu rol no puede ver esto." : "Solo un Admin puede cambiar contraseñas.");
   return { uid: u.localId, nombre: perfil.name || perfil.email || "" };
 }
 function admSetPassword_(yo, uid, password) {
