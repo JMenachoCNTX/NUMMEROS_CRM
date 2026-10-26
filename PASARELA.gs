@@ -52,16 +52,19 @@ var PAS_DEF = {
   ]
 };
 // Nombres y contenido por defecto de cada balance (fase). El admin los puede cambiar en el panel.
+var BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
 var PAS_BAL_DEF = [
-  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026", "Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605"] },
-  { nombre: "Balance Esencial", incluye: ["Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605", "2 beneficios CONTAX"] },
-  { nombre: "Balance Plus", incluye: ["Todo lo del Balance Esencial", "Libro Diario y Libro Mayor", "5 beneficios CONTAX"] },
-  { nombre: "Balance Pro", incluye: ["Todo lo del Balance Plus", "Reunión para explicarte tu resultado", "7 beneficios CONTAX"] },
-  { nombre: "Balance Total", incluye: ["Todo lo del Balance Pro", "Atención prioritaria en la entrega", "Los 10 beneficios CONTAX"] }
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE) },
+  { nombre: "Balance Esencial", incluye: BAL_INCLUYE },
+  { nombre: "Balance Plus", incluye: BAL_INCLUYE },
+  { nombre: "Balance Pro", incluye: BAL_INCLUYE },
+  { nombre: "Balance Total", incluye: BAL_INCLUYE }
 ];
+// Contenidos antiguos (con "beneficios CONTAX"): si están guardados, se reemplazan por la lista nueva
+function balIncluyeViejo_(l) { return !l || !l.length || l.some(function (x) { return /beneficios CONTAX|Libro Diario|Reunión para explicarte|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); }); }
 function pasBalInfo_(c, i) {
   var x = (c.cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {};
-  return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: (x.incluye && x.incluye.length) ? x.incluye : (d.incluye || []),
+  return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo_(x.incluye) ? x.incluye : (d.incluye || []),
            nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") };
 }
 // Fecha (aaaa-mm-dd) desde los formatos de la Base de Datos

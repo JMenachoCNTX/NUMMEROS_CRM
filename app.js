@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "45";
+const APP_VERSION = "46";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3997,13 +3997,16 @@ function paintControl() {
 //  de Apps Script (PASARELA.gs, en el mismo proyecto que los recibos).
 //  Config: config/app.pasarela  ·  QR por importe: config/pasarelaQR (campos m30, m50…)
 // ============================================================
+const BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
 const PAS_BAL_DEF = [
-  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026", "Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605"] },
-  { nombre: "Balance Esencial", incluye: ["Los 7 estados financieros con firma del contador", "Formulario 500 (IUE) y envío con el Formulario 605", "2 beneficios CONTAX"] },
-  { nombre: "Balance Plus", incluye: ["Todo lo del Balance Esencial", "Libro Diario y Libro Mayor", "5 beneficios CONTAX"] },
-  { nombre: "Balance Pro", incluye: ["Todo lo del Balance Plus", "Reunión para explicarte tu resultado", "7 beneficios CONTAX"] },
-  { nombre: "Balance Total", incluye: ["Todo lo del Balance Pro", "Atención prioritaria en la entrega", "Los 10 beneficios CONTAX"] }
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE) },
+  { nombre: "Balance Esencial", incluye: BAL_INCLUYE },
+  { nombre: "Balance Plus", incluye: BAL_INCLUYE },
+  { nombre: "Balance Pro", incluye: BAL_INCLUYE },
+  { nombre: "Balance Total", incluye: BAL_INCLUYE }
 ];
+// Contenidos antiguos (con "beneficios CONTAX"): si están guardados, se reemplazan por la lista nueva
+function balIncluyeViejo(l) { return !l || !l.length || l.some(x => /beneficios CONTAX|Libro Diario|Reunión para explicarte|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x)); }
 const PAS_BEN_DEF = {
   basico: ["Declaración sin movimiento (IVA e IT) presentada a tiempo", "Consolidación de tu RCV antes del día 9", "Tus formularios en tu Portal de Clientes NUMMEROS"],
   estandar: ["Hasta 100 facturas de compras y ventas al mes", "Control de tu RCV y alertas de vencimiento", "Acceso a tu Portal de Clientes NUMMEROS con tus reportes", "Resumen mensual de tus compras y ventas", "Mes de tu cumpleaños sin cobro"],
@@ -4018,7 +4021,7 @@ const PAS_PREM_DEF = [
   { id: "p5", nombre: "1 mes de Suscripción de Facturación gratis", descripcion: "Para usar cuando quieras durante la gestión.", servicio: "eeff", fase: 5, tipo: "fijo" },
   { id: "p6", nombre: "Mes de tu cumpleaños sin cobro", descripcion: "Tu declaración del mes de tu cumpleaños no tiene costo.", servicio: "eeff", fase: 4, tipo: "fijo" }
 ];
-function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: (x.incluye && x.incluye.length) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
+function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo(x.incluye) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
 const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 }, diaDesde: 25, diaHasta: 31, diaCierre: 5, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }], destinoClaves: [] };
 const PA_UI = { tab: "revision", cfg: null, qr: null, cupos: null };
 async function renderPasarela() {
