@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "47";
+const APP_VERSION = "48";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4235,7 +4235,7 @@ function paintPasarela() {
     body = `<p class="note" style="margin:0 0 10px">La IA no pudo confirmar estos comprobantes. Revisa la imagen y apruébalos (pasan a la lista que corresponde y se envía el correo) o recházalos.</p>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Esperado</th><th style="text-align:right">Leído</th><th>Motivo</th><th></th></tr></thead><tbody>
       ${revision.map(r => `<tr><td class="mono">${escape(r.fecha || "")}<div class="note" style="margin:0">N° ${escape(String(r.nroRecepcion || ""))}</div></td>
-        <td><b>${escape(r.clienteNombre || "—")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td>
+        <td><b>${escape(r.clienteNombre || "—")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div>${r.aperturaNit ? `<div class="note" style="margin:0">NIT abierto: <b>${escape(String(r.aperturaNit).slice(0, 10))}</b></div>` : ""}${r.balanceNombre ? `<div class="note" style="margin:0">${escape(r.balanceNombre)}</div>` : ""}</td>
         <td style="font-size:12px">${escape(r.detalleServicio || r.servicio || "")}<div class="note" style="margin:0">${escape(r.mesRecepcion || "")}</div></td>
         <td class="mono" style="text-align:right">${money(r.pasarela.montoEsperado)}</td><td class="mono" style="text-align:right">${money(r.pasarela.montoLeido)}</td>
         <td style="color:var(--warn);font-weight:600;font-size:12px">${escape((r.pasarela.motivos || []).join(", "))}</td>

@@ -87,7 +87,7 @@ function pasBalAplica_(info, cli) {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-24";
+var PAS_TERMINOS_VERSION = "2026-10-26";
 // Advertencia de balances (se muestra aparte, en rojo, y se acepta con su propia casilla; también va en el correo)
 var PAS_ADVERTENCIA_EEFF = [
   "Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de Impuestos Nacionales. Nuestro sistema contable NUMMEROS los genera de forma automática.",
@@ -107,9 +107,12 @@ var PAS_TERMINOS = {
     "CONTAX no se responsabiliza por facturas que no sean válidas para tu actividad registrada."
   ],
   eeff: [
-    "El servicio corresponde a los estados financieros de la gestión indicada (un año).",
-    "Incluye: balance general, estado de resultados, flujo de efectivo, evolución del patrimonio, notas, cuadro de activos fijos y balance de sumas y saldos; presentación del Formulario 500 (IUE) y envío digital con el Formulario 605.",
-    "El precio corresponde a la fase habilitada al momento de tu pago; cuando se llenan los cupos de una fase, el precio sube a la siguiente fase.",
+    "El servicio corresponde a los estados financieros de la gestión indicada (un año, o desde la apertura de tu NIT si lo abriste durante la gestión).",
+    "Incluye lo detallado en el balance que elegiste: los 7 estados financieros, la declaración de los Formularios 500 (IUE) y 605 (envío de EEFF al SIN), el envío en digital (PDF) con firma digital y su descarga desde tu Portal de Clientes NUMMEROS. Según el balance, además Libro Mayor, Libro Diario, atención prioritaria y reunión virtual.",
+    "El precio corresponde al balance habilitado al momento de tu pago. Cuando se llenan sus cupos, el precio pasa al siguiente balance.",
+    "Al continuar al pago, tu cupo queda reservado por 30 minutos a ese precio. Si pagas dentro de ese tiempo, se respeta tu precio aunque subas el comprobante después.",
+    "Balance ¡Nuevos!: es solo para NIT abiertos en octubre, noviembre o diciembre de 2026. Cada pago queda en revisión hasta que verifiquemos en Impuestos Nacionales la fecha de apertura de tu NIT; si no corresponde, se rechaza la solicitud y te devolvemos tu dinero.",
+    "Los premios al azar se asignan automáticamente entre los pagos aprobados de cada balance. CONTAX se comunica con el ganador para la devolución o el beneficio.",
     "Debes entregarnos a tiempo toda la información y documentación que te solicitemos.",
     "El IUE que resulte a pagar lo pagas tú directamente.",
     "Tus estados financieros y formularios se entregan en tu Portal de Clientes NUMMEROS (no se envían por WhatsApp).",
@@ -531,10 +534,14 @@ function pasVerificar(d) {
   // 5) Depositante (informativo)
   checks.push({ label: "Depositante", valor: x.depositante || "—", ok: true, nota: "Informativo" });
 
-  var aprobado = motivos.length === 0;
+  var aprobado = motivos.length === 0, revisionNuevos = false;
+  if (cot.tipo === "eeff" && cot.cupo) {
+    var infN = pasBalInfo_(c, Number(cot.cupo) - 1);
+    if (infN.nitDesde) { revisionNuevos = true; aprobado = false; motivos.push("Balance ¡Nuevos!: verificar en Impuestos Nacionales la fecha de apertura del NIT"); }
+  }
   var token = Utilities.getUuid();
   pasCachePut_("v_" + token, { nit: String(d.nit).replace(/\D/g, ""), cot: cot, x: x, motivos: motivos, aprobado: aprobado, img: img }, 1800);
-  return { ok: true, token: token, aprobado: aprobado, checks: checks, motivos: motivos, monto: cot.monto, resumen: cot.resumen };
+  return { ok: true, token: token, aprobado: aprobado, revisionNuevos: revisionNuevos, checks: checks, motivos: motivos, monto: cot.monto, resumen: cot.resumen };
 }
 // Fecha y hora del comprobante (hora de Bolivia) en milisegundos; null si no se pudo leer la hora
 function pasMomentoPago_(fecha, hora) {
