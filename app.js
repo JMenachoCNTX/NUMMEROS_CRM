@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "46";
+const APP_VERSION = "47";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3998,15 +3998,21 @@ function paintControl() {
 //  Config: config/app.pasarela  ·  QR por importe: config/pasarelaQR (campos m30, m50…)
 // ============================================================
 const BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
+const BAL_EXTRAS = [[], [], ["Libro Mayor"], ["Libro Mayor", "Libro Diario"], ["Libro Mayor", "Libro Diario", "Atención prioritaria", "Reunión virtual para explicarte tus resultados"]];
+function balIncluyeDef(i) { return (i === 0 ? ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"] : []).concat(BAL_INCLUYE, BAL_EXTRAS[i] || []); }
 const PAS_BAL_DEF = [
-  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE) },
-  { nombre: "Balance Esencial", incluye: BAL_INCLUYE },
-  { nombre: "Balance Plus", incluye: BAL_INCLUYE },
-  { nombre: "Balance Pro", incluye: BAL_INCLUYE },
-  { nombre: "Balance Total", incluye: BAL_INCLUYE }
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: balIncluyeDef(0) },
+  { nombre: "Balance Esencial", incluye: balIncluyeDef(1) },
+  { nombre: "Balance Plus", incluye: balIncluyeDef(2) },
+  { nombre: "Balance Pro", incluye: balIncluyeDef(3) },
+  { nombre: "Balance Total", incluye: balIncluyeDef(4) }
 ];
-// Contenidos antiguos (con "beneficios CONTAX"): si están guardados, se reemplazan por la lista nueva
-function balIncluyeViejo(l) { return !l || !l.length || l.some(x => /beneficios CONTAX|Libro Diario|Reunión para explicarte|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x)); }
+// Si lo guardado es un texto antiguo (con "beneficios CONTAX", etc.) o la lista básica sin extras, se usa la lista vigente
+function balIncluyeViejo(l) {
+  if (!l || !l.length) return true;
+  if (l.some(function (x) { return /beneficios CONTAX|^Libro Diario y Libro Mayor$|Reunión para explicarte tu resultado|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); })) return true;
+  var j = JSON.stringify(l); return j === JSON.stringify(BAL_INCLUYE) || j === JSON.stringify(["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE));
+}
 const PAS_BEN_DEF = {
   basico: ["Declaración sin movimiento (IVA e IT) presentada a tiempo", "Consolidación de tu RCV antes del día 9", "Tus formularios en tu Portal de Clientes NUMMEROS"],
   estandar: ["Hasta 100 facturas de compras y ventas al mes", "Control de tu RCV y alertas de vencimiento", "Acceso a tu Portal de Clientes NUMMEROS con tus reportes", "Resumen mensual de tus compras y ventas", "Mes de tu cumpleaños sin cobro"],
@@ -4014,12 +4020,10 @@ const PAS_BEN_DEF = {
   fact: ["Facturación automática semanal (repartidores Yango)", "Tu factura lista antes del jueves", "Historial de tus facturas en tu Portal de Clientes NUMMEROS"]
 };
 const PAS_PREM_DEF = [
-  { id: "p1", nombre: "¡Balance gratis!", descripcion: "Te devolvemos el 100% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-  { id: "p2", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-  { id: "p3", nombre: "10% de descuento en tus declaraciones por 1 año", descripcion: "Código de descuento para todas tus declaraciones durante 12 meses.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-  { id: "p4", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
-  { id: "p5", nombre: "1 mes de Suscripción de Facturación gratis", descripcion: "Para usar cuando quieras durante la gestión.", servicio: "eeff", fase: 5, tipo: "fijo" },
-  { id: "p6", nombre: "Mes de tu cumpleaños sin cobro", descripcion: "Tu declaración del mes de tu cumpleaños no tiene costo.", servicio: "eeff", fase: 4, tipo: "fijo" }
+    { id: "p7", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p8", nombre: "Una declaración mensual gratis", descripcion: "Una de tus declaraciones mensuales sin costo.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p9", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p10", nombre: "Un año de declaraciones gratis", descripcion: "12 declaraciones mensuales sin costo.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 }
 ];
 function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo(x.incluye) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
 const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 }, diaDesde: 25, diaHasta: 31, diaCierre: 5, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }], destinoClaves: [] };
@@ -4301,7 +4305,9 @@ function paintPasarela() {
       ${admin ? `<button class="btn" id="pa_save_bal">Guardar balances y beneficios</button> <span class="msg" id="pa_msg_bal"></span>` : ""}`;
   } else if (PA_UI.tab === "premios") {
     const dis = admin ? "" : "disabled";
-    PA_UI.premios = PA_UI.premios || JSON.parse(JSON.stringify(c.premios && c.premios.length ? c.premios : PAS_PREM_DEF));
+    // Si lo guardado son los premios de ejemplo anteriores (p1 a p6), se proponen los nuevos (Pro y Total)
+    const premViejos = c.premios && c.premios.length && c.premios.every(p => /^p[1-6]$/.test(p.id));
+    PA_UI.premios = PA_UI.premios || JSON.parse(JSON.stringify(c.premios && c.premios.length && !premViejos ? c.premios : PAS_PREM_DEF));
     const nFases = PA_UI.cupos.length;
     const opt = (v, l, sel) => `<option value="${v}" ${String(sel) === String(v) ? "selected" : ""}>${l}</option>`;
     body = `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>

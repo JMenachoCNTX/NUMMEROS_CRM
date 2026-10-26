@@ -176,6 +176,21 @@ html.oscuro .app{background:var(--fondo)}
 .pz .cv{animation:latir 1.6s ease-in-out infinite}@keyframes latir{50%{transform:scale(1.04)}}
 .conf{position:absolute;top:-10px;width:8px;height:12px;border-radius:2px;animation:caer 1.4s ease-in forwards;pointer-events:none}
 @keyframes caer{to{transform:translateY(190px) rotate(540deg);opacity:0}}
+.compara{background:var(--sup);border:2px solid var(--acento);border-radius:14px;padding:0 14px}
+.compara summary{cursor:pointer;padding:13px 0;font-size:15px;font-weight:700;color:var(--acento);list-style:none;display:flex;gap:8px;align-items:center}
+.compara summary::after{content:"+";margin-left:auto;font-size:18px}.compara[open] summary::after{content:"–"}
+.cmp-scroll{overflow-x:auto;margin:0 -14px 14px;padding:0 14px}
+.cmp{border-collapse:separate;border-spacing:0;font-size:12px;min-width:560px;width:100%}
+.cmp th,.cmp td{padding:7px 6px;border-bottom:1px solid var(--borde);text-align:center;vertical-align:middle}
+.cmp th{font-size:12px;color:var(--txt);position:sticky;top:0;background:var(--sup)}
+.cmp td:first-child,.cmp th:first-child{text-align:left;position:sticky;left:0;background:var(--sup);min-width:150px;max-width:170px;z-index:1;font-size:11.5px;line-height:15px}
+.cmp .act{background:var(--menta)}.cmp th.act{color:var(--acento)}
+.cmp .pr td{font-family:Akshar,sans-serif;font-size:15px;font-weight:700}
+.cmp .si{display:inline-block;width:6px;height:11px;border:solid var(--acento);border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}
+.cmp .no{color:var(--suave)}
+.cmp .e{display:inline-block;font-size:10px;font-weight:800;padding:2px 6px;border-radius:999px;white-space:nowrap}
+.cmp .e.ok{background:#2E8B57;color:#fff}.cmp .e.ag{background:#B42318;color:#fff}.cmp .e.px{background:#F2C94C;color:#5A4200}.cmp .e.na{background:var(--borde);color:var(--suave)}
+.cmp .pz2{display:block;font-size:11px;font-weight:600;background:rgba(242,201,76,.25);border-radius:6px;padding:2px 4px;margin:2px 0}
 .fz .incd summary{cursor:pointer;font-size:12.5px;font-weight:700;list-style:none;display:flex;justify-content:space-between}.fz .incd summary::after{content:"+";font-size:15px}.fz .incd[open] summary::after{content:"–"}
 .virtual{border-radius:16px;padding:16px 18px;background:linear-gradient(135deg,#235347,#0B2B26);color:#DAF1DE;font-size:13.5px;line-height:20px}
 .virtual b{color:#fff}.virtual h3{margin:0 0 6px;font-family:Akshar,sans-serif;font-size:20px;color:#fff}
@@ -481,7 +496,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
             (incluyeDe(c).length ? '<details class="incd"' + (act ? " open" : "") + '><summary>Incluye (' + incluyeDe(c).length + ')</summary><ul class="inc">' + incluyeDe(c).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") +
             (pr.length ? '<div class="prem">' + ICON.regalo + "<span>" + pr.map(function (p) { return (p.tipo === "azar" ? "Puedes ganar: " : "Regalo: ") + esc(p.nombre); }).join(" · ") + "</span></div>" : "") +
             '<div class="barra"><i style="width:' + (c.capacidad ? Math.round(c.ocupados / c.capacidad * 100) : 0) + '%"></i></div><span class="s">' + sub + "</span></div>";
-        }).join("") + "</div>";
+        }).join("") + "</div>" + comparaHtml(E.cupos, A, aplica, premiosDe);
         h = '<div class="pila"><h2>Estados financieros</h2><p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + " · el precio sube cuando se llena cada balance. Mientras antes pagues, menos pagas.</p>" + contador + fases +
           virtualHtml() + muestraEeff() + multasHtml() + info("¿Qué incluye?", INFO.eeff) + errHtml() + pagar + "</div>";
       }
@@ -576,11 +591,31 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || S.aceptaUtil); }
   // Qué incluye cada balance (si la pasarela todavía trae los textos antiguos, se usa esta lista)
   var BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
+  var BAL_EXTRAS = [[], [], ["Libro Mayor"], ["Libro Mayor", "Libro Diario"], ["Libro Mayor", "Libro Diario", "Atención prioritaria", "Reunión virtual para explicarte tus resultados"]];
+  var NUE_TXT = "Solo para NIT abiertos en octubre, noviembre o diciembre de 2026";
   function incluyeDe(c) {
-    var l = c.incluye || [];
-    var viejo = !l.length || l.some(function (x) { return /beneficios CONTAX|Libro Diario|Reunión para explicarte|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); });
+    var l = c.incluye || [], i = (c.n || 1) - 1;
+    var viejo = !l.length || l.some(function (x) { return /beneficios CONTAX|^Libro Diario y Libro Mayor$|Reunión para explicarte tu resultado|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); }) ||
+      JSON.stringify(l) === JSON.stringify(BAL_INCLUYE) || JSON.stringify(l) === JSON.stringify([NUE_TXT].concat(BAL_INCLUYE));
     if (!viejo) return l;
-    return (c.nitDesde ? ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"] : []).concat(BAL_INCLUYE);
+    return (c.nitDesde ? [NUE_TXT] : []).concat(BAL_INCLUYE, BAL_EXTRAS[i] || []);
+  }
+  // Tabla para comparar todos los balances (qué incluye cada uno, premios, precio y estado)
+  function comparaHtml(cupos, A, aplica, premiosDe) {
+    var corto = function (c) { return String(c.nombre || ("Balance " + c.n)).replace(/^Balance\s+/i, ""); };
+    var filas = [];
+    cupos.forEach(function (c) { incluyeDe(c).forEach(function (x) { if (x !== NUE_TXT && filas.indexOf(x) < 0) filas.push(x); }); });
+    var si = '<span class="si" aria-label="Incluye"></span>', no = '<span class="no" aria-label="No incluye">—</span>';
+    var cab = "<tr><th></th>" + cupos.map(function (c) { return "<th" + (A && c.n === A.n ? ' class="act"' : "") + ">" + esc(corto(c)) + "</th>"; }).join("") + "</tr>";
+    var precio = '<tr class="pr"><td>Precio</td>' + cupos.map(function (c) { return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">Bs " + esc(c.precio) + "</td>"; }).join("") + "</tr>";
+    var estado = '<tr><td>Estado</td>' + cupos.map(function (c) { var t = c.libres <= 0 ? '<span class="e ag">Agotado</span>' : (A && c.n === A.n) ? '<span class="e ok">Habilitado</span>' : !aplica(c) ? '<span class="e na">NIT nuevos</span>' : '<span class="e px">Próximo</span>'; return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + t + "</td>"; }).join("") + "</tr>";
+    // Lo que incluyen todos los balances va en una sola fila; arriba se muestra lo que los diferencia
+    var comunes = filas.filter(function (f) { return cupos.every(function (c) { return incluyeDe(c).indexOf(f) >= 0; }); });
+    filas = filas.filter(function (f) { return comunes.indexOf(f) < 0; });
+    var filaComun = comunes.length ? '<tr><td><b>Los 7 estados financieros, formularios 500 y 605, firma digital y portal</b> <span class="chico suave">(' + comunes.length + ' puntos, ver "Incluye" en cada balance)</span></td>' + cupos.map(function (c) { return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + si + "</td>"; }).join("") + "</tr>" : "";
+    var cuerpo = filas.map(function (f) { return "<tr><td>" + esc(f) + "</td>" + cupos.map(function (c) { return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + (incluyeDe(c).indexOf(f) >= 0 ? si : no) + "</td>"; }).join("") + "</tr>"; }).join("");
+    var prem = '<tr><td>Puedes ganar (al azar)</td>' + cupos.map(function (c) { var p = premiosDe(c); return "<td" + (A && c.n === A.n ? ' class="act"' : "") + ">" + (p.length ? p.map(function (x) { return '<span class="pz2">' + esc(x.nombre) + "</span>"; }).join("") : no) + "</td>"; }).join("") + "</tr>";
+    return '<details class="compara"><summary>' + ICON.eeff + 'Comparar balances</summary><p class="chico suave" style="margin:6px 0 8px">Desliza la tabla a los lados. Si te conviene más el siguiente balance, puedes esperar a que se habilite.</p><div class="cmp-scroll"><table class="cmp"><thead>' + cab + "</thead><tbody>" + precio + estado + cuerpo + prem + filaComun + "</tbody></table></div></details>";
   }
   // Balance que le toca a este cliente (el ¡Nuevos! solo si su NIT es nuevo)
   function balanceDelCliente() {

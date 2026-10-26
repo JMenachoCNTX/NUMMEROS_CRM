@@ -43,25 +43,29 @@ var PAS_DEF = {
   },
   // Premios: "fijo" = para todos los que pagan ese servicio/balance; "azar" = N ganadores entre los próximos M pagos
   premios: [
-    { id: "p1", nombre: "¡Balance gratis!", descripcion: "Te devolvemos el 100% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-    { id: "p2", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-    { id: "p3", nombre: "10% de descuento en tus declaraciones por 1 año", descripcion: "Código de descuento para todas tus declaraciones durante 12 meses.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
-    { id: "p4", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
-    { id: "p5", nombre: "1 mes de Suscripción de Facturación gratis", descripcion: "Para usar cuando quieras durante la gestión.", servicio: "eeff", fase: 5, tipo: "fijo" },
-    { id: "p6", nombre: "Mes de tu cumpleaños sin cobro", descripcion: "Tu declaración del mes de tu cumpleaños no tiene costo.", servicio: "eeff", fase: 4, tipo: "fijo" }
+    { id: "p7", nombre: "10% de devolución", descripcion: "Te devolvemos el 10% de tu pago por QR.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p8", nombre: "Una declaración mensual gratis", descripcion: "Una de tus declaraciones mensuales sin costo.", servicio: "eeff", fase: 4, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p9", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
+    { id: "p10", nombre: "Un año de declaraciones gratis", descripcion: "12 declaraciones mensuales sin costo.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 }
   ]
 };
 // Nombres y contenido por defecto de cada balance (fase). El admin los puede cambiar en el panel.
 var BAL_INCLUYE = ["Balance General", "Estado de Resultados", "Balance de Comprobación de Sumas y Saldos", "Estado de Evolución y Cambios en el Patrimonio", "Estado de Flujo de Efectivo", "Cuadro de Activos Fijos", "Notas a los Estados Financieros", "Declaración Formulario 500 (IUE)", "Declaración Formulario 605 (Envío de EEFF al SIN)", "Envío de Estados Financieros en digital (PDF)", "Firma digital de los Estados Financieros (certificada por DigiCert)", "Descarga y visualización desde nuestro Portal de Clientes cuando lo necesites, sin costo, una vez culminados", "Notificación al momento en que culminemos tus estados financieros (si agregas nuestro Portal de Clientes como app de inicio, cuando lo lancemos)"];
+var BAL_EXTRAS = [[], [], ["Libro Mayor"], ["Libro Mayor", "Libro Diario"], ["Libro Mayor", "Libro Diario", "Atención prioritaria", "Reunión virtual para explicarte tus resultados"]];
+function balIncluyeDef_(i) { return (i === 0 ? ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"] : []).concat(BAL_INCLUYE, BAL_EXTRAS[i] || []); }
 var PAS_BAL_DEF = [
-  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: ["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE) },
-  { nombre: "Balance Esencial", incluye: BAL_INCLUYE },
-  { nombre: "Balance Plus", incluye: BAL_INCLUYE },
-  { nombre: "Balance Pro", incluye: BAL_INCLUYE },
-  { nombre: "Balance Total", incluye: BAL_INCLUYE }
+  { nombre: "Balance ¡Nuevos!", nitDesde: "2026-10-01", incluye: balIncluyeDef_(0) },
+  { nombre: "Balance Esencial", incluye: balIncluyeDef_(1) },
+  { nombre: "Balance Plus", incluye: balIncluyeDef_(2) },
+  { nombre: "Balance Pro", incluye: balIncluyeDef_(3) },
+  { nombre: "Balance Total", incluye: balIncluyeDef_(4) }
 ];
-// Contenidos antiguos (con "beneficios CONTAX"): si están guardados, se reemplazan por la lista nueva
-function balIncluyeViejo_(l) { return !l || !l.length || l.some(function (x) { return /beneficios CONTAX|Libro Diario|Reunión para explicarte|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); }); }
+// Si lo guardado es un texto antiguo (con "beneficios CONTAX", etc.) o la lista básica sin extras, se usa la lista vigente
+function balIncluyeViejo_(l) {
+  if (!l || !l.length) return true;
+  if (l.some(function (x) { return /beneficios CONTAX|^Libro Diario y Libro Mayor$|Reunión para explicarte tu resultado|Atención prioritaria en la entrega|Los 7 estados financieros con firma/i.test(x); })) return true;
+  var j = JSON.stringify(l); return j === JSON.stringify(BAL_INCLUYE) || j === JSON.stringify(["Solo para NIT abiertos en octubre, noviembre o diciembre de 2026"].concat(BAL_INCLUYE));
+}
 function pasBalInfo_(c, i) {
   var x = (c.cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {};
   return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo_(x.incluye) ? x.incluye : (d.incluye || []),
