@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "48";
+const APP_VERSION = "49";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2492,12 +2492,13 @@ async function recSync(forzarTodo) {
       snap.docs.forEach(d => { const n = rcLimpio(d.id, d.data()); const i = RC.docs.findIndex(x => x.id === d.id); if (i >= 0) RC.docs[i] = n; else RC.docs.push(n); });
       RC.lastSync = ahora; RC.netAt = ahora; rcGuardar();
     }
+    if (RC.docs.some(x => x.eliminado)) { RC.docs = RC.docs.filter(x => !x.eliminado); rcGuardar(); }
     return RC.docs;
   })();
   try { return await RC.loading; } finally { RC.loading = null; }
 }
 // Pagos de la pasarela que aún no se aprobaron (o se rechazaron) no cuentan como recepción
-function recValida(r) { const e = r && r.pasarela && r.pasarela.estado; return e !== "revision" && e !== "rechazado"; }
+function recValida(r) { if (r && r.eliminado) return false; const e = r && r.pasarela && r.pasarela.estado; return e !== "revision" && e !== "rechazado"; }
 let RECEP = [], recepLoaded = false, recFilterMes = "", recFlash = "", recGestion = String(new Date().getFullYear()), recLoadedGestion = null, recepError = "";
 async function recepLoad(gestion) {
   gestion = gestion || recGestion || String(new Date().getFullYear());
@@ -2734,7 +2735,7 @@ function paintRecepcion() {
        <td>${escape(r.tipoPago || "—")}</td>
        <td>${escape(r.atencion || "—")}</td>
        <td style="text-align:center">${(r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") ? '<span class="badge danger">Con deuda</span>' : '<span class="badge ok">Sin deuda</span>'}</td>
-       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Recibo</button>` : ''}${isAdmin() ? ` <button class="mini" data-delr="${r.id}">✕</button>` : ''}</td></tr>`).join("");
+       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Recibo</button>` : ''}${isAdmin() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro (solo administrador)" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
 
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
@@ -3078,8 +3079,17 @@ async function enviarReciboDe(rec) {
 }
 async function delRecepcion(rec) {
   if (!rec) return;
-  if (!confirm(`¿Eliminar la recepción N° ${rec.nroRecepcion} de "${rec.clienteNombre}" por ${money(rec.importe)}? No se puede deshacer.`)) return;
-  try { await deleteDoc(doc(db, "recepciones", rec.id)); rcQuitar([rec.id]); await recepLoad(); paintRecepcion(); } catch (e) { alert("No se pudo eliminar."); }
+  if (!isAdmin()) { alert("Solo el administrador puede eliminar registros."); return; }
+  const det = [rec.servicio || rec.servicioNombre, rec.detalleServicio, rec.mesRecepcion].filter(Boolean).join(" · ");
+  if (!confirm(`¿Estás seguro de eliminar este registro?\n\nRecepción N° ${rec.nroRecepcion || "—"}\nCliente: ${rec.clienteNombre || "—"}\n${det}\nImporte: ${money(rec.importe)}\n\nDesaparecerá de todas las listas (declaraciones, balances, facturación, trámites, reportes y dashboard) en todas las computadoras. No se puede deshacer.`)) return;
+  const quien = (ME && (ME.name || ME.email)) || "";
+  try {
+    // Se marca como eliminado (así las demás computadoras también lo quitan al sincronizar) y se libera el N° de operación del comprobante
+    const datos = { eliminado: true, eliminadoPor: quien, eliminadoAt: Date.now(), compNroOperacion: "", compNroOperacionAntes: rec.compNroOperacion || "", _upd: Date.now() };
+    await setDoc(doc(db, "recepciones", rec.id), datos, { merge: true });
+    if (recValida(rec) && recCatDe(rec) === "eeff") eeffContar(rec, -1);   // libera su cupo en las fases de balances
+    rcQuitar([rec.id]); LT_DATA = null; await recepLoad(); paintRecepcion();
+  } catch (e) { alert("No se pudo eliminar: " + (e.code || e.message)); }
 }
 
 // ============================================================
