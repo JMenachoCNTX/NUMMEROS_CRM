@@ -171,6 +171,29 @@ function roleOptionsHTML(cur) {
   return order.map(r => `<option value="${r}" ${cur === r ? "selected" : ""}>${ROLE_LABELS[r]}</option>`).join("");
 }
 
+// ---------- Accesos a otros sistemas (el Panel es la fuente de usuarios) ----------
+// CONTROL (panel del Portal de repartidores) usa estos mismos usuarios. El rol en CONTROL
+// sale de users/{uid}.sistemas.control; si está vacío, se deduce del rol del panel.
+const CTRL_URL = "https://jmenachocntx.github.io/CONTROL-NUMMEROS/";
+const CTRL_OPC = [["", "Automático"], ["admin", "Administrador"], ["operador", "Operador"], ["lectura", "Solo lectura"], ["ninguno", "Sin acceso"]];
+const CTRL_DEF = { admin: "admin", supervisor: "admin", editor: "operador", cajero: "lectura", lector: "lectura" };
+const CTRL_TXT = { admin: "Administrador", operador: "Operador", lectura: "Solo lectura" };
+function ctrlRolDe(u) {
+  if (!u || u.active !== true) return "";
+  const s = u.sistemas && u.sistemas.control;
+  if (s === "ninguno") return "";
+  if (s === "admin" || s === "operador" || s === "lectura") return s;
+  return CTRL_DEF[u.role] || "";
+}
+// Avisa al puente para que CONTROL refleje al instante el cambio (rol, estado o acceso)
+async function ctrlSync(uid) {
+  try {
+    const url = await recibosUrlGet(); if (!url) return;
+    const idToken = await auth.currentUser.getIdToken();
+    await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_ctrl_sync", idToken, uid }) });
+  } catch (e) { console.warn("CONTROL: no se pudo sincronizar el acceso", e); }
+}
+
 function buildNav() {
   let first = null;
   document.querySelectorAll('nav.tabs button').forEach(b => {
@@ -630,10 +653,12 @@ async function renderUsers() {
     <td>${escape(u.name || "—")}<div style="color:var(--muted);font-size:12px">${escape(u.email || "")}</div></td>
     <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select></td>
     <td>${pinCell}</td>
+    <td>${isAdmin ? `<select class="mini ctrl-sel" data-uid="${u.uid}" title="Acceso al panel CONTROL (Portal de repartidores)">${CTRL_OPC.map(o => `<option value="${o[0]}" ${((u.sistemas && u.sistemas.control) || "") === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select>` : ""}
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${ctrlRolDe(u) ? "Entra como " + CTRL_TXT[ctrlRolDe(u)] : "Sin acceso"}</div></td>
     <td>${u.active ? '<span class="pill agent">Activo</span>' : '<span class="pill" style="background:var(--panel2);color:var(--muted);border:1px solid var(--line)">Inactivo</span>'}</td>
-    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" data-nombre="${escape(u.name || "")}" data-correo="${escape(u.email || "")}" data-rol="${escape(ROLE_LABELS[u.role] || u.role || "")}" title="Copia un mensaje con los accesos para enviar por WhatsApp">${ICO("copy")} Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
+    <td style="white-space:nowrap">${isAdmin ? `<button class="mini" data-acceso="${u.uid}" data-nombre="${escape(u.name || "")}" data-correo="${escape(u.email || "")}" data-rol="${escape(ROLE_LABELS[u.role] || u.role || "")}" data-ctrl="${ctrlRolDe(u) ? "1" : ""}" title="Copia un mensaje con los accesos para enviar por WhatsApp">${ICO("copy")} Copiar accesos</button> ` : ""}${u.uid === ME.uid ? "" : `<button class="mini" data-toggle="${u.uid}" data-s="${u.active}">${u.active ? "Desactivar" : "Activar"}</button>`}</td></tr>`;
   }).join("");
-  el("v-users").innerHTML = `<h1>Usuarios</h1><p class="lead">Crea las cuentas de tu equipo y define qué ve cada rol. Los roles del panel (Admin, Supervisor, Editor, Cajero, Lector) entran aquí; el rol Agente usa la extensión de WhatsApp.</p>
+  el("v-users").innerHTML = `<h1>Usuarios</h1><p class="lead">Crea las cuentas de tu equipo y define qué ve cada rol. <b>Estos mismos usuarios sirven para todos los sistemas internos</b>: el Panel, el CRM (extensión de WhatsApp) y CONTROL (Portal de repartidores). En la columna <b>CONTROL</b> eliges con qué permiso entra cada uno; «Automático» lo decide según su rol del panel.</p>
     <div class="formcard">
       <h3 style="margin:0 0 14px">Crear usuario</h3>
       <label>Nombre</label><input id="u_name" placeholder="Ej. María López">
@@ -645,7 +670,7 @@ async function renderUsers() {
       <div class="msg" id="u_msg"></div>
       <p class="note" style="margin-top:8px">El usuario queda activo al instante. Comparte con esa persona su correo y PIN para que entre a la extensión.</p>
     </div>
-    <table><thead><tr><th>Usuario</th><th>Rol</th><th>PIN / Contraseña</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>Usuario</th><th>Rol</th><th>PIN / Contraseña</th><th title="Panel del Portal de repartidores">CONTROL</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     ${isAdmin ? `<div class="note" style="margin-top:12px;line-height:1.6">
       <b>PIN / Contraseña</b> = tu <b>cuaderno privado</b> (solo lo ve el admin). Firebase cifra la contraseña real y nadie la puede leer, así que aquí solo la <b>anotas</b>para recordarla. <b>Anotar NO cambia la contraseña.</b><br>
       <b>¿Alguien olvidó su contraseña?</b>Toca <b>Restablecer</b>: le llega un correo a esa cuenta con un enlace para poner una nueva. Cuando la ponga, anótala aquí con el para tenerla a mano.<br>
@@ -672,8 +697,9 @@ async function renderUsers() {
       msg.textContent = e.code === "auth/email-already-in-use" ? "Ese correo ya está registrado." : ("Error: " + (e.code || e.message));
     } finally { el("u_create").disabled = false; }
   };
-  document.querySelectorAll(".role-sel").forEach(s =>s.onchange = async () => { await updateDoc(doc(db, "users", s.dataset.uid), { role: s.value }); renderUsers(); });
-  document.querySelectorAll("[data-toggle]").forEach(b =>b.onclick = async () => { await updateDoc(doc(db, "users", b.dataset.toggle), { active: b.dataset.s !== "true" }); renderUsers(); });
+  document.querySelectorAll(".role-sel").forEach(s =>s.onchange = async () => { await updateDoc(doc(db, "users", s.dataset.uid), { role: s.value }); await ctrlSync(s.dataset.uid); renderUsers(); });
+  document.querySelectorAll("[data-toggle]").forEach(b =>b.onclick = async () => { await updateDoc(doc(db, "users", b.dataset.toggle), { active: b.dataset.s !== "true" }); await ctrlSync(b.dataset.toggle); renderUsers(); });
+  document.querySelectorAll(".ctrl-sel").forEach(s => s.onchange = async () => { s.disabled = true; await updateDoc(doc(db, "users", s.dataset.uid), { "sistemas.control": s.value }); await ctrlSync(s.dataset.uid); renderUsers(); });
   // Mensaje de accesos listo para WhatsApp (usa la contraseña anotada en la columna PIN)
   document.querySelectorAll("[data-acceso]").forEach(b => b.onclick = async () => {
     const uid = b.dataset.acceso, u = { name: b.dataset.nombre, email: b.dataset.correo, rolTxt: b.dataset.rol };
@@ -681,9 +707,10 @@ async function renderUsers() {
     const pin = (i && i.value) || "";
     if (!pin && !confirm("Este usuario no tiene contraseña anotada en la columna PIN.\n\n¿Copiar el mensaje igual (con la contraseña en blanco)?")) return;
     const msg = [
-      "*Accesos Panel & CRM*:",
+      "*Accesos Panel, CRM" + (b.dataset.ctrl ? " y CONTROL" : "") + "*:",
       "*Link CRM*: https://microsoftedge.microsoft.com/addons/detail/nummeros-by-contax-%E2%80%94-crm-/hhhomdbjhagdapmfkgajimjcnbpamlpj",
       "*Link Panel*: https://nummerospanel.contaxbolivia.com/",
+      ...(b.dataset.ctrl ? ["*Link CONTROL (repartidores)*: " + CTRL_URL] : []),
       "*Usuario*: " + (u.name || "—"),
       "*Correo*: " + (u.email || "—"),
       "*Contraseña*: " + (pin || "_______"),

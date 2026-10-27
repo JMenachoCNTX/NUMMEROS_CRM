@@ -888,8 +888,10 @@ function adminHandle(d) {
       try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "portal_vista_staff", nombre: nitP, detalle: yoP.nombre + " abrió el Portal del Cliente del NIT " + nitP, porUid: yoP.uid, porNombre: yoP.nombre }); } catch (e) {}
       return { ok: true, token: tkP };
     }
+    if (d.action === "admin_ctrl_sesion") return ctrlSesion_(d.idToken, d.reponer === true);   // CONTROL: entrar con el usuario del panel
     var yo = admVerificar_(d.idToken);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
+    if (d.action === "admin_ctrl_sync") return ctrlSync_(d.uid);
     return { ok: false, error: "accion_desconocida" };
   } catch (e) { console.error(e); return { ok: false, error: String(e && e.message || e) }; }
 }
@@ -1243,4 +1245,99 @@ function sistemaEstado_(d) {
   var mask = Object.keys(campos).map(function (k) { return "updateMask.fieldPaths=" + k; }).join("&");
   fsReq_(fsBase_() + "/recepciones/" + id + "?" + mask, "patch", { fields: fsEnc_(campos).mapValue.fields });
   return { ok: true };
+}
+
+// =====================================================================
+//  ACCESOS ÚNICOS — el Panel es la fuente de usuarios de todos los sistemas
+//  CONTROL (control--nummeros) y el Portal de repartidores (portal-nummeros)
+//  están en otros proyectos de Firebase. Aquí se crea, en cada uno, una
+//  "cuenta espejo" con el mismo correo del panel y el rol de CONTROL como
+//  permiso (custom claims). La contraseña de la cuenta espejo es una llave
+//  al azar que cambia en cada inicio de sesión: nadie la conoce ni la usa.
+//  El rol se toma de users/{uid}.sistemas.control; si no está, del rol del panel.
+// =====================================================================
+var CTRL_PROYECTOS = ["control--nummeros", "portal-nummeros"];
+var CTRL_ROL_DEF = { admin: "admin", supervisor: "admin", editor: "operador", cajero: "lectura", lector: "lectura" };
+function ctrlRolDe_(perfil) {
+  if (!perfil || perfil.active !== true) return "";
+  var s = perfil.sistemas && perfil.sistemas.control;
+  if (s === "ninguno") return "";
+  if (s === "admin" || s === "operador" || s === "lectura") return s;
+  return CTRL_ROL_DEF[perfil.role] || "";
+}
+function ctrlItk_(proyecto, metodo, cuerpo) {
+  var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/projects/" + proyecto + "/" + metodo, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken(), "x-goog-user-project": proyecto },
+    payload: JSON.stringify(cuerpo)
+  });
+  var code = r.getResponseCode(), txt = r.getContentText();
+  if (code >= 300) throw new Error("Firebase (" + proyecto + ") respondió " + code + ": " + txt.slice(0, 200));
+  return JSON.parse(txt || "{}");
+}
+function ctrlLlaveNueva_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, "").slice(0, 40); }
+/** La llave de cada usuario se guarda en ctrlLlaves/{uid} (las reglas del panel no dejan leerla a nadie; solo este script) */
+function ctrlLlave_(uid) {
+  var d = fsGet_("ctrlLlaves/" + uid);
+  if (d && d.llave) return { llave: d.llave, nueva: false };
+  var llave = ctrlLlaveNueva_();
+  fsReq_(fsBase_() + "/ctrlLlaves/" + uid, "patch", { fields: fsEnc_({ llave: llave, creadoMs: Date.now() }).mapValue.fields });
+  return { llave: llave, nueva: true };
+}
+/** Crea o actualiza la cuenta espejo. rol vacío = la desactiva. */
+function ctrlEspejo_(proyecto, uidPanel, correo, nombre, rol, llave, forzar) {
+  var claims = JSON.stringify({ nm: !!rol, rol: rol || "", panelUid: uidPanel });
+  var u = (ctrlItk_(proyecto, "accounts:lookup", { email: [correo] }).users || [])[0];
+  if (u) {
+    var cambio = { localId: u.localId, customAttributes: claims, displayName: nombre, emailVerified: true, disableUser: !rol };
+    // La contraseña solo se pone si la cuenta todavía no la tiene (cambiarla cerraría sus otras sesiones)
+    if (llave && rol && (forzar || !u.passwordHash && !(u.providerUserInfo || []).some(function (x) { return x.providerId === "password"; }))) cambio.password = llave;
+    ctrlItk_(proyecto, "accounts:update", cambio);
+    return u.localId;
+  }
+  if (!rol) return "";
+  var n = ctrlItk_(proyecto, "accounts", { localId: uidPanel, email: correo, password: llave, displayName: nombre, emailVerified: true });
+  ctrlItk_(proyecto, "accounts:update", { localId: n.localId || uidPanel, customAttributes: claims });
+  return n.localId || uidPanel;
+}
+/** CONTROL: quien ya entró al panel (idToken de crm-contax) recibe su llave para los otros proyectos */
+function ctrlSesion_(idToken, reponer) {
+  if (!idToken) throw new Error("Falta la sesión del panel.");
+  var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + ADM_API_KEY,
+    { method: "post", contentType: "application/json", payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error("Tu sesión venció. Vuelve a entrar.");
+  var u = (JSON.parse(r.getContentText()).users || [])[0];
+  if (!u || !u.email) throw new Error("Sesión no válida.");
+  var perfil = fsGet_("users/" + u.localId);
+  if (!perfil) return { ok: false, error: "Tu cuenta no tiene perfil en el Panel. Pide al administrador que te dé de alta en Usuarios." };
+  if (perfil.active !== true) return { ok: false, error: "Tu usuario está inactivo en el Panel." };
+  var rol = ctrlRolDe_(perfil), correo = String(u.email).toLowerCase(), nombre = String(perfil.name || correo).slice(0, 100);
+  if (!rol) {
+    CTRL_PROYECTOS.forEach(function (p) { try { ctrlEspejo_(p, u.localId, correo, nombre, "", ""); } catch (e) {} });
+    return { ok: false, error: "Tu usuario no tiene acceso a CONTROL. Pide al administrador que te lo dé en Panel → Usuarios." };
+  }
+  var llave = ctrlLlave_(u.localId).llave;
+  // reponer = el navegador no pudo entrar con la llave: se vuelve a poner (cierra otras sesiones de CONTROL de esa persona)
+  CTRL_PROYECTOS.forEach(function (p) { ctrlEspejo_(p, u.localId, correo, nombre, rol, llave, reponer); });
+  try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "control_entrada", nombre: correo, detalle: nombre + " entró a CONTROL (" + rol + ")", porUid: u.localId, porNombre: nombre }); } catch (e) {}
+  return { ok: true, correo: correo, nombre: nombre, rol: rol, rolPanel: perfil.role, llave: llave };
+}
+/** Panel → Usuarios: al cambiar rol, estado o acceso a CONTROL se actualizan los permisos al instante */
+function ctrlSync_(uid) {
+  if (!uid) throw new Error("Falta el usuario.");
+  var perfil = fsGet_("users/" + uid);
+  if (!perfil || !perfil.email) return { ok: true, rol: "" };
+  var rol = ctrlRolDe_(perfil), correo = String(perfil.email).toLowerCase(), nombre = String(perfil.name || correo).slice(0, 100);
+  CTRL_PROYECTOS.forEach(function (p) {
+    // Si nunca entró a CONTROL y no tiene acceso, no hay nada que actualizar
+    try { ctrlEspejo_(p, uid, correo, nombre, rol, rol ? ctrlLlave_(uid).llave : ""); } catch (e) { if (rol) throw e; }
+  });
+  return { ok: true, rol: rol };
+}
+/** Prueba (se corre a mano desde el editor): confirma que este script puede administrar las cuentas de CONTROL y del Portal */
+function probarAccesosControl() {
+  CTRL_PROYECTOS.forEach(function (p) {
+    var r = ctrlItk_(p, "accounts:lookup", { email: ["info@contaxbolivia.com"] });
+    Logger.log(p + ": acceso correcto (" + ((r.users || []).length) + " cuenta con ese correo)");
+  });
 }
