@@ -1227,7 +1227,9 @@ function sistemaEeff_() {
     out.push({ id: x.id, fecha: r.fecha || f, fechaISO: r.fechaISO || "", nro: r.nroRecepcion || "", cliente: r.clienteNombre || "", nit: String(r.nit || ""),
       rubro: r.rubro || "", celular: r.clienteCelular || "", correo: r.clienteCorreo || "", detalle: r.detalleServicio || r.servicio || "", gestion: g,
       importe: Number(r.importe) || 0, balance: (r.pasarela && r.pasarela.balance) || r.balanceNombre || "", estado: r.estadoTrabajo || "pendiente",
-      revision: pe === "revision", deuda: r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda" });
+      revision: pe === "revision", deuda: r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda",
+      resp: r.ee_resp || "", resultado: r.ee_resultado || "", utilidad: r.ee_importe === "" || r.ee_importe == null ? null : Number(r.ee_importe), iue: Number(r.ee_iue) || 0,
+      avance: ["iniciado", "rcv", "comp", "ajustes", "pdf", "arch605", "f500", "f605", "finalizado"].filter(function (k) { var v = r["ee_" + k]; return !!v && v !== "NO"; }).length, etapas: 9, coment: r.ee_coment || "" });
   });
   out.sort(function (a, b) { return String(b.fechaISO).localeCompare(String(a.fechaISO)); });
   return { ok: true, filas: out, estados: SIS_ESTADOS, ahora: new Date().toISOString() };

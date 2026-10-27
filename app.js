@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "60";
+const APP_VERSION = "61";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -272,7 +272,7 @@ function switchView(v, btn) {
   if (v === "control") renderControl();
   if (v === "declaraciones") renderDDJJ();
   if (v === "tramites") renderLista("tramite", "v-tramites", "Trámites");
-  if (v === "eeff") renderListaTrabajo("eeff", "v-eeff", "Estados Financieros (EEFF)");
+  if (v === "eeff") renderListaEEFF();
   if (v === "facturacion") renderFacturacion();
   if (v === "calendario") renderCalendario();
   if (v === "arqueo") renderArqueo();
@@ -3693,6 +3693,160 @@ function paintListaTrabajo(tipo, viewId, titulo) {
   el("lt_est").onchange = e => { ui.est = e.target.value; repaint(); };
   el("lt_q").oninput = e => { ui.q = e.target.value; clearTimeout(LT_UI._t); LT_UI._t = setTimeout(() => { repaint(); const q = el("lt_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
   ltBindEstados(root, repaint);
+}
+
+// ---------- ESTADOS FINANCIEROS (formato de la hoja "Balance2025") ----------
+// Cada fila = una recepción de BALANCE. El avance se guarda en la misma recepción con campos "ee_…".
+const EE_SEG_REC = ["", "MENSAJE ENV", "ENV AL GRUPO", "NO RESPONDIÓ NADA AL RESPECTO", "FINALIZADO"];
+const EE_COLS = [
+  ["resp", "Responsable", "resp"], ["iniciado", "Iniciado", "si"], ["rcv", "RCV / Ventas", "si"], ["comp", "Compensaciones", "si"], ["ajustes", "Ajustes", "si"],
+  ["pdf", "PDF", "si"], ["arch605", "Archivos 605", "si"], ["firma", "Firma contador", "si"], ["pagadoCont", "Pagado contador", "si"], ["f500emerg", "F500 emergencia", "si"],
+  ["f500", "Form-500", "sel", ["", "SI", "RECTIFICADO"]], ["f605", "Form-605", "si"], ["resultado", "Resultado", "sel", ["", "UTILIDAD", "PERDIDA"]],
+  ["importe", "Importe utilidad / pérdida", "num"], ["iue", "IUE", "num"], ["iueComp", "IUE a compensar", "si"], ["finalizado", "Finalizado", "si"],
+  ["coment", "Comentarios", "txt"], ["respCli", "Respuesta cliente", "si"], ["segCli", "Seguimiento cliente", "sel", EE_SEG_REC], ["wa", "Enviado WhatsApp", "si"]
+];
+// Etapas que se cuentan en el seguimiento (avance / restante)
+const EE_ETAPAS = [["iniciado", "Iniciado"], ["rcv", "RCV / Ventas"], ["comp", "Compensaciones"], ["ajustes", "Ajustes"], ["pdf", "PDF"], ["arch605", "Archivos 605"], ["f500", "Form-500"], ["f605", "Form-605"], ["finalizado", "Finalizado"]];
+const EE_UI = { q: "", g: "", resp: "", av: "", res: "", sort: "nro", dir: 1, full: false, fijar: (() => { try { return Number(localStorage.getItem("ee-fijar") || 2); } catch (e) { return 2; } })() };
+const eeSi = v => !!v && v !== "NO";
+function eeNum(v) { if (v === "" || v == null) return null; const n = typeof v === "number" ? v : arqNum(v); return isNaN(n) ? null : n; }
+function eeMoney(v) { const n = eeNum(v); return n == null ? "" : n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Meses de actividad dentro de la gestión ("Tiene Gestión Anterior" si abrió el NIT antes)
+function eeTiempo(fechaNit, gestion) {
+  const f = recFechaISO(fechaNit), g = Number(gestion); if (!f || !g) return f ? "" : "Revisar";
+  const y = Number(f.slice(0, 4)), m = Number(f.slice(5, 7));
+  if (y < g) return "Tiene Gestión Anterior"; if (y > g) return "Revisar";
+  return String(12 - m + 1);
+}
+function eeAvance(r) { return EE_ETAPAS.filter(([k]) => eeSi(r["ee_" + k])).length; }
+async function renderListaEEFF() {
+  el("v-eeff").innerHTML = `<h1>Estados Financieros (EEFF)</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
+  await Promise.all([ltLoad(), new Promise(res => bdEnsureLoaded(() => res())), USERS.length ? 0 : getDocs(collection(db, "users")).then(sn => { if (!USERS.length) sn.forEach(d => USERS.push({ ...d.data(), uid: d.id })); }).catch(() => {})]);
+  paintListaEEFF();
+}
+function eeDatos() {
+  const base = LT_DATA.filter(r => enListaTrabajo(r, "eeff"));
+  // N° correlativo por gestión, en orden de recepción (BALANCE GENERAL2026/1, /2…)
+  const porG = {};
+  base.slice().sort((a, b) => String(a.fechaISO || "").localeCompare(String(b.fechaISO || ""))).forEach(r => { const g = recGestionEEFF(r) || "—"; porG[g] = (porG[g] || 0) + 1; r._eeN = porG[g]; r._eeG = g; });
+  const bdPorNit = {}; BD.forEach(c => { const n = String(bdV(c, "nit")).replace(/\D/g, ""); if (n) bdPorNit[n] = c; });
+  base.forEach(r => { r._bd = bdPorNit[String(r.nit || "").replace(/\D/g, "")] || null; });
+  return base;
+}
+function paintListaEEFF() {
+  const canEdit = canEditClientes(), verClave = canEdit, ui = EE_UI;
+  const base = eeDatos();
+  const gestiones = [...new Set(base.map(r => r._eeG))].sort().reverse();
+  const resps = [...new Set(base.map(r => r.ee_resp).filter(Boolean).concat(USERS.filter(u => u.active !== false).map(u => String(u.name || "").split(" ")[0].toUpperCase()).filter(Boolean)))].sort();
+  let list = base;
+  if (ui.g) list = list.filter(r => r._eeG === ui.g);
+  if (ui.resp) list = list.filter(r => (r.ee_resp || "") === (ui.resp === "-" ? "" : ui.resp));
+  if (ui.av === "sin") list = list.filter(r => !eeSi(r.ee_iniciado) && !eeSi(r.ee_finalizado));
+  else if (ui.av === "curso") list = list.filter(r => eeSi(r.ee_iniciado) && !eeSi(r.ee_finalizado));
+  else if (ui.av === "fin") list = list.filter(r => eeSi(r.ee_finalizado));
+  if (ui.res) list = list.filter(r => (r.ee_resultado || "") === (ui.res === "-" ? "" : ui.res));
+  if (ui.q) { const q = ui.q.toLowerCase(); list = list.filter(r => [r.clienteNombre, r.nit, r.ee_coment, r.ee_resp, r.clienteCorreo, "bg" + r._eeG + "/" + r._eeN].join(" ").toLowerCase().includes(q)); }
+  const val = { nro: r => r._eeG + String(r._eeN).padStart(5, "0"), cliente: r => String(r.clienteNombre || "").toUpperCase(), avance: r => eeAvance(r), importe: r => eeNum(r.ee_importe) || 0, fecha: r => String(r.fechaISO || "") };
+  const fv = val[ui.sort] || val.nro;
+  list = list.slice().sort((a, b) => { const x = fv(a), y = fv(b); return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * ui.dir; });
+  // ---- Seguimiento (como la hoja "Seguimiento") ----
+  const tot = list.length;
+  const etapa = k => list.filter(r => k === "f500" ? !!r.ee_f500 : eeSi(r["ee_" + k])).length;
+  const util = list.filter(r => r.ee_resultado === "UTILIDAD"), perd = list.filter(r => r.ee_resultado === "PERDIDA");
+  const iueTot = list.reduce((a, r) => a + (eeNum(r.ee_iue) || 0), 0);
+  const seg = `<div class="formcard" style="max-width:none;margin:0 0 14px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="kpi" style="flex:1;min-width:140px"><div class="n">${tot}</div><div class="l">Balances en la lista</div></div>
+      <div class="kpi" style="flex:1;min-width:140px"><div class="n" style="color:var(--ok)">${etapa("finalizado")}</div><div class="l">Finalizados</div></div>
+      <div class="kpi" style="flex:1;min-width:140px"><div class="n" style="color:#B4453C">${util.length}</div><div class="l">Con utilidad (informar al cliente)</div></div>
+      <div class="kpi" style="flex:1;min-width:140px"><div class="n">${perd.length}</div><div class="l">Con pérdida</div></div>
+      <div class="kpi" style="flex:1;min-width:140px"><div class="n">${money(iueTot)}</div><div class="l">IUE total</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">${EE_ETAPAS.map(([k, l]) => { const a = etapa(k), pct = tot ? Math.round(a / tot * 100) : 0; return `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px"><div style="display:flex;justify-content:space-between;font-size:12px"><b>${escape(l)}</b><span class="mono">${a}/${tot}</span></div><div style="height:6px;border-radius:6px;background:var(--line);margin:6px 0 4px;overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${pct === 100 ? "var(--ok)" : "var(--sage)"}"></i></div><div style="font-size:11px;color:var(--muted)">Avance ${a} · Restante ${tot - a}</div></div>`; }).join("")}</div></div>`;
+  // ---- Tabla ----
+  const ord = (k, l, st) => `<th class="th-ord${ui.sort === k ? " on" : ""}" data-eeo="${k}" ${st || ""}>${escape(l)}<span class="ord">${ui.sort === k ? (ui.dir > 0 ? ORD_UP : ORD_DN) : ORD_NO}</span></th>`;
+  const celda = (r, [k, l, t, o]) => {
+    const v = r["ee_" + k] == null ? "" : r["ee_" + k], id = r.id;
+    if (t === "si") return `<td style="text-align:center"><button class="ee-si${eeSi(v) ? " on" : ""}" data-ee="${id}" data-k="${k}" ${canEdit ? "" : "disabled"} title="${escape(l)}">${eeSi(v) ? "SI" : ""}</button></td>`;
+    if (!canEdit) return `<td${t === "num" ? ' class="mono" style="text-align:right"' : ""}>${escape(t === "num" ? eeMoney(v) : v)}</td>`;
+    if (t === "sel") return `<td><select class="ee-in" data-ee="${id}" data-k="${k}" style="min-width:${k === "segCli" ? 170 : 100}px;${k === "resultado" ? (v === "UTILIDAD" ? "color:#B4453C;font-weight:700" : v === "PERDIDA" ? "font-weight:700" : "") : ""}">${o.map(x => `<option value="${escape(x)}" ${x === v ? "selected" : ""}>${escape(x || "—")}</option>`).join("")}</select></td>`;
+    if (t === "resp") return `<td><input class="ee-in" data-ee="${id}" data-k="${k}" list="ee_resps" value="${escape(v)}" style="width:110px;text-transform:uppercase"></td>`;
+    if (t === "num") return `<td><input class="ee-in mono" data-ee="${id}" data-k="${k}" inputmode="decimal" value="${escape(eeMoney(v))}" style="width:110px;text-align:right${k === "importe" && eeNum(v) < 0 ? ";color:#B4453C" : ""}"></td>`;
+    return `<td><input class="ee-in" data-ee="${id}" data-k="${k}" value="${escape(v)}" style="width:220px"></td>`;
+  };
+  const rows = list.map(r => {
+    const c = r._bd, pass = c ? bdV(c, "password") : "", fNit = c ? bdV(c, "fechaNit") : (r.aperturaNit || "");
+    return `<tr${eeSi(r.ee_finalizado) ? ' style="background:rgba(46,125,91,.07)"' : ""}>
+      <td class="mono" style="white-space:nowrap">BG${escape(r._eeG)}/${r._eeN}</td>
+      <td><b>${escape(r.clienteNombre || "—")}</b><div style="font-size:11px;color:var(--muted)">${escape(r.detalleServicio || "")}${r.pasarela && r.pasarela.balance ? " · " + escape(r.pasarela.balance) : ""}</div></td>
+      <td class="mono">${escape(String(r.nit || ""))}</td>
+      <td style="font-size:12px">${escape(r.clienteCorreo || (c ? bdV(c, "correo") : ""))}</td>
+      <td class="mono" style="font-size:12px">${pass ? (verClave ? `<span class="ee-pass" data-p="${escape(pass)}" title="Toca para ver">••••••</span>` : "••••••") : ""}</td>
+      <td class="mono" style="text-align:right">${escape(c ? bdV(c, "capital") : "")}</td>
+      <td class="mono">${escape(fNit)}</td>
+      <td style="font-size:12px">${escape(eeTiempo(fNit, r._eeG))}</td>
+      ${EE_COLS.map(col => celda(r, col)).join("")}
+      <td class="mono" style="text-align:center">${eeAvance(r)}/${EE_ETAPAS.length}</td></tr>`;
+  }).join("");
+  el("v-eeff").innerHTML = `<div id="ee_wrap" class="${ui.full ? "rec-full" : ""}"><h1 style="margin-bottom:4px">Estados Financieros (EEFF)</h1>
+    <p class="lead">Lista y seguimiento de balances, con las mismas columnas de la hoja <b>Balance2025</b>. Los cambios se guardan solos y se ven en el Sistema Contable.</p>
+    ${seg}
+    <div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px;align-items:center">
+      <select id="ee_g"><option value="">Todas las gestiones</option>${gestiones.map(g => `<option ${g === ui.g ? "selected" : ""}>${escape(g)}</option>`).join("")}</select>
+      <select id="ee_resp"><option value="">Todos los responsables</option><option value="-" ${ui.resp === "-" ? "selected" : ""}>Sin responsable</option>${resps.map(x => `<option ${x === ui.resp ? "selected" : ""}>${escape(x)}</option>`).join("")}</select>
+      <select id="ee_av"><option value="">Todo el avance</option><option value="sin" ${ui.av === "sin" ? "selected" : ""}>Sin iniciar</option><option value="curso" ${ui.av === "curso" ? "selected" : ""}>En curso</option><option value="fin" ${ui.av === "fin" ? "selected" : ""}>Finalizados</option></select>
+      <select id="ee_res"><option value="">Utilidad y pérdida</option><option ${ui.res === "UTILIDAD" ? "selected" : ""}>UTILIDAD</option><option ${ui.res === "PERDIDA" ? "selected" : ""}>PERDIDA</option><option value="-" ${ui.res === "-" ? "selected" : ""}>Sin resultado</option></select>
+      <input id="ee_q" placeholder="Buscar cliente, NIT, comentario…" value="${escape(ui.q)}" style="flex:1;min-width:200px">
+      <select id="ee_fijar" title="Columnas que se quedan quietas al deslizar"><option value="0">Fijar: ninguna</option>${["N°", "Cliente", "NIT"].map((l, i) => `<option value="${i + 1}" ${ui.fijar === i + 1 ? "selected" : ""}>Fijar hasta: ${l}</option>`).join("")}</select>
+      <button class="btn sec" id="ee_xls" style="border:1px solid var(--line)">Exportar Excel</button>
+      <button class="btn sec" id="ee_full" style="border:1px solid var(--line);display:inline-flex;gap:6px;align-items:center">${ui.full ? ICO_FULLX + "Salir" : ICO_FULL + "Pantalla completa"}</button>
+      <button class="btn sec" id="ee_rel" style="border:1px solid var(--line)">Actualizar</button>
+    </div>
+    <datalist id="ee_resps">${resps.map(x => `<option value="${escape(x)}">`).join("")}</datalist>
+    <div class="bd-scroll" style="max-height:${ui.full ? "calc(100vh - 330px)" : "70vh"}"><table class="bd-table" id="ee_tabla"><thead><tr>
+      ${ord("nro", "N°")}${ord("cliente", "Cliente")}<th>NIT</th><th>Correo</th><th>Contraseña</th><th>Capital</th><th>Apertura NIT</th><th>Tiempo</th>
+      ${EE_COLS.map(([k, l, t]) => k === "importe" ? ord("importe", l, 'style="text-align:right"') : `<th${t === "si" ? ' style="text-align:center"' : ""}>${escape(l)}</th>`).join("")}${ord("avance", "Avance", 'style="text-align:center"')}
+    </tr></thead><tbody>${rows || `<tr><td colspan="${EE_COLS.length + 9}" style="color:var(--muted)">No hay balances con estos filtros.</td></tr>`}</tbody></table></div>
+    <p class="note">Toca una casilla para marcar <b>SI</b>. Al marcar <b>Iniciado</b> el balance pasa a "En proceso" y al marcar <b>Finalizado</b> pasa a "Entregado" (también en el Sistema Contable). Al escribir el importe, el resultado y el IUE (25% de la utilidad) se llenan solos.</p></div>
+    <style>.ee-si{width:34px;height:26px;border-radius:6px;border:1.5px solid var(--line);background:var(--panel);color:#fff;font-size:11px;font-weight:800;cursor:pointer}.ee-si.on{background:var(--ok);border-color:var(--ok)}.ee-si:disabled{cursor:default}
+    .ee-in{height:30px;padding:2px 6px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--txt)}.ee-pass{cursor:pointer;color:var(--muted)}</style>`;
+  const repaint = () => { const sc = document.querySelector("#ee_wrap .bd-scroll"), x = sc ? sc.scrollLeft : 0, y = sc ? sc.scrollTop : 0; paintListaEEFF(); const s2 = document.querySelector("#ee_wrap .bd-scroll"); if (s2) { s2.scrollLeft = x; s2.scrollTop = y; } };
+  [["ee_g", "g"], ["ee_resp", "resp"], ["ee_av", "av"], ["ee_res", "res"]].forEach(([id, k]) => el(id).onchange = e => { ui[k] = e.target.value; paintListaEEFF(); });
+  el("ee_q").oninput = e => { ui.q = e.target.value; clearTimeout(EE_UI._t); EE_UI._t = setTimeout(() => { paintListaEEFF(); const q = el("ee_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 300); };
+  el("ee_fijar").onchange = e => { ui.fijar = Number(e.target.value) || 0; try { localStorage.setItem("ee-fijar", String(ui.fijar)); } catch (er) {} tablaFijarCols(el("ee_tabla"), ui.fijar); };
+  el("ee_full").onclick = () => { ui.full = !ui.full; try { if (ui.full && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); if (!ui.full && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} paintListaEEFF(); };
+  el("ee_rel").onclick = async () => { LT_DATA = null; await renderListaEEFF(); };
+  el("ee_xls").onclick = () => eeExportar(list);
+  el("v-eeff").querySelectorAll("th[data-eeo]").forEach(th => th.onclick = () => { const k = th.dataset.eeo; if (ui.sort === k) ui.dir = -ui.dir; else { ui.sort = k; ui.dir = k === "cliente" || k === "nro" ? 1 : -1; } repaint(); });
+  el("v-eeff").querySelectorAll(".ee-pass").forEach(sp => sp.onclick = () => { sp.textContent = sp.textContent === "••••••" ? sp.dataset.p : "••••••"; });
+  el("v-eeff").querySelectorAll(".ee-si").forEach(b => b.onclick = () => { const r = LT_DATA.find(x => x.id === b.dataset.ee); if (!r) return; eeGuardar(r, b.dataset.k, eeSi(r["ee_" + b.dataset.k]) ? "" : "SI", repaint); });
+  el("v-eeff").querySelectorAll(".ee-in").forEach(inp => inp.onchange = () => {
+    const r = LT_DATA.find(x => x.id === inp.dataset.ee); if (!r) return;
+    let v = inp.value.trim(); if (inp.dataset.k === "resp") v = v.toUpperCase();
+    if (inp.dataset.k === "importe" || inp.dataset.k === "iue") { const n = eeNum(v); v = n == null ? "" : n; }
+    eeGuardar(r, inp.dataset.k, v, repaint);
+  });
+  requestAnimationFrame(() => tablaFijarCols(el("ee_tabla"), ui.fijar));
+}
+async function eeGuardar(r, k, v, repaint) {
+  const datos = { ["ee_" + k]: v, ee_editadoPor: (ME && (ME.name || ME.email)) || "", ee_editadoAt: Date.now(), _upd: Date.now() };
+  // Automáticos: resultado e IUE según el importe; estado de trabajo según Iniciado / Finalizado
+  if (k === "importe" && v !== "") { datos.ee_resultado = v < 0 ? "PERDIDA" : "UTILIDAD"; datos.ee_iue = v > 0 ? Math.round(v * 25) / 100 : 0; }
+  if (k === "finalizado") datos.estadoTrabajo = v ? "entregado" : (eeSi(r.ee_iniciado) ? "en_proceso" : "pendiente");
+  if (k === "iniciado" && !eeSi(r.ee_finalizado)) datos.estadoTrabajo = v ? "en_proceso" : "pendiente";
+  const antes = {}; Object.keys(datos).forEach(x => antes[x] = r[x]);
+  Object.assign(r, datos); repaint();
+  try { await setDoc(doc(db, "recepciones", r.id), datos, { merge: true }); rcPoner(r.id, datos); }
+  catch (e) { Object.assign(r, antes); repaint(); alert("No se pudo guardar: " + (e.code || e.message)); }
+}
+async function eeExportar(list) {
+  try {
+    const X = await arqLoadXLSX();
+    const filas = [["Nro", "CLIENTE", "NIT", "CORREO", "CAPITAL", "FECHA DE APERTURA NIT", "TIEMPO", ...EE_COLS.map(c => c[1].toUpperCase()), "AVANCE"]];
+    list.forEach(r => { const c = r._bd, fNit = c ? bdV(c, "fechaNit") : ""; filas.push(["BALANCE GENERAL" + r._eeG + "/" + r._eeN, r.clienteNombre || "", String(r.nit || ""), r.clienteCorreo || (c ? bdV(c, "correo") : ""), c ? bdV(c, "capital") : "", fNit, eeTiempo(fNit, r._eeG), ...EE_COLS.map(([k, , t]) => t === "num" ? (eeNum(r["ee_" + k]) == null ? "" : eeNum(r["ee_" + k])) : (r["ee_" + k] || "")), eeAvance(r) + "/" + EE_ETAPAS.length]); });
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(filas), "Balances");
+    X.writeFile(wb, "Lista-EEFF-" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  } catch (e) { alert("No se pudo exportar: " + (e.message || e)); }
 }
 
 // ---------- DECLARACIONES (formato BD_DDJJ) ----------
