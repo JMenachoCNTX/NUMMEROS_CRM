@@ -160,6 +160,16 @@ tbody tr:hover{background:var(--panel2)}
 .cx-spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:cxspin .7s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes cxspin{to{transform:rotate(360deg)}}
 /* Tabla Base de Datos */
+/* Títulos fijos en todas las listas */
+.main table thead th{position:sticky;top:0;z-index:3;background:var(--panel2)}
+.tfix{max-height:calc(100vh - 150px);overflow:auto!important}
+/* Recepción: ordenar por títulos, columnas fijas y pantalla completa */
+.th-ord{cursor:pointer;user-select:none}.th-ord:hover{color:var(--green)}.th-ord .ord{margin-left:5px;display:inline-flex;vertical-align:middle}.th-ord.on{color:var(--green)}
+.bd-table td.col-fija{background:var(--panel);z-index:2}.bd-table thead th.col-fija{z-index:5;background:var(--panel2)}
+.bd-table .col-fija-ult{box-shadow:3px 0 6px -2px rgba(0,0,0,.18)}
+.bd-table tbody tr:hover td.col-fija{background:var(--panel2)}
+.rec-full{position:fixed;inset:0;z-index:95;background:var(--bg);padding:16px 20px;overflow:auto}
+.rec-full .bd-scroll{max-height:calc(100vh - 230px)}
 .bd-scroll{max-height:70vh;overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
 .bd-table{border-collapse:separate;border-spacing:0;font-size:12px;white-space:nowrap;min-width:100%}
 .bd-table th,.bd-table td{padding:4px 10px;line-height:1.35;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;max-width:280px;overflow:hidden;text-overflow:ellipsis}
@@ -231,7 +241,7 @@ tbody tr:hover{background:var(--panel2)}
       <input id="password" type="password" placeholder="Tu contraseña / PIN" autocomplete="current-password" />
       <button class="btn block" id="loginBtn">Entrar</button>
       <div class="msg" id="loginMsg"></div>
-      <span class="ver" style="margin-top:18px">v52</span>
+      <span class="ver" style="margin-top:18px">v53</span>
     </div>
     <div class="loginhero">
       <div class="mark"><div class="numm-logo-light"></div></div>
@@ -259,7 +269,7 @@ tbody tr:hover{background:var(--panel2)}
       <div class="sb-brand">
         <img src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS by CONTAX">
         <img class="iso" src="marca/logos/nummeros-isotipo-blanco.svg" alt="NUMMEROS">
-        <span class="ver" style="margin-left:auto">v52</span>
+        <span class="ver" style="margin-left:auto">v53</span>
       </div>
       <nav class="tabs">
       <div class="navgroup" data-sec="portal">PORTAL</div>
@@ -355,7 +365,7 @@ tbody tr:hover{background:var(--panel2)}
   </div>
 </div>
 
-<script src="config.js?v=52"></script>
-<script type="module" src="app.js?v=52"></script>
+<script src="config.js?v=53"></script>
+<script type="module" src="app.js?v=53"></script>
 </body>
 </html>

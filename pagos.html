@@ -177,6 +177,17 @@ html.oscuro .app{background:var(--fondo)}
 .contador.poco{background:linear-gradient(135deg,#D92D20,#7A1A12)}.contador.poco .num{animation:latir 1.2s ease-in-out infinite}
 .contador.agot{background:linear-gradient(135deg,#B42318,#7A1A12)}
 .fases{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.cbar{flex-direction:column;gap:6px}
+.cbF{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.cbF.dec{border-top:1px solid rgba(255,255,255,.15);padding-top:6px}.cbF.dec .cbT{color:#FFB37A}.cbF.dec b{color:#FFE2CC}
+.cuentaDecl{background:linear-gradient(160deg,#7A2E0B,#C2410C);border-radius:20px;padding:16px 14px 14px;text-align:center;color:#FFEDD5;margin-bottom:16px;box-shadow:0 10px 30px rgba(194,65,12,.3);animation:cdLat 2.4s ease-in-out infinite}
+.cuentaDecl .cgT{margin:0 0 10px;font-size:14px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#FFF3C4}
+.cuentaDecl .cgF{margin:10px 0 0;font-size:13.5px;font-weight:600;color:#fff;line-height:19px}
+.cuentaDecl .reloj div{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}
+.cuentaDecl .reloj b{font-size:42px;line-height:46px;color:#fff}.cuentaDecl .reloj span{color:#FED7AA}
+.cuentaDecl.chico{padding:12px 10px;border-radius:16px;margin:0}.cuentaDecl.chico .reloj b{font-size:30px;line-height:34px}.cuentaDecl.chico .cgT{font-size:12.5px;margin-bottom:8px}.cuentaDecl.chico .cgF{font-size:12.5px}
+@keyframes cdLat{0%,100%{box-shadow:0 10px 30px rgba(194,65,12,.3)}50%{box-shadow:0 10px 40px rgba(253,176,34,.55)}}
+@media(prefers-reduced-motion:reduce){.cuentaDecl{animation:none}}
 .cuentaGr{background:linear-gradient(160deg,#0B2B26,#235347);border-radius:20px;padding:18px 14px 14px;text-align:center;color:#DAF1DE;margin-bottom:16px;box-shadow:0 10px 30px rgba(11,43,38,.35);animation:cgLat 2.4s ease-in-out infinite}
 .cuentaGr .cgT{margin:0 0 10px;font-size:14px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A}
 .cuentaGr .cgF{margin:10px 0 0;font-size:13.5px;font-weight:600;color:#fff}
@@ -470,7 +481,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     barras();
     var h = "";
     if (S.paso === "nit") {
-      h = (antesLanz() ? relojHtml("Venta de balances · gestión " + esc((S.cfg && S.cfg.eeff && S.cfg.eeff.gestion) || "")) : "") + '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
+      h = declRelojHtml(false) + (antesLanz() ? relojHtml("Venta de balances · gestión " + esc((S.cfg && S.cfg.eeff && S.cfg.eeff.gestion) || "")) : "") + '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
         '<p class="suave solo-movil" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
@@ -505,15 +516,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var planes = [["basico", "Básico", "Sin movimiento: no compraste ni vendiste con factura", pr.sinMov]];
       if (esRep) planes.push(["estandar", "Estándar", "Con facturas · hasta 100 al mes", enF ? pr.enFecha : pr.fueraFecha]);
       planes.push(["premium", "Premium", esRep ? "Con facturas · de 101 a 200 al mes" : "Empresas unipersonales · hasta 200 facturas al mes", pr.premium]);
+      var dfin = declFin(), cajaDecl = esRep && dfin ? declRelojHtml(true) : "";
       if (S.paso === "opcion") {
-      h = '<div class="pila"><h2>Declaración mensual</h2><p class="l" style="margin:4px 0 0">Elige tu plan</p>' +
+      h = '<div class="pila"><h2>Declaración mensual</h2>' + cajaDecl + '<p class="l" style="margin:4px 0 0">Elige tu plan</p>' +
         '<p class="chico suave" style="margin:-4px 0 0">Toca un plan para continuar. En el siguiente paso eliges el mes y ves el precio final.</p>' +
         planes.map(function (o) { var bn = ((S.cfg.beneficios || {})[o[0]] || []); return '<button class="opc' + (S.plan === o[0] ? " sel" : "") + '" data-plan="' + o[0] + '" style="align-items:flex-start"><span class="t"><b>Plan ' + o[1] + (o[0] === "estandar" ? '<span class="etq">Repartidores</span>' : "") + "</b><span>" + o[2] + "</span>" + (bn.length ? '<ul class="ben">' + bn.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + '</span><span class="precio">Bs ' + esc(o[3]) + "</span></button>"; }).join("") +
         '<a class="chico" href="' + wa("Hola CONTAX, tengo más de 200 facturas al mes y quiero el Plan Personalizado.") + '" target="_blank" rel="noopener" style="text-align:center">¿Más de 200 facturas al mes? Pide el Plan Personalizado por WhatsApp</a>' +
         errHtml() + '<button class="link" id="bVolver">Volver</button></div>';
       } else {
       var selP = planes.filter(function (o) { return o[0] === S.plan; })[0] || planes[0];
-      h = '<div class="pila"><h2>Declaración mensual</h2>' +
+      h = '<div class="pila"><h2>Declaración mensual</h2>' + (S.plan === "estandar" && dfin && S.per && Number(S.per.mes) === dfin.mesNum && Number(S.per.anio) === dfin.anio ? cajaDecl : "") +
         '<div class="planElegido"><div><span>Tu plan</span><b>Plan ' + esc(selP[1]) + '</b><small>' + esc(selP[2]) + '</small></div><button class="link" id="bCambiarPlan">Cambiar plan</button></div>' +
         '<div><label class="l" for="selPer">Mes a declarar</label><select id="selPer">' +
         S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(x.texto) + " · se presenta en " + esc(String(x.seDeclara || "").toLowerCase()) + " (" + perEtq(x) + ")</option>"; }).join("") + "</select>" +
@@ -846,6 +858,28 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     for (var k = 0; k < 24; k++) { var c = document.createElement("i"); c.className = "conf"; c.style.left = (Math.random() * 100) + "%"; c.style.background = ["#2E8B57", "#F2C94C", "#8EB69B", "#235347", "#FDB022"][k % 5]; c.style.animationDelay = (Math.random() * 0.3) + "s"; b.appendChild(c); }
   });
   // ---- Cuenta regresiva hasta el lanzamiento ----
+  // ---- Cuenta regresiva de fin de mes: del 25 al último día, la declaración del mes se paga al precio normal ----
+  var MESES_N = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  var DIAS_N = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  function declFin() {
+    var bo = new Date(Date.now() - 4 * 3600000), dia = bo.getUTCDate();
+    if (dia < Number((S.cfg && S.cfg.diaAvisoFinMes) || 25)) return null;
+    var y = bo.getUTCFullYear(), m = bo.getUTCMonth(), fin = Date.UTC(y, m + 1, 1, 4, 0, 0), ult = new Date(Date.UTC(y, m + 1, 0));
+    if (fin <= Date.now()) return null;
+    return { fin: fin, mes: MESES_N[m], mesSig: MESES_N[(m + 1) % 12], ultDia: ult.getUTCDate(), ultNom: DIAS_N[ult.getUTCDay()], anio: y, mesNum: m + 1 };
+  }
+  function declRelojHtml(chico) {
+    var f = declFin(), pr = (S.cfg && S.cfg.precios) || {}; if (!f) return "";
+    var Mes = f.mes.charAt(0).toUpperCase() + f.mes.slice(1);
+    return '<div class="cuentaDecl' + (chico ? " chico" : "") + '"><p class="cgT">Declaración de ' + esc(Mes) + " a Bs " + esc(pr.enFecha || 50) + " · Plan Estándar</p>" +
+      '<div class="reloj"><div><b data-dc="d">--</b><span>días</span></div><div><b data-dc="h">--</b><span>horas</span></div><div><b data-dc="m">--</b><span>minutos</span></div><div><b data-dc="s">--</b><span>segundos</span></div></div>' +
+      '<p class="cgF">Paga hasta el ' + esc(f.ultNom) + " " + f.ultDia + " de " + esc(f.mes) + " a las 23:59. Desde el 1 de " + esc(f.mesSig) + " cuesta Bs " + esc(pr.fueraFecha || 60) + ".</p></div>";
+  }
+  setInterval(function () {
+    var f = declFin(), q = f ? Math.max(0, Math.floor((f.fin - Date.now()) / 1000)) : 0, z = function (n) { return ("0" + n).slice(-2); };
+    var v = { d: Math.floor(q / 86400), h: Math.floor(q % 86400 / 3600), m: Math.floor(q % 3600 / 60), s: q % 60 };
+    document.querySelectorAll("[data-dc]").forEach(function (e) { e.textContent = z(v[e.dataset.dc]); });
+  }, 1000);
   function antesLanz() { return !previa && lanzMs() > Date.now(); }
   function relojHtml(tit) {
     return '<div class="cuentaGr"><p class="cgT">' + tit + '</p><div class="reloj" id="reloj"><div><b id="cD">--</b><span>días</span></div><div><b id="cH">--</b><span>horas</span></div><div><b id="cM">--</b><span>minutos</span></div><div><b id="cS">--</b><span>segundos</span></div></div><p class="cgF">' + esc(fechaLanzTxt()) + "</p></div>";
@@ -862,12 +896,20 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   var tituloBase = document.title, cbarT = null;
   function barraCuenta() {
     var bar = document.getElementById("cbar"); if (!bar) return;
-    function tic() {
-      var q = Math.floor((lanzMs() - Date.now()) / 1000);
-      if (!lanzMs() || q <= 0 || S.paso === "cuenta" || (S.paso === "nit" && document.getElementById("reloj"))) { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) { document.title = tituloBase; clearInterval(cbarT); } return; }
+    function fila(q, cls, tit) {
       var d = Math.floor(q / 86400), h = Math.floor(q % 86400 / 3600), m = Math.floor(q % 3600 / 60), sg = q % 60, z = function (n) { return ("0" + n).slice(-2); };
+      return '<div class="cbF ' + cls + '"><span class="cbT">' + tit + "</span>" + '<span class="u"><b>' + z(d) + "</b><small>días</small></span>" + '<span class="u"><b>' + z(h) + "</b><small>h</small></span>" + '<span class="u"><b>' + z(m) + "</b><small>min</small></span>" + '<span class="u"><b>' + z(sg) + "</b><small>s</small></span></div>";
+    }
+    function tic() {
+      var q = Math.floor((lanzMs() - Date.now()) / 1000), f = declFin(), enNit = S.paso === "nit";
+      var verBal = lanzMs() && q > 0 && S.paso !== "cuenta" && !(enNit && document.getElementById("reloj"));
+      var verDec = f && !enNit && !document.querySelector(".cuentaDecl") && (!S.cli || S.cli.repartidor !== false);
+      if (!verBal && !verDec) { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) document.title = tituloBase; return; }
       bar.classList.remove("oculto");
-      bar.innerHTML = '<span class="cbT">Venta de balances en</span>' + '<span class="u"><b>' + z(d) + "</b><small>días</small></span>" + '<span class="u"><b>' + z(h) + "</b><small>h</small></span>" + '<span class="u"><b>' + z(m) + "</b><small>min</small></span>" + '<span class="u"><b>' + z(sg) + "</b><small>s</small></span>";
+      var pr = (S.cfg && S.cfg.precios) || {};
+      bar.innerHTML = (verBal ? fila(q, "", "Venta de balances en") : "") + (verDec ? fila(Math.max(0, Math.floor((f.fin - Date.now()) / 1000)), "dec", "Declaración de " + f.mes + " a Bs " + (pr.enFecha || 50) + " · quedan") : "");
+      if (!verBal) return;
+      var d = Math.floor(q / 86400), h = Math.floor(q % 86400 / 3600), m = Math.floor(q % 3600 / 60), z = function (n) { return ("0" + n).slice(-2); };
       document.title = z(d) + "d " + z(h) + "h " + z(m) + "m · " + tituloBase;
     }
     clearInterval(cbarT); tic(); cbarT = setInterval(tic, 1000);

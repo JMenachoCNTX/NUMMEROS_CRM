@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "52";
+const APP_VERSION = "53";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -242,6 +242,18 @@ async function loadAll() {
   try { (await getDocs(collection(db, "waChats"))).forEach(d =>CHATS.push(d.data())); } catch (e) {}
 }
 
+// Títulos fijos en todas las listas: las tablas dentro de un contenedor con desplazamiento
+// reciben un alto máximo, así el encabezado se queda arriba al bajar.
+function tablasTitulosFijos(raiz) {
+  (raiz || document).querySelectorAll(".main table").forEach(t => {
+    if (!t.tHead || t.closest(".bd-scroll") || t.dataset.tf) return;
+    t.dataset.tf = "1";
+    const p = t.parentElement; if (!p) return;
+    const st = getComputedStyle(p);
+    if (/(auto|scroll)/.test(st.overflowX + st.overflowY) && !p.classList.contains("tfix")) p.classList.add("tfix");
+  });
+}
+(() => { let tm = null; const mo = new MutationObserver(() => { clearTimeout(tm); tm = setTimeout(() => tablasTitulosFijos(), 120); }); document.addEventListener("DOMContentLoaded", () => { const m = document.querySelector(".main") || document.body; mo.observe(m, { childList: true, subtree: true }); }); if (document.readyState !== "loading") { const m = document.querySelector(".main") || document.body; mo.observe(m, { childList: true, subtree: true }); } })();
 function switchView(v, btn) {
   document.querySelectorAll('nav.tabs button').forEach(b =>b.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -1680,6 +1692,13 @@ function openBDDownloadModal(list) {
   };
 }
 
+// Siguiente Código de ID correlativo (el mayor número usado + 1)
+function bdNextCodigo() {
+  let max = 0;
+  const ver = r => { const n = parseInt(String(bdV(r, "codigoId")).replace(/\D/g, ""), 10); if (!isNaN(n) && n > max && n < 1000000) max = n; };
+  BD.forEach(ver); ((typeof BDC !== "undefined" && BDC.docs) || []).forEach(ver);
+  return String(max + 1);
+}
 function openBDModal(row) {
   const canEdit = canEditClientes();
   const bg = document.createElement("div");
@@ -1692,6 +1711,7 @@ function openBDModal(row) {
       if (type === "textarea") return `<div class="field" style="grid-column:1/-1"><label>${escape(label)}</label><textarea id="bf_${key}" style="min-height:70px" ${dis}>${val}</textarea></div>`;
       if (type === "secret") return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" type="password" value="${val}" ${dis}><span class="reveal note" data-rev="bf_${key}" style="font-size:11px">mostrar</span></div>`;
       if (type === "estado") return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" value="${val}" list="bf_estlist" placeholder="ACTIVO" ${dis}></div>`;
+      if (key === "codigoId" && !row) return `<div class="field"><label>${escape(label)} <span class="note" style="font-size:11px">(automático, correlativo)</span></label><input id="bf_${key}" value="${escape(bdNextCodigo())}" ${dis}></div>`;
       return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" value="${val}" ${dis}></div>`;
     }).join("");
     return `<div class="fs">${g}</div><div class="grid2">${inputs}</div>`;
@@ -1728,6 +1748,12 @@ function openBDModal(row) {
     const estNue = item[BD_KEY2LBL["estado"]] || "";
     const nombreCli = item[BD_KEY2LBL["nombre"]] || item[BD_KEY2LBL["razon"]] || "";
     const nowISO = new Date().toISOString();
+    // Cliente nuevo: el código se asigna al guardar (por si otra persona creó uno mientras tanto)
+    if (!row) {
+      const hdrC = (bdKey2Header && bdKey2Header["codigoId"]) || BD_KEY2LBL["codigoId"];
+      const escrito = String(itemByHeader[hdrC] || "").trim(), sig = bdNextCodigo();
+      if (!escrito || (Number(escrito) && Number(escrito) < Number(sig) && BD.some(x => bdV(x, "codigoId") === escrito))) { itemByHeader[hdrC] = sig; item[BD_KEY2LBL["codigoId"]] = sig; }
+    }
     // Marcas de fecha automáticas (alta/baja) en la propia ficha
     if (!row) itemByHeader["_altaISO"] = nowISO;
     if (row && estNue !== estAnt && /inactiv|negra|suspend|baja/i.test(estNue.normalize("NFD").replace(/[̀-ͯ]/g, ""))) itemByHeader["_bajaISO"] = nowISO;
@@ -2644,7 +2670,37 @@ async function postRecibo(rec) {
 
 // ---------- RECEPCIÓN (completa) ----------
 let recCli = null; // cliente seleccionado para autollenado
-let recSubtab = "form", recListFilter = "", recListSort = "fecha", recLastRec = null;
+let recSubtab = "form", recListFilter = "", recListSort = "fecha", recLastRec = null, recListDir = -1, recFull = false;
+let recFijar = (() => { try { return Number(localStorage.getItem("rec-fijar") || 0); } catch (e) { return 0; } })();
+// Columnas de la lista: [clave de orden, título, valor para ordenar]
+const REC_COLS = [
+  ["fecha", "Fecha", r => String(r.fechaISO || "")], ["nrorec", "N° Rec", r => Number(r.nroRecepcion) || 0], ["nrocom", "N° Comp", r => Number(r.nroComprobante) || 0],
+  ["cliente", "Cliente", r => String(r.clienteNombre || "").toUpperCase()], ["servicio", "Servicio", r => String(r.servicio || r.servicioNombre || "").toUpperCase()],
+  ["mes", "Mes", r => recPeriodoKey(r) || ""], ["fpago", "F. pago", r => String(r.fechaPago || "")], ["importe", "Total", r => Number(r.importe) || 0],
+  ["pago", "Pago", r => String(r.tipoPago || "")], ["atencion", "Atención", r => String(r.atencion || "")], ["deuda", "Deuda", r => (r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") ? 1 : 0]
+];
+// Fija las primeras n columnas de una tabla (quedan quietas al deslizar a los lados)
+function tablaFijarCols(tabla, n) {
+  if (!tabla) return;
+  tabla.querySelectorAll("th,td").forEach(c => { c.style.position = ""; c.style.left = ""; c.classList.remove("col-fija", "col-fija-ult"); });
+  if (!n) return;
+  const cab = tabla.tHead && tabla.tHead.rows[0]; if (!cab) return;
+  let izq = 0; const lefts = [];
+  for (let i = 0; i < n && i < cab.cells.length; i++) { lefts.push(izq); izq += cab.cells[i].getBoundingClientRect().width; }
+  tabla.querySelectorAll("tr").forEach(tr => { for (let i = 0; i < lefts.length && i < tr.cells.length; i++) { const c = tr.cells[i]; c.style.position = "sticky"; c.style.left = lefts[i] + "px"; c.classList.add("col-fija"); if (i === lefts.length - 1) c.classList.add("col-fija-ult"); } });
+}
+const ORD_UP = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-label="ascendente"><path d="M12 6l8 10H4z"/></svg>';
+const ORD_DN = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-label="descendente"><path d="M12 18L4 8h16z"/></svg>';
+const ORD_NO = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" opacity=".35" aria-hidden="true"><path d="M12 3l6 7H6zM12 21l-6-7h12z"/></svg>';
+const ICO_FULL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const ICO_FULLX = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+function recSetFull(on) {
+  recFull = on;
+  try { if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
+  paintRecepcion();
+}
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && recFull) { recFull = false; if (el("v-recepcion")) paintRecepcion(); } });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && recFull) recSetFull(false); });
 let recComprobante = null, recCompData = null, recPasteHandler = null;
 // Genera la Orden de Recepción en HTML (misma que el correo) para ver/descargar/imprimir como PDF
 function comprobanteHTML(r) {
@@ -2691,6 +2747,8 @@ async function renderRecepcion() {
 function recFill(id, v) { const e = el(id); if (e) e.value = v == null ? "" : v; }
 function recSortList(list) {
   const l = list.slice();
+  const col = REC_COLS.find(c => c[0] === recListSort);
+  if (col) { const f = col[2], d = recListDir; l.sort((a, b) => { const x = f(a), y = f(b); return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * d || String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")); }); return l; }
   if (recListSort === "cliente") l.sort((a, b) => String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
   else if (recListSort === "nrorec") l.sort((a, b) => (Number(b.nroRecepcion) || 0) - (Number(a.nroRecepcion) || 0));
   else if (recListSort === "importe") l.sort((a, b) => (Number(b.importe) || 0) - (Number(a.importe) || 0));
@@ -2820,16 +2878,15 @@ function paintRecepcion() {
       <div class="toolbar">
         <select id="r_gestion" class="mini" style="padding:9px" title="Mostrar solo esta gestión (año)">${yearOpts.join("")}</select>
         <input id="r_buscar" class="mini" style="padding:9px;min-width:220px" placeholder="Buscar en esta gestión…" value="${escape(recListFilter)}">
-        <select id="r_sort" class="mini" style="padding:9px">
-          <option value="fecha">Más recientes</option>
-          <option value="cliente">Cliente (A-Z)</option>
-          <option value="nrorec">N° Recepción</option>
-          <option value="importe">Importe (mayor)</option>
+        <select id="r_fijar" class="mini" style="padding:9px" title="Columnas que se quedan quietas al deslizar a los lados">
+          <option value="0">Fijar columnas: ninguna</option>${REC_COLS.slice(0, 5).map((c, i) => `<option value="${i + 1}" ${recFijar === i + 1 ? "selected" : ""}>Fijar hasta: ${escape(c[1])}</option>`).join("")}
         </select>
+        <button class="btn sec" id="r_full" style="border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px">${recFull ? ICO_FULLX + "Salir de pantalla completa" : ICO_FULL + "Pantalla completa"}</button>
         <button class="btn sec" id="r_reload" style="border:1px solid var(--line)">↻ Actualizar</button>
         <button class="btn sec" id="r_export" style="border:1px solid var(--line)">⬇ Exportar</button>
       </div>
-      <div class="bd-scroll"><table class="bd-table"><thead><tr><th>Fecha</th><th>N° Rec</th><th>N° Comp</th><th>Cliente</th><th>Servicio</th><th>Mes</th><th>F. pago</th><th style="text-align:right">Total</th><th>Pago</th><th>Atención</th><th>Deuda</th><th></th></tr></thead>
+      <p class="note" style="margin:0 0 6px">Toca un título para ordenar (otra vez para invertir).</p>
+      <div class="bd-scroll"><table class="bd-table" id="r_tabla"><thead><tr>${REC_COLS.map(c => `<th class="th-ord${recListSort === c[0] ? " on" : ""}" data-ord="${c[0]}"${c[0] === "importe" ? ' style="text-align:right"' : ""}>${escape(c[1])}<span class="ord">${recListSort === c[0] ? (recListDir > 0 ? ORD_UP : ORD_DN) : ORD_NO}</span></th>`).join("")}<th></th></tr></thead>
       <tbody>${rows || `<tr><td colspan="12" style="color:var(--muted)">Sin recepciones${term ? " con ese filtro" : " todavía"}.</td></tr>`}</tbody></table></div>`;
 
     el("v-recepcion").innerHTML = `<h1>Recepción</h1>
@@ -2838,7 +2895,7 @@ function paintRecepcion() {
         <button class="subtab ${recSubtab === 'list' ? 'on' : ''}" data-st="list">Lista (${RECEP.length})</button>
       </div>
       <div ${recSubtab === 'form' ? '' : 'style="display:none"'} id="r_pane_form">${formHTML}</div>
-      <div ${recSubtab === 'list' ? '' : 'style="display:none"'} id="r_pane_list">${listHTML}</div>`;
+      <div ${recSubtab === 'list' ? '' : 'style="display:none"'} id="r_pane_list" class="${recFull ? "rec-full" : ""}">${recFull ? '<h2 style="margin:0 0 8px;font-size:18px">Recepción · Lista</h2>' : ""}${listHTML}</div>`;
 
     el("v-recepcion").querySelectorAll(".subtab").forEach(b => b.onclick = () => { recSubtab = b.dataset.st; paintRecepcion(); });
 
@@ -2911,7 +2968,14 @@ function paintRecepcion() {
     }
     if (recSubtab === "list") {
       const bq = el("r_buscar"); if (bq) bq.oninput = () => { recListFilter = bq.value; const pane = el("r_pane_list"); /* re-render solo lista */ paintRecepcion(); const nb = el("r_buscar"); if (nb) { nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); } };
-      const ss = el("r_sort"); if (ss) { ss.value = recListSort; ss.onchange = () => { recListSort = ss.value; paintRecepcion(); }; }
+      el("v-recepcion").querySelectorAll("th[data-ord]").forEach(th => th.onclick = () => {
+        const k = th.dataset.ord;
+        if (recListSort === k) recListDir = -recListDir; else { recListSort = k; recListDir = (k === "cliente" || k === "servicio" || k === "atencion" || k === "pago") ? 1 : -1; }
+        paintRecepcion();
+      });
+      const fj = el("r_fijar"); if (fj) fj.onchange = () => { recFijar = Number(fj.value) || 0; try { localStorage.setItem("rec-fijar", String(recFijar)); } catch (e) {} tablaFijarCols(el("r_tabla"), recFijar); };
+      if (el("r_full")) el("r_full").onclick = () => recSetFull(!recFull);
+      requestAnimationFrame(() => tablaFijarCols(el("r_tabla"), recFijar));
       const gs = el("r_gestion"); if (gs) gs.onchange = () => { recGestion = gs.value; recLoadedGestion = null; paintRecepcion(); };
       if (el("r_reload")) el("r_reload").onclick = () => { recLoadedGestion = null; paintRecepcion(); };
       if (el("r_export")) el("r_export").onclick = recExport;
@@ -2958,6 +3022,7 @@ function recNuevoCliente() {
     const fila = {};
     fila[H("nombre")] = nombre; if (nit) fila[H("nit")] = nit; if (cel) fila[H("celular")] = cel; if (correo) fila[H("correo")] = correo;
     fila[H("estado")] = "ACTIVO";
+    const codigo = bdNextCodigo(); fila[H("codigoId")] = codigo;
     fila["_altaISO"] = new Date().toISOString(); fila["_altaDesde"] = "recepcion"; fila["_datosIncompletos"] = true;
     fila["_creadoPor"] = (ME && (ME.name || ME.email)) || "";
     const docid = "nuevo_" + Date.now();
@@ -2967,7 +3032,7 @@ function recNuevoCliente() {
     if (!BD.find(x => x._docid === docid)) BD.unshift(cli);
     bdLog({ accion: "alta", nombre, estadoNuevo: "ACTIVO", detalle: "Creado desde Recepción (datos por completar)" });
     // Tarea pendiente para completar los datos
-    const falta = ["Código de ID", nit ? "" : "NIT", "Tipo de contribuyente", "Actividad / rubro", "Fecha de apertura del NIT", cel ? "" : "Celular", correo ? "" : "Correo"].filter(Boolean);
+    const falta = [nit ? "" : "NIT", "Tipo de contribuyente", "Actividad / rubro", "Fecha de apertura del NIT", cel ? "" : "Celular", correo ? "" : "Correo"].filter(Boolean);
     try {
       await setDoc(doc(collection(db, "eventos")), {
         titulo: "Completar datos del nuevo cliente: " + nombre, fechaISO: todayISO(), hora: "", tipo: "tarea", cliente: nombre, clienteNit: nit, clienteBdId: docid,
@@ -2980,9 +3045,9 @@ function recNuevoCliente() {
     close();
     recCli = cli;
     recFill("r_clibusca", nombre); recFill("r_nombre", nombre); recFill("r_nit", nit); recFill("r_ult", nit ? nitUltimo(nit) : "");
-    recFill("r_cel", cel); recFill("r_correo", correo); recFill("r_idcli", ""); recFill("r_rubro", "");
+    recFill("r_cel", cel); recFill("r_correo", correo); recFill("r_idcli", codigo); recFill("r_rubro", "");
     recPintarEstado();
-    const rm = el("r_msg"); if (rm) { rm.className = "msg ok"; rm.textContent = "Cliente nuevo creado y listo para recepcionar. Se creó una tarea en Calendario > Tareas pendientes para completar sus datos."; }
+    const rm = el("r_msg"); if (rm) { rm.className = "msg ok"; rm.textContent = "Cliente nuevo creado con el Código de ID " + codigo + " y listo para recepcionar. Se creó una tarea en Calendario > Tareas pendientes para completar sus datos."; }
   };
 }
 // Si el cliente de la BD está dado de baja, lo pone ACTIVO (y lo registra en Movimientos)
