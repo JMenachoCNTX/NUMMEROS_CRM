@@ -559,6 +559,33 @@ function pasMomentoPago_(fecha, hora) {
   var t = new Date(f + "T" + ("0" + h[1]).slice(-2) + ":" + h[2] + ":00-04:00").getTime();
   return isNaN(t) ? null : t;
 }
+// Modelos de Gemini para leer comprobantes. Google retira modelos con el tiempo, por eso se usan los
+// alias "latest" (siempre apuntan al modelo vigente) y, de respaldo, los Flash más nuevos que tenga la clave.
+function pasModelosIA_(key, preferido) {
+  var lista = [];
+  var pref = String(preferido || "").trim();
+  if (pref && pref !== "auto") lista.push(pref);
+  lista.push("gemini-flash-lite-latest", "gemini-flash-latest");
+  var extra = pasCache_("ia_modelos");
+  if (!extra) {
+    extra = [];
+    try {
+      var r = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key), { muteHttpExceptions: true });
+      if (r.getResponseCode() === 200) {
+        var ver = function (n) { var m = n.match(/gemini-(\d+)(?:\.(\d+))?/); return m ? Number(m[1]) * 100 + Number(m[2] || 0) : 0; };
+        extra = (JSON.parse(r.getContentText()).models || [])
+          .filter(function (x) { return (x.supportedGenerationMethods || []).indexOf("generateContent") >= 0; })
+          .map(function (x) { return x.name.replace("models/", ""); })
+          .filter(function (n) { return /^gemini-\d+(\.\d+)?-flash(-lite)?$/.test(n); })
+          .sort(function (a, b) { return ver(b) - ver(a) || (/lite/.test(a) ? -1 : 1); })
+          .slice(0, 4);
+      }
+    } catch (e) {}
+    pasCachePut_("ia_modelos", extra, 21600);
+  }
+  extra.forEach(function (m) { lista.push(m); });
+  return lista.filter(function (m, i, a) { return m && a.indexOf(m) === i; });
+}
 function pasLeerComprobante_(dataUrl) {
   var app = pasCfgApp();
   var key = String(app.visionKey || app.aiKey || app.geminiKey || "").trim();
@@ -573,14 +600,13 @@ function pasLeerComprobante_(dataUrl) {
   // Rápido: sin "pensamiento" (thinkingBudget 0) y respuesta directa en JSON. Con una clave de pago
   // (facturación activa en Google AI Studio) no hay esperas por límite de uso.
   var contents = [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }];
-  var base = String(app.visionModel || "gemini-2.5-flash").trim();
-  var modelos = [base, "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"].filter(function (m, i, arr) { return m && arr.indexOf(m) === i; });
+  var modelos = pasModelosIA_(key, app.visionModel);
   var t0 = Date.now(), intentos = [];
   for (var i = 0; i < modelos.length; i++) {
-    var gen = { temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" };
-    if (/2\.5/.test(modelos[i])) gen.thinkingConfig = { thinkingBudget: modelos[i].indexOf("pro") >= 0 ? 128 : 0 };
+    var gen = { temperature: 0.1, maxOutputTokens: 600, responseMimeType: "application/json" };
+    if (/2\.5-flash/.test(modelos[i])) gen.thinkingConfig = { thinkingBudget: 0 };
     var body = JSON.stringify({ contents: contents, generationConfig: gen });
-    for (var t = 0; t < 2; t++) {
+    for (var t = 0; t < 1; t++) {
       var r = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models/" + modelos[i] + ":generateContent?key=" + encodeURIComponent(key),
         { method: "post", contentType: "application/json", payload: body, muteHttpExceptions: true });
       var code = r.getResponseCode();
@@ -594,8 +620,8 @@ function pasLeerComprobante_(dataUrl) {
         try { return { data: JSON.parse(txt), ms: ms, modelo: modelos[i] }; } catch (e) { var m = txt.match(/\{[\s\S]*\}/); if (m) { try { return { data: JSON.parse(m[0]), ms: ms, modelo: modelos[i] }; } catch (e2) {} } }
         return { error: "no_interpretado" };
       }
-      // Sobrecarga o límite: un reintento corto y luego se pasa al siguiente modelo (sin esperas largas)
-      if ((code === 503 || code === 429 || code === 500) && t === 0) { Utilities.sleep(600); continue; }
+      // Sobrecarga, límite o modelo retirado: se pasa enseguida al siguiente modelo (sin esperas)
+      if (code === 404) pasCacheDel_("ia_modelos");
       break;
     }
   }
@@ -734,6 +760,7 @@ function pasCache_(k) {
   var got = c.getAll(keys), s = keys.map(function (x) { return got[x] || ""; }).join("");
   try { return JSON.parse(s); } catch (e) { return null; }
 }
+function pasCacheDel_(k) { try { CacheService.getScriptCache().remove(k); } catch (e) {} }
 function pasCachePut_(k, v, seg) {
   var s = JSON.stringify(v), c = CacheService.getScriptCache();
   if (s.length < 95000) { c.put(k, s, seg); return; }

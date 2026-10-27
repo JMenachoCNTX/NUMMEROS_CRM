@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "54";
+const APP_VERSION = "55";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -813,7 +813,7 @@ async function renderConfig() {
       <label>Clave de Gemini (solo lector de comprobantes)</label>
       <input id="c_vision" type="password" placeholder="AIza… (déjalo vacío si tu IA principal ya es Gemini)" value="${escape(cfg.visionKey || "")}">
       <label style="margin-top:10px">Modelo para leer comprobantes (pasarela y Recepción)</label>
-      <select id="c_vmodel">${[["gemini-2.5-flash", "Gemini 2.5 Flash · rápido y preciso (recomendado)"], ["gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite · el más rápido y barato"], ["gemini-2.0-flash", "Gemini 2.0 Flash"]].map(([v, l]) => `<option value="${v}" ${(cfg.visionModel || "gemini-2.5-flash") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="c_vmodel">${[["auto", "Automático: el más rápido disponible (recomendado)"], ["gemini-flash-lite-latest", "Gemini Flash-Lite (última versión) · el más rápido"], ["gemini-flash-latest", "Gemini Flash (última versión) · más preciso"]].map(([v, l]) => `<option value="${v}" ${(/latest|auto/.test(cfg.visionModel || "") ? cfg.visionModel : "auto") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <p class="note" style="margin:8px 0 10px">Para que lea en 2 a 4 segundos sin esperas, activa la <b>facturación</b> en Google AI Studio para el proyecto de esta clave (la misma clave pasa a ser de pago; no hay que cambiarla aquí). Si creas una clave nueva en un proyecto con facturación, pégala arriba.</p>
       <button class="btn" id="c_visionsave">Guardar clave de comprobantes</button>
       <button class="btn sec" id="c_visiontest" style="border:1px solid var(--line)">Probar velocidad</button>
@@ -921,7 +921,7 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
     catch (e) { msg.className = "msg err"; msg.textContent = "Error: " + (e.code || e.message); }
   };
   el("c_visiontest").onclick = async () => {
-    const msg = el("c_visionmsg"), key = el("c_vision").value.trim(), model = el("c_vmodel").value;
+    const msg = el("c_visionmsg"), key = el("c_vision").value.trim(), model = el("c_vmodel").value === "auto" ? "gemini-flash-lite-latest" : el("c_vmodel").value;
     if (!key) { msg.className = "msg err"; msg.textContent = "Pega primero la clave."; return; }
     msg.className = "msg"; msg.textContent = "Probando " + model + "…";
     // Imagen de prueba pequeña con un texto de comprobante (se dibuja aquí mismo)
@@ -929,7 +929,7 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
     g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 300); g.fillStyle = "#000"; g.font = "22px sans-serif";
     ["Banco Nacional de Bolivia", "Transferencia QR exitosa", "Importe: Bs 50.00", "Destino: CONTAX SRL", "Fecha: 26/10/2026 20:15", "Nro. operacion: 00123456"].forEach((t, i) => g.fillText(t, 30, 45 + i * 42));
     const b64 = cv.toDataURL("image/jpeg", 0.8).split(",")[1];
-    const gen = Object.assign({ temperature: 0.1, maxOutputTokens: 200, responseMimeType: "application/json" }, /2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {});
+    const gen = { temperature: 0.1, maxOutputTokens: 300, responseMimeType: "application/json" };
     const t0 = performance.now();
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -3278,7 +3278,7 @@ function cxCompressImage(file, maxPx, quality) {
   });
 }
 // Lee un comprobante con Gemini (usa la clave visionKey, o la principal si es Gemini)
-const CX_GEMINI_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"];
+const CX_GEMINI_FALLBACKS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
 async function ocrComprobanteGemini(dataUrl) {
   const cfg = await loadConfigDoc();
   let key = (cfg.visionKey || "").trim();
@@ -3293,8 +3293,8 @@ async function ocrComprobanteGemini(dataUrl) {
     "Extrae los datos y responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":""}. ' +
     "importe solo el número (ej. 150.00). Si un dato no aparece, déjalo como cadena vacía.";
-  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" }, /2\.5-flash/.test(cfg.visionModel || "gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}) });
-  const baseModel = /gemini/i.test(cfg.aiModel || cfg.geminiModel || "") ? (cfg.aiModel || cfg.geminiModel) : "gemini-2.5-flash";
+  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" }, {}) });
+  const baseModel = /latest/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-flash-lite-latest";
   const models = [baseModel, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i && /gemini/i.test(m));
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   let lastErr = "";
@@ -3313,7 +3313,7 @@ async function ocrComprobanteGemini(dataUrl) {
         }
         let d = ""; try { d = (await res.json()).error.message || ""; } catch (e) {}
         lastErr = `(${res.status}) ${d}`;
-        if (res.status === 503 || res.status === 429 || res.status === 500) { await sleep(1200 * (intento + 1)); continue; } // reintenta
+        if (res.status === 503 || res.status === 429 || res.status === 500) break; // saturado: pasa al siguiente modelo
         if (res.status === 404 || /not found|not supported/i.test(d)) break; // prueba otro modelo
         return { error: "No se pudo leer el comprobante. " + lastErr }; // error definitivo
       } catch (e) { lastErr = String(e.message || e); await sleep(800); }
