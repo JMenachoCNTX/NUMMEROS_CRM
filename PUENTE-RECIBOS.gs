@@ -53,8 +53,23 @@ function doPost(e) {
 // Logos para el correo (PNG publicados en el panel; Gmail no muestra SVG)
 var LOGOS = {
   contax:   "https://nummerospanel.contaxbolivia.com/marca/correo/contax-logo.png",
-  nummeros: "https://nummerospanel.contaxbolivia.com/marca/correo/nummeros-logo.png"
+  nummeros: "https://nummerospanel.contaxbolivia.com/marca/correo/nummeros-firma.png"
 };
+// Los logos van DENTRO del correo (imágenes incrustadas) y del PDF (data URI): así se ven siempre,
+// aunque el correo bloquee imágenes externas. Se leen del repositorio y se guardan 6 horas.
+var LOGOS_RAW = "https://raw.githubusercontent.com/JMenachoCNTX/NUMMEROS_CRM/main/marca/correo/";
+function logoB64_(archivo) {
+  var c = CacheService.getScriptCache(), k = "logo_" + archivo, v = c.get(k);
+  if (v) return v;
+  try {
+    var r = UrlFetchApp.fetch(LOGOS_RAW + archivo, { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return "";
+    v = Utilities.base64Encode(r.getBlob().getBytes());
+    if (v.length < 95000) c.put(k, v, 21600);
+    return v;
+  } catch (e) { return ""; }
+}
+function logoBlob_(archivo, nombre) { var b = logoB64_(archivo); return b ? Utilities.newBlob(Utilities.base64Decode(b), "image/png", nombre) : null; }
 
 function enviarRecibo(d) {
   var para = (d.to || "").trim();
@@ -72,7 +87,10 @@ function enviarRecibo(d) {
       "Servicio: " + (d.tipoServicio || "") + (d.detalleServicio ? " — " + d.detalleServicio : "") + "\n" +
       "Mes: " + (d.mes || "") + "   ·   Importe: " + money(d.importe) + "   ·   Forma de pago: " + (d.formaPago || "") + "\n\n" +
       "Gracias por confiar en " + empresaNombre + ".\n\n— " + empresaNombre;
-  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, htmlBody: buildCorreoHTML(d, empresaNombre), attachments: [blob] });
+  var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
+  if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
+  var html = buildCorreoHTML(d, empresaNombre).replace(LOGOS.contax, bC ? "cid:logoContax" : LOGOS.contax).replace(LOGOS.nummeros, bN ? "cid:logoNummeros" : LOGOS.nummeros);
+  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, htmlBody: html, attachments: [blob], inlineImages: inl });
 }
 
 // Correo con diseño: logo CONTAX, resumen del servicio, aviso y pie "Sistema NUMMEROS by CONTAX"
@@ -129,7 +147,7 @@ function buildCorreoHTML(d, empresaNombre) {
   '</table>' +
   // Firma NUMMEROS
   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px"><tr><td align="center" style="padding:16px 10px 6px;font-family:Helvetica,Arial,sans-serif;color:#8a94a6;font-size:11px">' +
-    'Sistema de gestión desarrollado por<br><img src="' + LOGOS.nummeros + '" width="120" alt="NUMMEROS" style="display:inline-block;width:120px;height:auto;margin-top:6px;border:0"><br><span style="font-size:10px">NUMMEROS by CONTAX</span>' +
+    'Sistema de gestión desarrollado por<br><img src="' + LOGOS.nummeros + '" width="170" alt="NUMMEROS by CONTAX" style="display:inline-block;width:170px;height:auto;margin-top:6px;border:0"><br><span style="font-size:10px">NUMMEROS by CONTAX</span>' +
   '</td></tr></table>' +
   '</td></tr></table></body></html>';
 }
@@ -162,53 +180,67 @@ function buildOrdenHTML(d, empresaNombre) {
     return '<tr><td class="k">' + esc(x[1 - 1]) + '</td><td class="v" style="' + (x[2] ? "font-weight:700" : "") + '">' + esc(x[1] || "") + '</td></tr>';
   }).join("");
 
+  // Hoja membretada NUMMEROS (el sistema que emite la orden); la empresa emisora es CONTAX
+  var verde = "#235347", oscuro = "#0B2B26", salvia = "#8EB69B", menta = "#DAF1DE", tinta = "#163832", suave = "#557363";
+  var logoN = logoB64_("nummeros-firma.png"), isoN = logoB64_("nummeros-isotipo-blanco.png");
   return '' +
   '<!doctype html><html><head><meta charset="utf-8"><style>' +
   '@page{size:A4 landscape;margin:0}' +
-  '*{box-sizing:border-box;font-family:Helvetica,Arial,sans-serif;color:#1f2a3a}' +
+  '*{box-sizing:border-box;font-family:Helvetica,Arial,sans-serif;color:' + tinta + '}' +
   'body{margin:0;padding:0}' +
-  '.band{background:' + navy + ';color:#fff;text-align:center;padding:26px 0 22px}' +
-  '.band .t{font-size:40px;letter-spacing:.22em;font-weight:400}' +
-  '.sub{text-align:center;font-size:22px;color:#2b3952;margin:18px 0 6px;font-weight:400}' +
+  '.franja{height:10px;background:' + verde + '}.franja2{height:3px;background:' + salvia + '}' +
+  'table.cab{width:100%;border-collapse:collapse;margin:0}' +
+  'table.cab td{padding:20px 46px 14px;vertical-align:middle}' +
+  '.lbl{font-size:11px;letter-spacing:.28em;color:' + suave + ';text-transform:uppercase}' +
+  '.nro{font-size:34px;font-weight:700;color:' + oscuro + ';margin-top:2px}' +
+  '.emisor{font-size:12px;color:' + suave + ';margin-top:4px}' +
   '.wrap{padding:0 46px}' +
-  '.cols{display:table;width:100%;margin-top:10px;border-top:1px solid #dfe3ea;padding-top:14px}' +
-  '.col{display:table-cell;width:50%;vertical-align:top;padding:0 14px}' +
-  '.col.r{border-left:1px solid #e4e7ee}' +
-  '.ch{text-align:center;font-size:16px;color:#2b3952;margin:0 0 10px}' +
+  'table.cols{width:100%;border-collapse:collapse;margin-top:6px}' +
+  'table.cols td.col{width:50%;vertical-align:top;padding:12px 16px;background:#F4FAF5;border:1px solid ' + menta + '}' +
+  '.ch{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:' + verde + ';margin:0 0 8px;border-bottom:2px solid ' + salvia + ';padding-bottom:5px}' +
   'table.kv{width:100%;border-collapse:collapse}' +
   'table.kv td{padding:3px 4px;font-size:12px;vertical-align:top}' +
-  'table.kv td.k{color:#55617a;white-space:nowrap;width:1%;padding-right:12px}' +
-  'table.kv td.v{color:#1f2a3a}' +
-  '.sdoc{text-align:center;font-size:22px;color:#2b3952;margin:26px 0 8px;font-weight:400}' +
-  'table.serv{width:100%;border-collapse:collapse;margin-top:6px}' +
-  'table.serv th{border-top:1px solid #cfd4de;border-bottom:1px solid #cfd4de;padding:9px 6px;font-size:12px;color:#2b3952;text-align:left}' +
+  'table.kv td.k{color:' + suave + ';white-space:nowrap;width:1%;padding-right:12px}' +
+  '.sdoc{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:' + verde + ';margin:20px 0 6px}' +
+  'table.serv{width:100%;border-collapse:collapse}' +
+  'table.serv th{background:' + verde + ';color:#fff;padding:9px 10px;font-size:11.5px;text-align:left;letter-spacing:.04em}' +
   'table.serv th.r,table.serv td.r{text-align:right}' +
-  'table.serv td{padding:14px 6px;font-size:12px;border-bottom:1px solid #eef0f4}' +
-  '.tot{margin-top:16px;text-align:right;font-size:13px;line-height:1.9}' +
-  '.tot b{color:#1f2a3a}' +
-  '.disc{margin:40px 46px 0;font-size:10.5px;color:#55617a;font-style:italic;text-align:center;line-height:1.6}' +
-  '.foot{margin-top:40px;background:' + navy + ';color:#cdd4e2;font-size:10px;padding:9px 46px;display:flex;justify-content:space-between}' +
+  'table.serv td{padding:13px 10px;font-size:12.5px;border-bottom:1px solid ' + menta + '}' +
+  'table.tot{margin:14px 0 0 auto;border-collapse:collapse}' +
+  'table.tot td{padding:4px 10px;font-size:13px}table.tot td.k{color:' + suave + ';text-align:right}' +
+  'table.tot tr.g td{background:' + menta + ';font-size:15px;font-weight:700;color:' + oscuro + '}' +
+  '.disc{margin:24px 46px 0;font-size:10px;color:' + suave + ';font-style:italic;text-align:center;line-height:1.6}' +
+  'table.pie{width:100%;border-collapse:collapse;margin-top:26px;background:' + oscuro + '}' +
+  'table.pie td{color:' + menta + ';font-size:10px;padding:10px 46px}' +
   '</style></head><body>' +
-  '<div class="band"><div class="t">' + esc(empresaNombre) + '</div></div>' +
-  '<div class="sub">Orden de Recepción</div>' +
+  '<div class="franja"></div><div class="franja2"></div>' +
+  '<table class="cab"><tr>' +
+    '<td style="width:50%">' + (logoN ? '<img src="data:image/png;base64,' + logoN + '" style="height:58px;width:auto" alt="NUMMEROS by CONTAX">' : '<span style="font-size:30px;font-weight:700;color:' + verde + '">NUMMEROS</span><br><span style="color:' + suave + '">by CONTAX</span>') + '</td>' +
+    '<td style="text-align:right"><div class="lbl">Orden de Recepción</div><div class="nro">N° ' + esc(d.nroRecepcion || "") + '</div><div class="emisor">Emitida por <b>' + esc(empresaNombre) + '</b> · ' + esc(d.fecha || "") + (d.hora ? ' ' + esc(d.hora) : '') + '</div></td>' +
+  '</tr></table>' +
   '<div class="wrap">' +
-    '<div class="cols">' +
-      '<div class="col"><div class="ch">Datos del Cliente</div><table class="kv">' + cliRows + '</table></div>' +
-      '<div class="col r"><div class="ch">Datos de Recepción</div><table class="kv">' + recRows + '</table></div>' +
-    '</div>' +
-    '<div class="sdoc">Datos del Servicio</div>' +
-    '<table class="serv"><tr><th>Mes</th><th>Tipo de Servicio</th><th>Nro Recepción</th><th class="r">Importe</th></tr>' +
-      '<tr><td>' + esc(d.mes || "") + '</td><td>' + esc(d.tipoServicio || "") + (d.detalleServicio ? '<br><span style="color:#55617a">' + esc(d.detalleServicio) + '</span>' : '') + '</td><td>' + esc(d.nroRecepcion || "") + '</td><td class="r">' + esc(numero(d.importe)) + '</td></tr>' +
+    '<table class="cols"><tr>' +
+      '<td class="col"><div class="ch">Datos del cliente</div><table class="kv">' + cliRows + '</table></td>' +
+      '<td style="width:14px;background:#fff;border:0"></td>' +
+      '<td class="col"><div class="ch">Datos de recepción</div><table class="kv">' + recRows + '</table></td>' +
+    '</tr></table>' +
+    '<div class="sdoc">Datos del servicio</div>' +
+    '<table class="serv"><tr><th>Mes / Período</th><th>Tipo de servicio</th><th>N° Recepción</th><th class="r">Importe</th></tr>' +
+      '<tr><td>' + esc(d.mes || "") + '</td><td><b>' + esc(d.tipoServicio || "") + '</b>' + (d.detalleServicio ? '<br><span style="color:' + suave + '">' + esc(d.detalleServicio) + '</span>' : '') + '</td><td>' + esc(d.nroRecepcion || "") + '</td><td class="r">' + esc(numero(d.importe)) + '</td></tr>' +
     '</table>' +
-    '<div class="tot">' +
-      'Total: <b>' + money(d.importe) + '</b><br>' +
-      'Forma de Pago: <b>' + esc(d.formaPago || "") + '</b><br>' +
-      'Atención: <b>' + esc(d.atencion || "") + '</b>' +
-      (d.comentarios ? '<br><span style="color:#55617a;font-size:11px">' + esc(d.comentarios) + '</span>' : '') +
-    '</div>' +
+    '<table class="tot">' +
+      '<tr class="g"><td class="k" style="color:' + oscuro + '">Total</td><td>' + money(d.importe) + '</td></tr>' +
+      '<tr><td class="k">Forma de pago</td><td><b>' + esc(d.formaPago || "") + '</b></td></tr>' +
+      '<tr><td class="k">Atención</td><td><b>' + esc(d.atencion || "") + '</b></td></tr>' +
+      (d.comentarios ? '<tr><td class="k">Comentarios</td><td style="font-size:11px">' + esc(d.comentarios) + '</td></tr>' : '') +
+    '</table>' +
   '</div>' +
   '<div class="disc">' + esc(DISCLAIMER) + '</div>' +
-  '<div class="foot"><span>' + esc(EMPRESA.direccion) + '</span><span>Contacto: ' + esc(EMPRESA.contacto) + '</span><span>Correo: ' + esc(EMPRESA.correo) + '</span></div>' +
+  '<table class="pie"><tr>' +
+    '<td>' + (isoN ? '<img src="data:image/png;base64,' + isoN + '" style="height:16px;width:auto;vertical-align:middle;margin-right:8px">' : '') + 'NUMMEROS by CONTAX · Sistema de gestión contable</td>' +
+    '<td style="text-align:center">' + esc(EMPRESA.direccion) + ' · Contacto: ' + esc(EMPRESA.contacto) + '</td>' +
+    '<td style="text-align:right">' + esc(EMPRESA.correo) + '</td>' +
+  '</tr></table>' +
   '</body></html>';
 }
 
