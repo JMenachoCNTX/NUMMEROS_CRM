@@ -492,14 +492,15 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function cargando(txt) { main.innerHTML = '<div class="pila" style="padding-top:60px;text-align:center"><div class="spin"></div><p class="suave">' + esc(txt) + "</p></div>"; }
   // Animación de marca NUMMEROS (verificación en el banco y envío del recibo)
   function animHtml(tipo) {
-    var env = tipo === "envio";
+    var env = tipo === "envio", nit = tipo === "nit";
     return '<div class="animN' + (env ? " env" : "") + '" role="status" aria-live="polite"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg>' +
       '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo">' +
       (env ? '<span class="anOk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>' : "") + "</div>" +
-      "<b>" + (env ? "Te estamos enviando tu recibo de pago" : "Tu pago se está verificando en el banco") + "</b>" +
-      "<span>" + (env ? "Lo recibirás en tu correo electrónico. Revisa tu bandeja de entrada (y la de spam)." : "Esto toma solo unos segundos. No cierres esta página.") + "</span>" +
+      "<b>" + (env ? "Te estamos enviando tu recibo de pago" : nit ? "Buscando tus datos en CONTAX" : "Tu pago se está verificando en el banco") + "</b>" +
+      "<span>" + (env ? "Lo recibirás en tu correo electrónico. Revisa tu bandeja de entrada (y la de spam)." : nit ? "Con tu NIT completamos tus datos, sin registros ni contraseñas." : "Esto toma solo unos segundos. No cierres esta página.") + "</span>" +
       '<i class="anBar"><i></i></i></div>';
   }
+  var nitT = null;
   function espera(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function verificarComprobante() {
     main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("banco") + "</div>"; window.scrollTo(0, 0);
@@ -831,12 +832,18 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       ev.preventDefault();
       S.nit = $("nit").value.replace(/\D/g, "");
       if (S.nit.length < 5) { S.error = "Escribe tu NIT completo."; pintar(); return; }
-      cargando("Buscando tus datos…");
-      Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" })]).then(function (rs) {
+      clearTimeout(nitT);
+      main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("nit") + "</div>"; window.scrollTo(0, 0);
+      Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" }), espera(3000)]).then(function (rs) {
         if (!rs[0].ok) { ir("nit", rs[0].error); return; }
         if (!rs[1].ok) { ir("nit", rs[1].error); return; }
         S.cli = rs[0].cliente; S.cfg = rs[1]; ir("datos");
       });
+    };
+    // Búsqueda automática: al dejar de escribir el NIT (1,2 s), se busca solo
+    if ($("nit")) $("nit").oninput = function () {
+      clearTimeout(nitT); var v = this.value.replace(/\D/g, "");
+      if (v.length >= 7) nitT = setTimeout(function () { var f = $("fNit"); if (f && $("nit") && $("nit").value.replace(/\D/g, "") === v) f.requestSubmit ? f.requestSubmit() : f.onsubmit({ preventDefault: function () {} }); }, 1200);
     };
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };

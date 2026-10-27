@@ -152,6 +152,7 @@ function pasarelaHandle_(d) {
   if (a === "pas_reservar") { var rr = pasReservar(d); if (rr.ok) rr.qr = pasQR_(rr.monto); return rr; }
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
+  if (String(a || "").indexOf("portal_") === 0) return portalHandle_(d);
   return { ok: false, error: "accion_desconocida" };
 }
 
@@ -226,6 +227,8 @@ function pasClave_(h) {
   if (n.indexOf("razon") >= 0) return "razon";
   if (n === "nombre") return "nombre";
   if (n === "nit") return "nit";
+  if (n.replace(/[^a-z]/g, "") === "ci" || n.indexOf("carnet") >= 0 || n.indexOf("cedula") >= 0) return "ci";
+  if (n.indexOf("costo") >= 0) return "costo";
   return "";
 }
 function pasCamposBD_() {
@@ -257,7 +260,8 @@ function pasClientePorNit_(nit) {
     docId: elegido.id, campoEstado: campos.estado,
     nombre: v("nombre") || v("razon"),
     codigoId: v("codigoId"), celular: v("celular"), correo: /@/.test(v("correo")) ? v("correo") : "",
-    tipo: v("tipo"), brinda: v("brinda"), actP: v("actP"), fechaNit: v("fechaNit"), estMat: v("estMat"), estado: v("estado")
+    tipo: v("tipo"), brinda: v("brinda"), actP: v("actP"), fechaNit: v("fechaNit"), estMat: v("estMat"), estado: v("estado"),
+    ci: v("ci"), costo: v("costo")
   };
 }
 // Estado del cliente: quiénes pueden pagar por la pasarela
@@ -874,6 +878,7 @@ var ADM_API_KEY = "AIzaSyBPUgVMi3IQCow6pJiQwaC-WsH_mMf_arI"; // clave web públi
 function adminHandle(d) {
   try {
     if (d.action === "admin_reservas") { admVerificar_(d.idToken, true); return admReservas_(); }
+    if (d.action === "admin_docs_cliente") { admVerificar_(d.idToken, true); return admDocsCliente_(d.nit); }
     var yo = admVerificar_(d.idToken);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
     return { ok: false, error: "accion_desconocida" };
@@ -916,4 +921,212 @@ function admSetPassword_(yo, uid, password) {
   fsReq_(fsBase_() + "/userPins/" + uid + "?updateMask.fieldPaths=pin&updateMask.fieldPaths=updatedAtMs&updateMask.fieldPaths=updatedBy", "patch",
     { fields: fsEnc_({ pin: password, updatedAtMs: Date.now(), updatedBy: yo.nombre }).mapValue.fields });
   return { ok: true };
+}
+
+
+// =====================================================================
+//  PORTAL DEL CLIENTE (cliente.html): el cliente entra con su NIT y su C.I.
+//  y ve sus datos, declaraciones, trámites, balances, facturación y documentos.
+//  Todo se lee aquí con la cuenta del script: el cliente nunca toca Firestore.
+// =====================================================================
+var PORTAL_SESION_SEG = 21600;   // 6 horas
+var PORTAL_CARPETA = "NUMMEROS · Portal de clientes";
+function portalHandle_(d) {
+  var a = d.action;
+  if (a === "portal_login") return portalLogin_(d.nit, d.ci);
+  var nit = portalSesion_(d.token);
+  if (!nit) return { ok: false, sesion: false, error: "Tu sesión terminó. Vuelve a ingresar con tu NIT y tu C.I." };
+  if (a === "portal_datos") return portalDatos_(nit);
+  if (a === "portal_subir") return portalSubir_(nit, d);
+  if (a === "portal_archivo") return portalArchivo_(nit, d.id);
+  if (a === "portal_chat") return portalChat_(nit, d);
+  if (a === "portal_salir") { pasCacheDel_("ps_" + d.token); return { ok: true }; }
+  return { ok: false, error: "accion_desconocida" };
+}
+function portalSesion_(token) { if (!token || String(token).length < 20) return ""; var s = pasCache_("ps_" + token); return s && s.nit ? s.nit : ""; }
+function portalLimpiaCi_(v) { return String(v || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
+function portalLogin_(nitIn, ciIn) {
+  var nit = String(nitIn || "").replace(/\D/g, ""), ci = portalLimpiaCi_(ciIn);
+  if (nit.length < 5 || !ci) return { ok: false, error: "Escribe tu NIT y tu C.I." };
+  // Máximo 6 intentos fallidos cada 15 minutos por NIT
+  var kInt = "pli_" + nit, intentos = Number(pasCache_(kInt) || 0);
+  if (intentos >= 6) return { ok: false, error: "Demasiados intentos. Espera 15 minutos o escríbenos por WhatsApp." };
+  var cli = pasClienteCache_(nit);
+  var fallo = function () { pasCachePut_(kInt, intentos + 1, 900); return { ok: false, error: "NIT o C.I. incorrectos. Si no recuerdas tus datos, escríbenos por WhatsApp." }; };
+  if (!cli) return fallo();
+  if (!pasPermitido_(cli)) return { ok: false, error: "Tu acceso al portal no está disponible. Escríbenos por WhatsApp." };
+  var ciBD = portalLimpiaCi_(cli.ci), ciNum = ci.replace(/\D/g, "");
+  var ok = false;
+  if (ciBD) ok = ci === ciBD || (ciNum.length >= 5 && ciNum === ciBD.replace(/\D/g, ""));
+  // Persona natural sin C.I. registrado: el NIT es el C.I. más 3 dígitos
+  else ok = nit.length >= 8 && ciNum.length >= 5 && nit.slice(0, -3) === ciNum;
+  if (!ok) return fallo();
+  pasCacheDel_(kInt);
+  var token = Utilities.getUuid() + Utilities.getUuid().slice(0, 8);
+  pasCachePut_("ps_" + token, { nit: nit, t: Date.now() }, PORTAL_SESION_SEG);
+  try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "portal_ingreso", nombre: cli.nombre, detalle: "Ingresó al Portal del Cliente (NIT " + nit + ")", porUid: "portal", porNombre: "Portal del Cliente" }); } catch (e) {}
+  var datos = portalDatos_(nit);
+  datos.token = token;
+  return datos;
+}
+function portalRecepciones_(nit) {
+  var docs = fsQuery_("recepciones", [["nit", "EQUAL", nit]], 400);
+  if (/^\d+$/.test(nit)) { try { docs = docs.concat(fsQuery_("recepciones", [["nit", "EQUAL", Number(nit)]], 400)); } catch (e) {} }
+  var vistos = {};
+  return docs.filter(function (x) { if (vistos[x.id]) return false; vistos[x.id] = 1; var r = x.data; var pe = r.pasarela && r.pasarela.estado; return !r.eliminado && pe !== "rechazado"; })
+    .map(function (x) { var r = x.data; r.id = x.id; return r; });
+}
+function portalCat_(r) {
+  if (r.tipo) return r.tipo;
+  var s = String((r.servicio || r.servicioNombre || "") + " " + (r.detalleServicio || "")).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (/FACTURAC/.test(s)) return "facturacion";
+  if (/BALANCE|EEFF|ESTADO FINANC|SERVICIOS CONTABLES/.test(s)) return "eeff";
+  if (/TRAMITE|MATRICULA|ROE|SEPREC|ACTUALIZ/.test(s)) return "tramite";
+  if (/DECLARAC|MENSUAL|DDJJ|FORM 110|RC IVA/.test(s)) return "declaracion";
+  return "otro";
+}
+function portalEstadoDJ_(r) {
+  var e = r.dj_estado;
+  if (!e) e = (r.dj_fechaDeclaracion || r.dj_declaradoPor) ? "terminado" : r.dj_rcvFinalizado ? "falta_declarar" : (r.dj_rcvIniciado || r.dj_rcvPor) ? "rcv" : "pendiente";
+  if (r.pasarela && r.pasarela.estado === "revision") e = "revision";
+  return e;
+}
+function portalEstadoGen_(r) {
+  if (r.pasarela && r.pasarela.estado === "revision") return "revision";
+  var e = String(r.estado || "pendiente").toLowerCase();
+  if (/termin|entreg|listo|complet/.test(e)) return "terminado";
+  if (/proceso|curso|trabaj/.test(e)) return "proceso";
+  return "pendiente";
+}
+function portalPeriodoKey_(r) {
+  var m = Number(r.periodoMes) || 0, y = Number(r.periodoAnio || r.anio) || 0;
+  if (m && y) return y + "-" + ("0" + m).slice(-2);
+  var t = String(r.mesRecepcion || "").toUpperCase(), mm = PAS_MESES.map(function (x) { return x.toUpperCase(); });
+  for (var i = 0; i < 12; i++) if (t.indexOf(mm[i]) >= 0) { var yy = (t.match(/(20\d\d)/) || [])[1]; if (yy) return yy + "-" + ("0" + (i + 1)).slice(-2); }
+  return "";
+}
+function portalDatos_(nit) {
+  var cli = pasClienteCache_(nit);
+  if (!cli) return { ok: false, error: "No encontramos tus datos." };
+  var recs = portalRecepciones_(nit), hoy = pasHoy_();
+  var decl = [], tram = [], eeff = [], fact = [], otros = [];
+  recs.forEach(function (r) {
+    var cat = portalCat_(r);
+    var base = { id: r.id, fecha: r.fecha || String(r.fechaISO || "").slice(0, 10), fechaISO: r.fechaISO || "", nro: r.nroRecepcion || "", servicio: r.servicio || r.servicioNombre || "",
+                 detalle: r.detalleServicio || "", periodo: r.mesRecepcion || "", importe: Number(r.importe) || 0, deuda: r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda" };
+    if (cat === "declaracion") {
+      base.key = portalPeriodoKey_(r); base.estado = portalEstadoDJ_(r);
+      base.ventas = pasNum_(r.dj_totalVentas); base.compras = pasNum_(r.dj_totalCompras); base.iva = pasNum_(r.dj_ivaPagar); base.it = pasNum_(r.dj_itPagar);
+      base.fechaDecl = r.dj_fechaDeclaracion || ""; base.pagoImp = r.dj_pagoImpuestos || "";
+      decl.push(base);
+    } else {
+      base.estado = portalEstadoGen_(r);
+      if (cat === "eeff") { base.gestion = String(r.periodoAnio || r.anio || ""); base.balance = (r.pasarela && r.pasarela.balance) || r.balanceNombre || ""; eeff.push(base); }
+      else if (cat === "facturacion") { base.key = portalPeriodoKey_(r) || String(r.fechaISO || "").slice(0, 7); fact.push(base); }
+      else if (cat === "tramite") tram.push(base); else otros.push(base);
+    }
+  });
+  var ord = function (a, b) { return String(b.key || b.fechaISO).localeCompare(String(a.key || a.fechaISO)); };
+  decl.sort(ord); tram.sort(ord); eeff.sort(ord); fact.sort(ord); otros.sort(ord);
+  var mesAct = hoy.anio + "-" + ("0" + hoy.mes).slice(-2);
+  var susc = fact.some(function (f) { return f.key === mesAct; });
+  var c = pasCfg();
+  return {
+    ok: true,
+    cliente: { nombre: cli.nombre, nit: nit, id: cli.codigoId, celular: cli.celular, correo: cli.correo, tipo: cli.tipo, actividad: cli.actP, brinda: cli.brinda,
+               aperturaNit: pasFechaISO_(cli.fechaNit), matricula: cli.estMat, estado: cli.estado, grupo: pasGrupoEstado_(cli.estado), repartidor: pasEsRepartidor_(cli),
+               diaVence: 13 + Number(nit.slice(-1)) },
+    declaraciones: decl, tramites: tram, eeff: eeff, facturacion: fact, otros: otros,
+    suscripcion: { activa: susc, mes: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, estadoBD: cli.estado },
+    config: { precios: c.precios, lanzamiento: c.lanzamiento || "", eeffGestion: c.eeffGestion || PAS_DEF.eeffGestion, diaDesde: c.diaDesde || 25 },
+    documentos: portalListarDocs_(nit, cli.nombre, false),
+    hoy: hoy.iso
+  };
+}
+// Carpeta de Drive del cliente: "Subidos por el cliente" y "Entregados por CONTAX"
+function portalCarpetas_(nit, nombre, crear) {
+  var raiz = DriveApp.getFoldersByName(PORTAL_CARPETA);
+  var r = raiz.hasNext() ? raiz.next() : (crear ? DriveApp.createFolder(PORTAL_CARPETA) : null);
+  if (!r) return null;
+  var it = r.searchFolders("title contains '" + nit + "'"), f = null;
+  while (it.hasNext()) { var x = it.next(); if (x.getName().indexOf(nit) === 0) { f = x; break; } }
+  if (!f && crear) f = r.createFolder(nit + " · " + String(nombre || "").slice(0, 60));
+  if (!f) return null;
+  var sub = function (n) { var i = f.getFoldersByName(n); return i.hasNext() ? i.next() : (crear ? f.createFolder(n) : null); };
+  return { cliente: f, subidos: sub("Subidos por el cliente"), contax: sub("Entregados por CONTAX") };
+}
+function portalListarDocs_(nit, nombre, crear) {
+  var out = [];
+  try {
+    var cs = portalCarpetas_(nit, nombre, crear); if (!cs) return out;
+    [["contax", cs.contax], ["cliente", cs.subidos]].forEach(function (p) {
+      if (!p[1]) return;
+      var it = p[1].getFiles();
+      while (it.hasNext() && out.length < 200) { var f = it.next(); out.push({ id: f.getId(), nombre: f.getName(), origen: p[0], fecha: f.getDateCreated().toISOString(), kb: Math.round(f.getSize() / 1024), tipo: f.getMimeType() }); }
+    });
+  } catch (e) { console.warn("portal docs: " + e); }
+  out.sort(function (a, b) { return b.fecha.localeCompare(a.fecha); });
+  return out;
+}
+function portalSubir_(nit, d) {
+  var data = String(d.dataUrl || ""), m = data.match(/^data:([^;]+);base64,/);
+  if (!m) return { ok: false, error: "Elige un archivo." };
+  if (data.length > 14000000) return { ok: false, error: "El archivo es muy pesado (máximo 10 MB)." };
+  var mime = m[1];
+  if (!/^(image\/|application\/pdf|application\/vnd\.openxmlformats|application\/msword|application\/vnd\.ms-excel)/.test(mime)) return { ok: false, error: "Sube una foto, PDF, Word o Excel." };
+  var cli = pasClienteCache_(nit);
+  var cs = portalCarpetas_(nit, cli && cli.nombre, true);
+  var tipo = String(d.tipo || "Documento").replace(/[\\\/:*?"<>|]/g, "").slice(0, 40);
+  var nombre = String(d.nombre || "archivo").replace(/[\\\/:*?"<>|]/g, "_").slice(-80);
+  var f = cs.subidos.createFile(Utilities.newBlob(Utilities.base64Decode(data.replace(/^data:[^;]+;base64,/, "")), mime, tipo + " - " + nombre));
+  try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "portal_documento", nombre: cli ? cli.nombre : nit, detalle: "Subió " + tipo + ": " + nombre, porUid: "portal", porNombre: "Portal del Cliente" }); } catch (e) {}
+  return { ok: true, documentos: portalListarDocs_(nit, cli && cli.nombre, false), id: f.getId() };
+}
+function portalArchivo_(nit, id) {
+  try {
+    var f = DriveApp.getFileById(String(id || "")), cs = portalCarpetas_(nit, "", false), ok = false;
+    if (cs) { var ps = f.getParents(); while (ps.hasNext()) { var p = ps.next().getId(); if ((cs.subidos && p === cs.subidos.getId()) || (cs.contax && p === cs.contax.getId())) ok = true; } }
+    if (!ok) return { ok: false, error: "No tienes acceso a ese archivo." };
+    if (f.getSize() > 15000000) return { ok: false, error: "El archivo es muy grande para descargarlo aquí. Pídelo por WhatsApp." };
+    var b = f.getBlob();
+    return { ok: true, nombre: f.getName(), dataUrl: "data:" + b.getContentType() + ";base64," + Utilities.base64Encode(b.getBytes()) };
+  } catch (e) { return { ok: false, error: "No se pudo abrir el archivo." }; }
+}
+// Asistente del portal: responde dudas con la información de CONTAX y del propio cliente
+function portalChat_(nit, d) {
+  var kLim = "pch_" + nit, n = Number(pasCache_(kLim) || 0);
+  if (n >= 40) return { ok: false, error: "Llegaste al límite de preguntas por hora. Escríbenos por WhatsApp." };
+  pasCachePut_(kLim, n + 1, 3600);
+  var app = pasCfgApp(), key = String(app.visionKey || app.aiKey || app.geminiKey || "").trim();
+  if (!key) return { ok: false, error: "El asistente no está disponible. Escríbenos por WhatsApp." };
+  var datos = portalDatos_(nit), c = pasCfg(), pr = c.precios;
+  var pend = (datos.declaraciones || []).filter(function (x) { return x.estado !== "terminado"; }).map(function (x) { return x.periodo; }).slice(0, 6);
+  var ctx = "Eres el asistente virtual del Portal de Clientes de CONTAX (consultora contable en Santa Cruz, Bolivia; sistema NUMMEROS by CONTAX). " +
+    "Responde en español, breve (máximo 6 líneas), amable y claro, para personas sin conocimientos contables. No inventes datos; si no sabes algo o el tema requiere a una persona, sugiere escribir por WhatsApp. " +
+    "No des asesoría para evadir impuestos. Servicios y precios: Declaración mensual Plan Básico (sin movimiento) Bs " + pr.sinMov + "; Plan Estándar (repartidores, hasta 100 facturas) Bs " + pr.enFecha +
+    " si se paga hasta el último día del mes que se declara, Bs " + pr.fueraFecha + " después; Plan Premium (101 a 200 facturas) Bs " + pr.premium + "; Suscripción de facturación Bs " + pr.fact + " al mes. " +
+    "Los estados financieros (balances) de la gestión " + (c.eeffGestion || "") + " se venden por fases con cupos y precios que suben. Los pagos se hacen en la pasarela con QR. " +
+    "El vencimiento de la declaración depende del último dígito del NIT (día 13 + último dígito del mes siguiente). " +
+    "Datos del cliente: nombre " + datos.cliente.nombre + ", NIT " + nit + ", vence el día " + datos.cliente.diaVence + " de cada mes, estado " + (datos.cliente.estado || "—") +
+    ", suscripción de facturación del mes " + (datos.suscripcion.activa ? "activa" : "no pagada") + ", declaraciones recepcionadas aún en proceso: " + (pend.length ? pend.join(", ") : "ninguna") + ".";
+  var hist = (Array.isArray(d.historial) ? d.historial : []).slice(-8).map(function (h) { return { role: h.de === "yo" ? "user" : "model", parts: [{ text: String(h.t || "").slice(0, 800) }] }; });
+  hist.push({ role: "user", parts: [{ text: String(d.mensaje || "").slice(0, 800) }] });
+  var modelos = pasModelosIA_(key, app.visionModel);
+  for (var i = 0; i < modelos.length; i++) {
+    var r = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models/" + modelos[i] + ":generateContent?key=" + encodeURIComponent(key), {
+      method: "post", contentType: "application/json", muteHttpExceptions: true,
+      payload: JSON.stringify({ systemInstruction: { parts: [{ text: ctx }] }, contents: hist, generationConfig: { temperature: 0.4, maxOutputTokens: 500 } }) });
+    if (r.getResponseCode() === 200) {
+      var j = JSON.parse(r.getContentText());
+      var txt = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(function (p) { return p.text || ""; }).join("").trim();
+      if (txt) return { ok: true, respuesta: txt };
+    }
+  }
+  return { ok: false, error: "El asistente está ocupado. Intenta de nuevo o escríbenos por WhatsApp." };
+}
+// Para el panel (Ficha del cliente): documentos del portal y enlace a la carpeta de Drive
+function admDocsCliente_(nit) {
+  nit = String(nit || "").replace(/\D/g, ""); if (!nit) return { ok: false, error: "Falta el NIT." };
+  var cli = pasClienteCache_(nit), cs = portalCarpetas_(nit, cli && cli.nombre, true);
+  return { ok: true, carpeta: cs.cliente.getUrl(), carpetaContax: cs.contax.getUrl(), documentos: portalListarDocs_(nit, cli && cli.nombre, false).map(function (x) { x.url = "https://drive.google.com/file/d/" + x.id + "/view"; return x; }) };
 }

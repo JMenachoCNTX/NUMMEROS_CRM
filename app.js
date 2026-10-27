@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "57";
+const APP_VERSION = "58";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1250,6 +1250,7 @@ const BD_FIELDS = [
   ["nombre", "NOMBRE", "Cliente", "text"],
   ["codigoId", "Codigo de ID", "Cliente", "text"],
   ["nit", "NIT", "Cliente", "text"],
+  ["ci", "C.I.", "Cliente", "text"],
   ["razon", "Nombre o Razón Social", "Cliente", "text"],
   ["celular", "Celular", "Cliente", "text"],
   ["correo", "Correo Electrónico", "Cliente", "text"],
@@ -1287,6 +1288,7 @@ function bdHeaderToKey(h) {
   if (n.includes("costo")) return "costo";
   if (n.includes("matricula")) return "estMat";
   if (n.includes("apertura") && n.includes("nit")) return "fechaNit";
+  if (n.replace(/[^a-z]/g, "") === "ci" || n.includes("carnet") || n.includes("cedula")) return "ci";
   if (n.includes("correo") && n.includes("seprec")) return "correoSeprec";
   if (n.includes("correo")) return "correo";
   if (n.includes("tipo") && n.includes("contribuy")) return "tipo";
@@ -3022,6 +3024,7 @@ function recNuevoCliente() {
       <div class="field"><label>NIT (opcional)</label><input id="nc_nit" inputmode="numeric"></div>
       <div class="field"><label>Celular (opcional)</label><input id="nc_cel" inputmode="tel"></div>
     </div>
+    <div class="field"><label>C.I. (opcional · es su clave del Portal del Cliente)</label><input id="nc_ci"></div>
     <div class="field"><label>Correo (opcional)</label><input id="nc_correo" type="email"></div>
     <div class="field"><label>Nota para la tarea (opcional)</label><textarea id="nc_nota" style="min-height:60px" placeholder="Ej. Trae su carnet el lunes"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
@@ -3035,7 +3038,7 @@ function recNuevoCliente() {
   setTimeout(() => { const i = bg.querySelector("#nc_nombre"); if (i) i.focus(); }, 50);
   bg.querySelector("#nc_save").onclick = async () => {
     const v = id => bg.querySelector(id).value.trim();
-    const nombre = v("#nc_nombre").toUpperCase(), nit = v("#nc_nit"), cel = v("#nc_cel"), correo = v("#nc_correo"), nota = v("#nc_nota");
+    const nombre = v("#nc_nombre").toUpperCase(), ciN = v("#nc_ci"), nit = v("#nc_nit"), cel = v("#nc_cel"), correo = v("#nc_correo"), nota = v("#nc_nota");
     const m = bg.querySelector("#nc_msg");
     if (nombre.length < 3) { m.className = "msg err"; m.textContent = "Escribe el nombre completo del cliente."; return; }
     const repe = BD.find(x => (nit && bdV(x, "nit") === nit) || (bdV(x, "nombre") || bdV(x, "razon")).toUpperCase() === nombre);
@@ -3043,7 +3046,7 @@ function recNuevoCliente() {
     const btn = bg.querySelector("#nc_save"); btn.disabled = true; btn.textContent = "Creando…";
     const H = k => (bdKey2Header && bdKey2Header[k]) || BD_KEY2LBL[k];
     const fila = {};
-    fila[H("nombre")] = nombre; if (nit) fila[H("nit")] = nit; if (cel) fila[H("celular")] = cel; if (correo) fila[H("correo")] = correo;
+    fila[H("nombre")] = nombre; if (nit) fila[H("nit")] = nit; if (ciN) fila[H("ci")] = ciN; if (cel) fila[H("celular")] = cel; if (correo) fila[H("correo")] = correo;
     fila[H("estado")] = "ACTIVO";
     const codigo = bdNextCodigo(); fila[H("codigoId")] = codigo;
     fila["_altaISO"] = new Date().toISOString(); fila["_altaDesde"] = "recepcion"; fila["_datosIncompletos"] = true;
@@ -4035,6 +4038,7 @@ function paintFicha() {
     <tfoot><tr><td></td><td><b>TOTAL</b></td><td colspan="3"></td><td class="mono" style="text-align:right"><b>${fx(sv)}</b></td><td class="mono" style="text-align:right"><b>${fx(sc)}</b></td><td colspan="3"></td></tr></tfoot></table></div>
     <p class="note">Toca un mes para abrir su declaración. Los meses anteriores a octubre 2026 vienen de la importación y solo muestran que se recepcionaron.</p>
     ${fiTareasHTML(c)}
+    <div id="fi_docs" style="margin-top:20px"></div>
     <h3 style="margin:20px 0 8px">Otros servicios recepcionados</h3>
     <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Servicio</th><th>Detalle</th><th>Período / Gestión</th><th>Atención</th></tr></thead><tbody>
     ${otros.map(r => `<tr><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td>${escape(r.servicio || r.servicioNombre || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td>${escape(r.mesRecepcion || "—")}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="5" class="note">Sin otros servicios.</td></tr>`}
@@ -4042,6 +4046,7 @@ function paintFicha() {
   fiBind();
   if (el("fi_anio")) el("fi_anio").onchange = e => { FI_UI.anio = e.target.value; paintFicha(); };
   el("v-ficha").querySelectorAll(".fi-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(secretos[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+  fiDocsPintar(c);
   el("v-ficha").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true));
   el("v-ficha").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false));
   el("v-ficha").querySelectorAll(".ev-edit").forEach(b => b.onclick = () => { const e = EVENTOS.find(x => x.id === b.dataset.id); if (e) openEventoModal(e); });
@@ -4058,6 +4063,42 @@ function fiTareasHTML(c) {
   return `<div style="display:flex;gap:8px;align-items:center;margin:20px 0 8px"><h3 style="margin:0 auto 0 0">Tareas del cliente (${pend.length} pendiente${pend.length === 1 ? "" : "s"})</h3>${canEditClientes() ? '<button class="btn sec" id="fi_newt" style="border:1px solid var(--line)">+ Nueva tarea</button>' : ""}</div>
     ${pend.map(e => calTareaFila(e, false, hoy)).join("") || '<p class="note">No tiene tareas pendientes.</p>'}
     ${hechas.length ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">Ver ${hechas.length} tarea${hechas.length === 1 ? "" : "s"} terminada${hechas.length === 1 ? "" : "s"}</summary><div style="margin-top:8px">${hechas.map(e => calTareaFila(e, true, hoy)).join("")}</div></details>` : ""}`;
+}
+// Portal del Cliente: enlace y documentos (carpeta de Drive del cliente)
+const PORTAL_URL = location.origin + "/cliente.html";
+const FI_DOCS = {};
+function fiDocsPintar(c) {
+  const box = el("fi_docs"); if (!box) return;
+  const nit = FI_UI.nit, info = FI_DOCS[nit];
+  const nombre = c ? (bdV(c, "nombre") || bdV(c, "razon")) : "";
+  const ci = c ? bdV(c, "ci") : "";
+  const claveTxt = ci ? "tu número de C.I." : (nit.length >= 8 ? "tu número de C.I. (" + nit.slice(0, -3) + ")" : "tu número de C.I.");
+  const msgWa = `Hola ${nombre.split(" ")[0] || ""}, ya puedes revisar tus declaraciones, balances, trámites y documentos en el Portal del Cliente de CONTAX:\n${PORTAL_URL}\nUsuario: tu NIT (${nit})\nClave: ${claveTxt}`;
+  const lista = info && info.documentos ? info.documentos : null;
+  box.innerHTML = `<div class="formcard" style="max-width:none;margin:0">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0 auto 0 0">Portal del Cliente y documentos</h3>
+      <button class="mini" id="fi_pcopy">Copiar enlace del portal</button><button class="mini" id="fi_pwa">Copiar mensaje para WhatsApp</button></div>
+    <p class="note" style="margin:0 0 10px">El cliente entra en <b>${escape(PORTAL_URL)}</b> con su <b>NIT</b> y su <b>C.I.</b>${ci ? "" : ` (no tiene C.I. en la Base de Datos: se usa el NIT sin los 3 últimos dígitos${nit.length >= 8 ? ", <b>" + escape(nit.slice(0, -3)) + "</b>" : ""}; si es empresa, carga su C.I. en la ficha de la Base de Datos)`}.</p>
+    ${lista === null ? `<button class="btn sec" id="fi_dver" style="border:1px solid var(--line)">Ver documentos del cliente</button>` : lista === "cargando" ? `<p class="note"><span class="cx-spin"></span> Cargando documentos…</p>` : info.error ? `<p class="msg err">${escape(info.error)}</p>` : `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><a class="mini" href="${escape(info.carpetaContax)}" target="_blank" rel="noopener">Subir documentos para el cliente (Drive)</a><a class="mini" href="${escape(info.carpeta)}" target="_blank" rel="noopener">Abrir carpeta del cliente</a><button class="mini" id="fi_drel">Actualizar</button></div>
+      <p class="note" style="margin:0 0 8px">Lo que pongas en la carpeta <b>"Entregados por CONTAX"</b> le aparece al cliente en su portal para descargar.</p>
+      ${lista.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Archivo</th><th>Origen</th><th>Fecha</th><th>Tamaño</th></tr></thead><tbody>${lista.map(x => `<tr><td><a href="${escape(x.url)}" target="_blank" rel="noopener">${escape(x.nombre)}</a></td><td>${x.origen === "contax" ? "Entregado por CONTAX" : "Subido por el cliente"}</td><td class="mono">${escape(new Date(x.fecha).toLocaleDateString("es-BO"))}</td><td class="mono">${escape(String(x.kb))} KB</td></tr>`).join("")}</tbody></table></div>` : `<p class="note">Todavía no hay documentos.</p>`}`}
+  </div>`;
+  const cp = (t, b) => { try { navigator.clipboard.writeText(t); b.textContent = "Copiado"; setTimeout(() => fiDocsPintar(c), 1500); } catch (e) {} };
+  if (el("fi_pcopy")) el("fi_pcopy").onclick = e => cp(PORTAL_URL, e.target);
+  if (el("fi_pwa")) el("fi_pwa").onclick = e => cp(msgWa, e.target);
+  const cargar = async () => {
+    FI_DOCS[nit] = { documentos: "cargando" }; fiDocsPintar(c);
+    try {
+      const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+      const idToken = await auth.currentUser.getIdToken();
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_docs_cliente", idToken, nit }) }).then(x => x.json());
+      FI_DOCS[nit] = r.ok ? r : { documentos: [], error: r.error || "No se pudo leer." };
+    } catch (e) { FI_DOCS[nit] = { documentos: [], error: e.message }; }
+    if (FI_UI.nit === nit) fiDocsPintar(c);
+  };
+  if (el("fi_dver")) el("fi_dver").onclick = cargar;
+  if (el("fi_drel")) el("fi_drel").onclick = cargar;
 }
 function fiBind() {
   const q = el("fi_q"); if (!q) return;
