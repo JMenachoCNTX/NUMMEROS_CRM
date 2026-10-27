@@ -534,8 +534,26 @@ function pasVerificar(d) {
     var hay = pal.filter(function (w) { return textoTodo.indexOf(" " + w + " ") >= 0 || (/^\d{3,}$/.test(w) && textoTodo.indexOf(w) >= 0); }).length;
     return pal.length <= 2 ? hay === pal.length : hay >= pal.length - 1;
   });
-  checks.push({ label: "Cuenta destino", valor: x.destino || "—", ok: okDest && !lect.error, nota: okDest ? "Correcta" : "No es la cuenta de CONTAX" });
+  // N° de cuenta y banco configurados en el panel
+  var ctaCfg = String(c.destinoCuenta || "").replace(/\D/g, ""), bancoCfg = norm(c.destinoBanco || "");
+  var ctaLeida = String(x.cuentaDestino || "").replace(/[^\d*xX•]/g, ""), ctaDig = ctaLeida.replace(/\D/g, "");
+  var ctaEstado = "";   // "ok" | "otra" | "" (no se ve en el comprobante)
+  if (ctaCfg.length >= 4) {
+    var ult4 = ctaCfg.slice(-4), todoDig = textoTodo.replace(/\D/g, " ");
+    if (ctaDig.length >= 4) ctaEstado = (ctaDig === ctaCfg || ctaCfg.slice(-ctaDig.length) === ctaDig || ctaDig.slice(-4) === ult4) ? "ok" : "otra";
+    else if (todoDig.indexOf(ctaCfg) >= 0 || new RegExp("(^|\\D)" + ult4 + "(\\D|$)").test(textoTodo)) ctaEstado = "ok";
+  }
+  var bancoOk = !!bancoCfg && norm(c.destinoBanco).split(" ").filter(function (w) { return w.length >= 3 && ["BANCO", "BCO", "DEL", "LOS"].indexOf(w) < 0; }).some(function (w) { return textoTodo.indexOf(" " + w + " ") >= 0; });
+  if (bancoCfg && !bancoOk) {   // siglas: "Banco Nacional de Bolivia" = BNB
+    var sig = bancoCfg.split(" ").filter(function (w) { return ["DE", "DEL", "LA", "LOS", "Y"].indexOf(w) < 0; }).map(function (w) { return w.charAt(0); }).join("");
+    if (sig.length >= 3 && textoTodo.indexOf(" " + sig + " ") >= 0) bancoOk = true;
+  }
+  // El nombre del titular o el N° de cuenta confirman la cuenta; una cuenta distinta visible la rechaza
+  okDest = ctaEstado === "otra" ? false : (okDest || ctaEstado === "ok");
+  var notaDest = !okDest ? (ctaEstado === "otra" ? "Otro N° de cuenta" : "No es la cuenta de CONTAX") : (ctaEstado === "ok" ? "Titular y cuenta correctos" : "Titular correcto");
+  checks.push({ label: "Cuenta destino", valor: (x.destino || "—") + (ctaLeida ? " · " + ctaLeida : ""), ok: okDest && !lect.error, nota: notaDest });
   if (!okDest) motivos.push("Cuenta destino distinta");
+  if (bancoCfg) checks.push({ label: "Banco destino", valor: x.bancoDestino || (bancoOk ? c.destinoBanco : "No se ve"), ok: true, nota: bancoOk ? "Coincide" : "Informativo" });
   // 3) Fecha
   var f = pasFecha_(x.fecha), hoy = pasHoy_();
   var dias = f ? Math.round((new Date(hoy.iso + "T00:00:00") - new Date(f + "T00:00:00")) / 86400000) : null;
@@ -602,8 +620,8 @@ function pasLeerComprobante_(dataUrl) {
   var b64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
   var prompt = "Eres un asistente contable en Bolivia. La imagen es un comprobante de pago QR o transferencia bancaria. " +
     "Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
-    '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","cuentaDestino":"","fecha":"","hora":"","nroOperacion":"","glosa":"","pareceEditado":false}. ' +
-    "importe solo el número (ej. 50.00). fecha en formato dd/mm/aaaa. destino = nombre del beneficiario. " +
+    '{"banco":"","bancoDestino":"","importe":"","moneda":"","depositante":"","destino":"","cuentaDestino":"","fecha":"","hora":"","nroOperacion":"","glosa":"","pareceEditado":false}. ' +
+    "importe solo el número (ej. 50.00). fecha en formato dd/mm/aaaa. destino = nombre del beneficiario. cuentaDestino = número de cuenta del beneficiario tal como aparece (con asteriscos si está oculto). banco = banco o app desde donde se pagó; bancoDestino = banco del beneficiario si aparece. " +
     "pareceEditado=true si ves señales de que la imagen fue alterada. Si un dato no aparece, cadena vacía.";
   // Rápido: sin "pensamiento" (thinkingBudget 0) y respuesta directa en JSON. Con una clave de pago
   // (facturación activa en Google AI Studio) no hay esperas por límite de uso.

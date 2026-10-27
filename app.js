@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "56";
+const APP_VERSION = "57";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4456,7 +4456,9 @@ function paintPasarela() {
         <div class="grid2">${n("pa_fact", c.precios.fact, "Precio mensual (Bs)")}</div>
         </div><div><h3 style="margin:0 0 10px">Cuenta que recibe los pagos</h3>
         <div class="field"><label>Palabras que deben aparecer en el comprobante (separadas por coma)</label><input id="pa_dest" value="${escape((c.destinoClaves || []).join(", "))}" placeholder="Ej. CONTAX, 4417" ${dis}></div>
-        <p class="note" style="margin:0">Nombre del titular o últimos dígitos de la cuenta. Si el comprobante no las tiene, el pago queda en revisión.</p>
+        <div class="grid2"><div class="field"><label>N° de cuenta</label><input id="pa_dcta" inputmode="numeric" value="${escape(c.destinoCuenta || "")}" placeholder="Ej. 4012345678" ${dis}></div>
+        <div class="field"><label>Banco</label><input id="pa_dbanco" value="${escape(c.destinoBanco || "")}" placeholder="Ej. BNB, Banco Unión" ${dis}></div></div>
+        <p class="note" style="margin:0">Se revisa el nombre del titular, el N° de cuenta (completo o los últimos 4 dígitos, aunque el banco los oculte con asteriscos) y el banco. Si el comprobante muestra otra cuenta u otro titular, el pago queda en revisión.</p>
         <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600"><input type="checkbox" id="pa_activo" ${c.activo ? "checked" : ""} ${dis} style="width:auto"> Pasarela activa (los clientes pueden pagar)</label>
         </div>
       </div>
@@ -4649,7 +4651,8 @@ async function paGuardar() {
     diaDesde: v("pa_d1") || 25, diaHasta: 31, diaCierre: v("pa_cierre") || 5,
     eeffGestion: String(v("pa_gest") || new Date().getFullYear()),
     cupos: PA_UI.cupos.filter(x => Number(x.precio) > 0 && Number(x.capacidad) > 0),
-    destinoClaves: el("pa_dest").value.split(",").map(x => x.trim()).filter(Boolean)
+    destinoClaves: el("pa_dest").value.split(",").map(x => x.trim()).filter(Boolean),
+    destinoCuenta: (el("pa_dcta").value || "").replace(/[^\d]/g, ""), destinoBanco: (el("pa_dbanco").value || "").trim()
   };
   // Nombres de columnas de la Base de Datos, para que el script encuentre al cliente por NIT
   await new Promise(res => bdEnsureLoaded(() => res()));
