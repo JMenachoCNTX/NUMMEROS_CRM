@@ -45,6 +45,21 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .paso{display:flex;gap:10px;font-size:13px;align-items:flex-start}.paso b{width:22px;height:22px;border-radius:999px;background:var(--acento);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
 .subir{height:56px;border:2px dashed var(--acento);border-radius:12px;background:var(--menta);color:var(--txt);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:inherit}
 .prev{max-height:220px;max-width:100%;border-radius:10px;border:1px solid var(--borde);display:block;margin:0 auto}
+.animN{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:22px 16px 18px;border-radius:20px;background:linear-gradient(160deg,#0B2B26,#235347);color:#DAF1DE}
+.animN .anC{position:relative;width:112px;height:112px;margin-bottom:6px}
+.animN .anArc{position:absolute;inset:0;width:100%;height:100%;animation:anGiro 1.1s linear infinite}
+.animN .anArc circle{fill:none;stroke:#8EB69B;stroke-width:6;stroke-linecap:round;stroke-dasharray:90 250}
+.animN .anLogo{position:absolute;inset:26px;width:60px;height:60px;animation:anLat 1.4s ease-in-out infinite}
+.animN b{font-size:17px;color:#fff}.animN>span{font-size:13.5px;line-height:19px;max-width:300px}
+.animN .anBar{display:block;width:80%;height:6px;border-radius:9px;background:rgba(255,255,255,.15);overflow:hidden;margin-top:6px}
+.animN .anBar i{display:block;height:100%;width:0;background:#8EB69B;border-radius:9px;animation:anLlena 3s ease-out forwards}
+.animN.env .anArc{animation:none}.animN.env .anArc circle{stroke:#2E8B57;stroke-dasharray:none}
+.animN.env .anLogo{animation:anVuela 1.5s ease-in-out infinite}
+.animN .anOk{position:absolute;right:2px;bottom:6px;width:32px;height:32px;border-radius:50%;background:#2E8B57;display:flex;align-items:center;justify-content:center;border:3px solid #0B2B26;animation:anPop .4s ease-out}
+@keyframes anGiro{to{transform:rotate(360deg)}}@keyframes anLat{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes anLlena{to{width:100%}}@keyframes anPop{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes anVuela{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@media(prefers-reduced-motion:reduce){.animN .anArc,.animN .anLogo{animation:none}}
 .chk{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--borde);font-size:14px}.chk:last-child{border-bottom:0}
 .chk .d{width:24px;height:24px;border-radius:999px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .chk .d.ok{background:var(--acento)}.chk .d.no{background:var(--error)}
@@ -143,7 +158,7 @@ main > .pila{animation:entra .35s ease both}
 .cbar .cbT{font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A;font-size:12.5px}
 .cbar b{font-family:Akshar,sans-serif;font-size:28px;line-height:30px;color:#fff;letter-spacing:.5px}
 .cbar .u{display:inline-flex;align-items:baseline;gap:3px}.cbar .u small{font-size:11px;color:#B7D9C0;margin-right:4px}
-@media(max-width:400px){.cbar{gap:8px}.cbar .cbT{width:100%;text-align:center}.cbar b{font-size:26px}}
+@media(max-width:560px){.cbar{padding:8px 10px;gap:5px}.cbF{flex-wrap:nowrap;gap:6px;justify-content:space-between}.cbar .cbT{font-size:9.5px;line-height:11.5px;letter-spacing:.2px;max-width:112px;text-align:left}.cbar b{font-size:21px;line-height:23px}.cbar .u{gap:1px}.cbar .u small{font-size:9px;margin-right:2px}.cbF.dec{padding-top:5px}}
 .cbar.oculto{display:none}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
 .opc,.subir,.btn2,.link,.seg,.ayuda{color:var(--acento)}
@@ -475,6 +490,37 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     document.getElementById("nServ").classList.toggle("oculto", !(S.cli && S.cfg) || S.paso === "servicio" || S.paso === "datos");
   }
   function cargando(txt) { main.innerHTML = '<div class="pila" style="padding-top:60px;text-align:center"><div class="spin"></div><p class="suave">' + esc(txt) + "</p></div>"; }
+  // Animación de marca NUMMEROS (verificación en el banco y envío del recibo)
+  function animHtml(tipo) {
+    var env = tipo === "envio";
+    return '<div class="animN' + (env ? " env" : "") + '" role="status" aria-live="polite"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg>' +
+      '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo">' +
+      (env ? '<span class="anOk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>' : "") + "</div>" +
+      "<b>" + (env ? "Te estamos enviando tu recibo de pago" : "Tu pago se está verificando en el banco") + "</b>" +
+      "<span>" + (env ? "Lo recibirás en tu correo electrónico. Revisa tu bandeja de entrada (y la de spam)." : "Esto toma solo unos segundos. No cierres esta página.") + "</span>" +
+      '<i class="anBar"><i></i></i></div>';
+  }
+  function espera(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function verificarComprobante() {
+    main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("banco") + "</div>"; window.scrollTo(0, 0);
+    var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "", imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
+    if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
+    Promise.all([api(d), espera(3000)]).then(function (x) {
+      var r = x[0];
+      if (!r.ok) { ir("pago", r.error); return; }
+      S.ver = r; ir("verif");
+      if (r.aprobado) confirmarRecepcion(true);
+    });
+  }
+  // Registra la recepción sin preguntar (cuando el pago fue aprobado) y envía el recibo al correo
+  function confirmarRecepcion(conAnimacion) {
+    S.error = "";
+    Promise.all([api({ action: "pas_confirmar", token: S.ver.token }), espera(conAnimacion ? 3000 : 0)]).then(function (x) {
+      var r = x[0];
+      if (!r.ok) { ir("verif", r.error || "No se pudo registrar. Vuelve a intentar."); return; }
+      S.fin = r; ir("fin");
+    });
+  }
   function errHtml() { return S.error ? '<div class="aviso err" role="alert">' + esc(S.error) + "</div>" : ""; }
 
   function pintar() {
@@ -606,14 +652,19 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '</div><div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
         (S.img ? '<img class="prev" src="' + S.img + '" alt="Comprobante subido">' : "") + errHtml() +
         '<label class="subir" for="fComp">' + ICON.subir + (S.img ? "Cambiar comprobante" : "Subir comprobante") + '</label><input type="file" id="fComp" accept="image/*" class="oculto">' +
-        (S.img ? '<button class="btn" id="bVerif">Verificar comprobante</button>' : "") + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
+        (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Al subir la captura verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
     } else if (S.paso === "verif") {
       var v = S.ver;
-      h = '<div class="pila"><h2>' + (v.aprobado ? "Comprobante verificado" : "Revisemos tu comprobante") + '</h2><p class="suave c13">Esto es lo que leímos en la captura que subiste:</p><div class="card" style="padding:4px 18px">' +
-        v.checks.map(function (k) { return '<div class="chk"><span class="d ' + (k.ok ? "ok" : "no") + '">' + (k.ok ? ICON.ok : ICON.no) + '</span><span class="v"><span>' + esc(k.label) + "</span><b>" + esc(k.valor) + '</b></span><span class="n" style="color:' + (k.ok ? "var(--acento)" : "#B42318") + '">' + esc(k.nota) + "</span></div>"; }).join("") + "</div>" +
-        (v.revisionNuevos && v.motivos.length === 1 ? '<div class="aviso warn"><b>Tu comprobante está correcto.</b><br>Como elegiste el <b>Balance ¡Nuevos!</b>, verificaremos en Impuestos Nacionales la fecha de apertura de tu NIT. Si corresponde, aprobamos tu recepción; si no, rechazamos la solicitud y te devolvemos tu dinero.</div><button class="btn" id="bConf">Enviar para revisión</button>' :
-         v.aprobado ? '<button class="btn" id="bConf">Confirmar y recepcionar</button>'
-          : '<div class="aviso warn">Algo no coincide (' + esc(v.motivos.join(", ")) + '). Puedes subir otra captura más clara, o enviarlo así: el equipo de CONTAX lo revisará y te escribirá por WhatsApp.</div><button class="btn" id="bOtra">Subir otra captura</button><button class="btn2" id="bConf">Enviar a revisión</button>') + errHtml() + "</div>";
+      // Solo se muestran los datos leídos con su check; no se explica qué se revisa ni por qué falla
+      var filas = '<div class="card" style="padding:4px 18px">' + v.checks.filter(function (k) { return k.ok; }).map(function (k) { return '<div class="chk"><span class="d ok">' + ICON.ok + '</span><span class="v"><span>' + esc(k.label) + "</span><b>" + esc(k.valor) + "</b></span></div>"; }).join("") + "</div>";
+      if (v.aprobado) {
+        h = '<div class="pila"><h2>Comprobante verificado con éxito</h2>' + filas + (S.error ? errHtml() + '<button class="btn" id="bConf">Reintentar la recepción</button>' : animHtml("envio")) + "</div>";
+      } else if (v.revisionNuevos && v.motivos.length === 1) {
+        h = '<div class="pila"><h2>Comprobante recibido</h2>' + filas + '<div class="aviso warn"><b>Tu comprobante está correcto.</b><br>Como elegiste el <b>Balance ¡Nuevos!</b>, verificaremos en Impuestos Nacionales la fecha de apertura de tu NIT. Si corresponde, aprobamos tu recepción y te enviamos un correo; si no, te devolvemos tu dinero.</div><button class="btn" id="bConf">Enviar para revisión</button>' + errHtml() + "</div>";
+      } else {
+        h = '<div class="pila"><h2>No pudimos confirmar tu pago</h2><div class="aviso warn">No logramos confirmar tu pago de forma automática. Sube otra captura completa y clara del comprobante, o envíala así para que nuestro equipo la revise y te escriba por WhatsApp.</div>' +
+          '<button class="btn" id="bOtra">Subir otra captura</button><button class="btn2" id="bConf">Enviar a revisión</button>' + errHtml() + "</div>";
+      }
     } else if (S.paso === "cuenta") {
       var bals = (S.cfg && S.cfg.eeff && S.cfg.eeff.cupos) || [], prs = (S.cfg && S.cfg.premios) || [];
       h = '<div class="pila" style="text-align:center"><p class="c13 suave" style="margin-bottom:-6px">CONTAX · Contabilidad e Impuestos</p><h1>Estados financieros: muy pronto</h1>' +
@@ -819,18 +870,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? "datos" : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
-      comprimir(f).then(function (d) { S.img = d; S.error = ""; pintar(); }).catch(function (e) { S.error = e.message; pintar(); });
+      comprimir(f).then(function (d) { S.img = d; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
     };
-    if ($("bVerif")) $("bVerif").onclick = function () {
-      cargando("Leyendo tu comprobante con IA… (unos segundos)");
-      var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "", imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
-      if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
-      api(d).then(function (r) { if (!r.ok) { ir("pago", r.error); return; } S.ver = r; ir("verif"); });
-    };
+    if ($("bVerif")) $("bVerif").onclick = verificarComprobante;
     if ($("bOtra")) $("bOtra").onclick = function () { S.img = ""; ir("pago"); };
     if ($("bConf")) $("bConf").onclick = function () {
-      this.disabled = true; cargando("Registrando tu recepción…");
-      api({ action: "pas_confirmar", token: S.ver.token }).then(function (r) { if (!r.ok) { ir("verif", r.error); return; } S.fin = r; ir("fin"); });
+      this.disabled = true;
+      if (S.ver && S.ver.aprobado) { S.error = ""; pintar(); confirmarRecepcion(true); return; }
+      cargando("Enviando tu comprobante a revisión…"); confirmarRecepcion(false);
     };
     if ($("bOtro")) $("bOtro").onclick = function () { reiniciarServicio(); ir("servicio"); };
   }
