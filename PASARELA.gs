@@ -879,6 +879,14 @@ function adminHandle(d) {
   try {
     if (d.action === "admin_reservas") { admVerificar_(d.idToken, true); return admReservas_(); }
     if (d.action === "admin_docs_cliente") { admVerificar_(d.idToken, true); return admDocsCliente_(d.nit); }
+    if (d.action === "admin_portal_token") {
+      var yoP = admVerificar_(d.idToken, true), nitP = String(d.nit || "").replace(/\D/g, "");
+      if (!pasClienteCache_(nitP)) return { ok: false, error: "No encontramos ese NIT en la Base de Datos." };
+      var tkP = Utilities.getUuid() + Utilities.getUuid().slice(0, 8);
+      pasCachePut_("ps_" + tkP, { nit: nitP, t: Date.now(), staff: yoP.nombre || "CONTAX" }, 7200);
+      try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "portal_vista_staff", nombre: nitP, detalle: yoP.nombre + " abrió el Portal del Cliente del NIT " + nitP, porUid: yoP.uid, porNombre: yoP.nombre }); } catch (e) {}
+      return { ok: true, token: tkP };
+    }
     var yo = admVerificar_(d.idToken);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
     return { ok: false, error: "accion_desconocida" };
@@ -934,15 +942,18 @@ var PORTAL_CARPETA = "NUMMEROS · Portal de clientes";
 function portalHandle_(d) {
   var a = d.action;
   if (a === "portal_login") return portalLogin_(d.nit, d.ci);
-  var nit = portalSesion_(d.token);
+  var ses = portalSesionObj_(d.token), nit = ses && ses.nit;
   if (!nit) return { ok: false, sesion: false, error: "Tu sesión terminó. Vuelve a ingresar con tu NIT y tu C.I." };
-  if (a === "portal_datos") return portalDatos_(nit);
+  if (!ses.staff) { var cA = pasClienteCache_(nit); if (!cA || pasGrupoEstado_(cA.estado) !== "activo") { pasCacheDel_("ps_" + d.token); return { ok: false, sesion: false, error: "Tu acceso al Portal del Cliente ya no está activo. Escríbenos por WhatsApp." }; } }
+  if (a === "portal_datos") { var dd = portalDatos_(nit); if (ses.staff) dd.staff = ses.staff; return dd; }
+  if (a === "portal_pdf") return portalPdf_(nit, d);
   if (a === "portal_subir") return portalSubir_(nit, d);
   if (a === "portal_archivo") return portalArchivo_(nit, d.id);
   if (a === "portal_chat") return portalChat_(nit, d);
   if (a === "portal_salir") { pasCacheDel_("ps_" + d.token); return { ok: true }; }
   return { ok: false, error: "accion_desconocida" };
 }
+function portalSesionObj_(token) { if (!token || String(token).length < 20) return null; return pasCache_("ps_" + token); }
 function portalSesion_(token) { if (!token || String(token).length < 20) return ""; var s = pasCache_("ps_" + token); return s && s.nit ? s.nit : ""; }
 function portalLimpiaCi_(v) { return String(v || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
 function portalLogin_(nitIn, ciIn) {
@@ -954,7 +965,7 @@ function portalLogin_(nitIn, ciIn) {
   var cli = pasClienteCache_(nit);
   var fallo = function () { pasCachePut_(kInt, intentos + 1, 900); return { ok: false, error: "NIT o C.I. incorrectos. Si no recuerdas tus datos, escríbenos por WhatsApp." }; };
   if (!cli) return fallo();
-  if (!pasPermitido_(cli)) return { ok: false, error: "Tu acceso al portal no está disponible. Escríbenos por WhatsApp." };
+  if (pasGrupoEstado_(cli.estado) !== "activo") return { ok: false, error: "Tu acceso al Portal del Cliente no está activo. El portal es exclusivo para clientes activos de CONTAX. Escríbenos por WhatsApp si deseas reactivar tus servicios." };
   var ciBD = portalLimpiaCi_(cli.ci), ciNum = ci.replace(/\D/g, "");
   var ok = false;
   if (ciBD) ok = ci === ciBD || (ciNum.length >= 5 && ciNum === ciBD.replace(/\D/g, ""));
@@ -1129,4 +1140,61 @@ function admDocsCliente_(nit) {
   nit = String(nit || "").replace(/\D/g, ""); if (!nit) return { ok: false, error: "Falta el NIT." };
   var cli = pasClienteCache_(nit), cs = portalCarpetas_(nit, cli && cli.nombre, true);
   return { ok: true, carpeta: cs.cliente.getUrl(), carpetaContax: cs.contax.getUrl(), documentos: portalListarDocs_(nit, cli && cli.nombre, false).map(function (x) { x.url = "https://drive.google.com/file/d/" + x.id + "/view"; return x; }) };
+}
+
+// PDF con formato NUMMEROS: orden de recepción, resumen de una declaración o reporte anual
+function portalPdf_(nit, d) {
+  var recs = portalRecepciones_(nit), cli = pasClienteCache_(nit) || {}, html = "", nombre = "";
+  if (d.tipo === "recibo" || d.tipo === "declaracion") {
+    var r = recs.filter(function (x) { return x.id === d.id; })[0];
+    if (!r) return { ok: false, error: "No encontramos ese registro." };
+    if (d.tipo === "recibo") {
+      html = buildOrdenHTML({ nombre: r.clienteNombre || cli.nombre, nit: r.nit || nit, idCliente: r.clienteId || cli.codigoId, celular: r.clienteCelular || "", correo: r.clienteCorreo || "",
+        tipoContribuyente: r.tipoContribuyente || "", rubro: r.rubro || "", actividad: r.actividad || "", aperturaNit: r.aperturaNit || "", matricula: r.matriculaComercio || "",
+        nroRecepcion: r.nroRecepcion || "", nroRecibo: r.nroComprobante || "", dia: r.dia || "", fecha: r.fecha || "", hora: r.hora || "", mes: r.mesRecepcion || "",
+        tipoServicio: r.servicio || r.servicioNombre || "", detalleServicio: r.detalleServicio || "", importe: r.importe, formaPago: r.tipoPago || "", atencion: r.atencion || "", comentarios: "" }, "CONTAX - Contabilidad e Impuestos");
+      nombre = "Orden-Recepcion-" + (r.nroRecepcion || r.id) + ".pdf";
+    } else {
+      var filas = [["Período", r.mesRecepcion], ["Detalle", r.detalleServicio], ["Estado", ({ terminado: "Presentada", falta_declarar: "En revisión final", rcv: "En proceso", pendiente: "Recibida", revision: "Pago en revisión" })[portalEstadoDJ_(r)]],
+        ["Fecha de presentación", String(r.dj_fechaDeclaracion || "").slice(0, 10)], ["Cantidad de facturas", r.dj_cantFacturas], ["Total ventas", pasNum_(r.dj_totalVentas) ? "Bs " + pasFmt_(pasNum_(r.dj_totalVentas)) : ""],
+        ["Total compras", pasNum_(r.dj_totalCompras) ? "Bs " + pasFmt_(pasNum_(r.dj_totalCompras)) : ""], ["Crédito fiscal", r.dj_creditoFiscal ? "Bs " + pasFmt_(pasNum_(r.dj_creditoFiscal)) : ""],
+        ["IVA por pagar", pasNum_(r.dj_ivaPagar) ? "Bs " + pasFmt_(pasNum_(r.dj_ivaPagar)) : "Bs 0,00"], ["IT por pagar", pasNum_(r.dj_itPagar) ? "Bs " + pasFmt_(pasNum_(r.dj_itPagar)) : "Bs 0,00"],
+        ["Crédito para el mes siguiente", r.dj_creditoSigMes ? "Bs " + pasFmt_(pasNum_(r.dj_creditoSigMes)) : ""], ["Pago de impuestos", r.dj_pagoImpuestos], ["Orden de recepción", r.nroRecepcion]];
+      html = portalHojaNummeros_("Resumen de declaración mensual", r.mesRecepcion || "", cli, '<table class="kv">' + filas.filter(function (f) { return f[1]; }).map(function (f) { return "<tr><td class=\"k\">" + esc(f[0]) + "</td><td><b>" + esc(f[1]) + "</b></td></tr>"; }).join("") + "</table>" +
+        '<p class="nota">Resumen preparado por CONTAX con la información registrada en el sistema NUMMEROS. Los formularios oficiales presentados ante Impuestos Nacionales están en tu Portal del Cliente.</p>');
+      nombre = "Declaracion-" + String(r.mesRecepcion || "").replace(/\s+/g, "-") + ".pdf";
+    }
+  } else if (d.tipo === "reporte") {
+    var anio = String(d.anio || pasHoy_().anio), datos = portalDatos_(nit), tv = 0, tc = 0, ti = 0, tt = 0, rows = "";
+    for (var m = 1; m <= 12; m++) {
+      var k = anio + "-" + ("0" + m).slice(-2), xs = datos.declaraciones.filter(function (x) { return x.key === k; });
+      if (!xs.length) { rows += "<tr><td>" + PAS_MESES[m - 1] + '</td><td class="mut">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>'; continue; }
+      xs.forEach(function (x) { tv += x.ventas; tc += x.compras; ti += x.iva; tt += x.it;
+        rows += "<tr><td>" + PAS_MESES[m - 1] + "</td><td>" + esc(({ terminado: "Presentada", falta_declarar: "En revisión final", rcv: "En proceso", pendiente: "Recibida", revision: "En revisión" })[x.estado] || x.estado) + '</td><td class="r">' + pasFmt_(x.ventas) + '</td><td class="r">' + pasFmt_(x.compras) + '</td><td class="r">' + pasFmt_(x.iva) + '</td><td class="r">' + pasFmt_(x.it) + "</td></tr>"; });
+    }
+    var util = tv - tc;
+    html = portalHojaNummeros_("Reporte anual de declaraciones", "Gestión " + anio, cli,
+      '<table class="tab"><tr><th>Mes</th><th>Estado</th><th class="r">Ventas (Bs)</th><th class="r">Compras (Bs)</th><th class="r">IVA (Bs)</th><th class="r">IT (Bs)</th></tr>' + rows +
+      '<tr class="tot"><td>Total</td><td></td><td class="r">' + pasFmt_(tv) + '</td><td class="r">' + pasFmt_(tc) + '</td><td class="r">' + pasFmt_(ti) + '</td><td class="r">' + pasFmt_(tt) + "</td></tr></table>" +
+      '<table class="kv" style="margin-top:14px;width:auto"><tr><td class="k">Utilidad estimada</td><td><b>Bs ' + pasFmt_(util) + "</b></td></tr>" + (util > 0 ? '<tr><td class="k">IUE estimado (25%)</td><td><b>Bs ' + pasFmt_(util * 0.25) + "</b></td></tr>" : "") + "</table>" +
+      '<p class="nota">La utilidad es un estimado con las ventas y compras registradas; el cálculo oficial se realiza en los estados financieros.</p>');
+    nombre = "Reporte-Declaraciones-" + anio + ".pdf";
+  } else return { ok: false, error: "Tipo no válido." };
+  var pdf = Utilities.newBlob(html, "text/html", "x.html").getAs("application/pdf");
+  return { ok: true, nombre: nombre, dataUrl: "data:application/pdf;base64," + Utilities.base64Encode(pdf.getBytes()) };
+}
+function portalHojaNummeros_(titulo, sub, cli, cuerpo) {
+  var logoN = logoB64_("nummeros-firma.png"), logoC = logoB64_("contax-logo.png"), isoN = logoB64_("nummeros-isotipo-blanco.png"), hoy = pasHoy_();
+  return '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:0}*{box-sizing:border-box;font-family:Helvetica,Arial,sans-serif;color:#163832}body{margin:0}' +
+    '.f1{height:10px;background:#235347}.f2{height:3px;background:#8EB69B}table.cab{width:100%;border-collapse:collapse}table.cab td{padding:18px 36px 10px;vertical-align:middle}' +
+    '.t{font-size:22px;font-weight:700;color:#0B2B26}.s{font-size:12px;color:#557363;margin-top:3px}.w{padding:0 36px}' +
+    '.cli{background:#F4FAF5;border:1px solid #DAF1DE;padding:10px 14px;font-size:12px;margin:6px 0 14px}.cli b{color:#0B2B26}' +
+    'table.kv{width:100%;border-collapse:collapse}table.kv td{padding:7px 8px;font-size:12.5px;border-bottom:1px solid #DAF1DE}table.kv td.k{color:#557363;width:42%}' +
+    'table.tab{width:100%;border-collapse:collapse}table.tab th{background:#235347;color:#fff;font-size:11px;padding:8px;text-align:left}table.tab td{font-size:11.5px;padding:7px 8px;border-bottom:1px solid #DAF1DE}' +
+    '.r{text-align:right}.mut{color:#9DB4A8}tr.tot td{background:#DAF1DE;font-weight:700}.nota{font-size:10px;color:#557363;font-style:italic;margin-top:14px;line-height:1.5}' +
+    'table.pie{width:100%;border-collapse:collapse;margin-top:28px;background:#0B2B26}table.pie td{color:#DAF1DE;font-size:9.5px;padding:9px 36px}</style></head><body>' +
+    '<div class="f1"></div><div class="f2"></div><table class="cab"><tr><td style="width:34%">' + (logoN ? '<img src="data:image/png;base64,' + logoN + '" style="height:44px">' : "<b>NUMMEROS</b>") + '</td>' +
+    '<td style="text-align:center">' + (logoC ? '<img src="data:image/png;base64,' + logoC + '" style="height:40px">' : "<b>CONTAX</b>") + '</td><td style="width:34%;text-align:right"><div class="t">' + esc(titulo) + '</div><div class="s">' + esc(sub) + "</div></td></tr></table>" +
+    '<div class="w"><div class="cli"><b>' + esc(cli.nombre || "") + "</b> · NIT " + esc(cli.nitBuscado || "") + (cli.codigoId ? " · Cliente N° " + esc(cli.codigoId) : "") + " · Generado el " + esc(hoy.fecha) + "</div>" + cuerpo + "</div>" +
+    '<table class="pie"><tr><td>' + (isoN ? '<img src="data:image/png;base64,' + isoN + '" style="height:14px;vertical-align:middle;margin-right:8px">' : "") + 'NUMMEROS by CONTAX · Sistema de gestión contable</td><td style="text-align:right">Santa Cruz - Bolivia · 690-21969 · info@contaxbolivia.com</td></tr></table></body></html>';
 }

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "58";
+const APP_VERSION = "59";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4077,7 +4077,7 @@ function fiDocsPintar(c) {
   const lista = info && info.documentos ? info.documentos : null;
   box.innerHTML = `<div class="formcard" style="max-width:none;margin:0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0 auto 0 0">Portal del Cliente y documentos</h3>
-      <button class="mini" id="fi_pcopy">Copiar enlace del portal</button><button class="mini" id="fi_pwa">Copiar mensaje para WhatsApp</button></div>
+      <button class="mini" id="fi_pver" style="background:var(--green);color:#fff;border-color:var(--green)">Ver su portal</button><button class="mini" id="fi_pcopy">Copiar enlace del portal</button><button class="mini" id="fi_pwa">Copiar mensaje para WhatsApp</button></div>
     <p class="note" style="margin:0 0 10px">El cliente entra en <b>${escape(PORTAL_URL)}</b> con su <b>NIT</b> y su <b>C.I.</b>${ci ? "" : ` (no tiene C.I. en la Base de Datos: se usa el NIT sin los 3 últimos dígitos${nit.length >= 8 ? ", <b>" + escape(nit.slice(0, -3)) + "</b>" : ""}; si es empresa, carga su C.I. en la ficha de la Base de Datos)`}.</p>
     ${lista === null ? `<button class="btn sec" id="fi_dver" style="border:1px solid var(--line)">Ver documentos del cliente</button>` : lista === "cargando" ? `<p class="note"><span class="cx-spin"></span> Cargando documentos…</p>` : info.error ? `<p class="msg err">${escape(info.error)}</p>` : `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><a class="mini" href="${escape(info.carpetaContax)}" target="_blank" rel="noopener">Subir documentos para el cliente (Drive)</a><a class="mini" href="${escape(info.carpeta)}" target="_blank" rel="noopener">Abrir carpeta del cliente</a><button class="mini" id="fi_drel">Actualizar</button></div>
@@ -4086,6 +4086,18 @@ function fiDocsPintar(c) {
   </div>`;
   const cp = (t, b) => { try { navigator.clipboard.writeText(t); b.textContent = "Copiado"; setTimeout(() => fiDocsPintar(c), 1500); } catch (e) {} };
   if (el("fi_pcopy")) el("fi_pcopy").onclick = e => cp(PORTAL_URL, e.target);
+  // Entrar al portal de este cliente sin su clave (sesión de 2 horas, queda registrado quién la abrió)
+  if (el("fi_pver")) el("fi_pver").onclick = async e => {
+    const b = e.target, w = window.open("", "_blank"); b.disabled = true; b.textContent = "Abriendo…";
+    try {
+      const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+      const idToken = await auth.currentUser.getIdToken();
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_portal_token", idToken, nit }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo abrir.");
+      if (w) w.location = PORTAL_URL + "#tk=" + r.token; else location.href = PORTAL_URL + "#tk=" + r.token;
+    } catch (err) { if (w) w.close(); alert(err.message); }
+    b.disabled = false; b.textContent = "Ver su portal";
+  };
   if (el("fi_pwa")) el("fi_pwa").onclick = e => cp(msgWa, e.target);
   const cargar = async () => {
     FI_DOCS[nit] = { documentos: "cargando" }; fiDocsPintar(c);

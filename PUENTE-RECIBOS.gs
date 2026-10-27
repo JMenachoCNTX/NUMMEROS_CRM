@@ -182,7 +182,7 @@ function buildOrdenHTML(d, empresaNombre) {
 
   // Hoja membretada NUMMEROS (el sistema que emite la orden); la empresa emisora es CONTAX
   var verde = "#235347", oscuro = "#0B2B26", salvia = "#8EB69B", menta = "#DAF1DE", tinta = "#163832", suave = "#557363";
-  var logoN = logoB64_("nummeros-firma.png"), isoN = logoB64_("nummeros-isotipo-blanco.png");
+  var logoN = logoB64_("nummeros-firma.png"), isoN = logoB64_("nummeros-isotipo-blanco.png"), logoC = logoB64_("contax-logo.png");
   return '' +
   '<!doctype html><html><head><meta charset="utf-8"><style>' +
   '@page{size:A4 landscape;margin:0}' +
@@ -215,8 +215,9 @@ function buildOrdenHTML(d, empresaNombre) {
   '</style></head><body>' +
   '<div class="franja"></div><div class="franja2"></div>' +
   '<table class="cab"><tr>' +
-    '<td style="width:50%">' + (logoN ? '<img src="data:image/png;base64,' + logoN + '" style="height:58px;width:auto" alt="NUMMEROS by CONTAX">' : '<span style="font-size:30px;font-weight:700;color:' + verde + '">NUMMEROS</span><br><span style="color:' + suave + '">by CONTAX</span>') + '</td>' +
-    '<td style="text-align:right"><div class="lbl">Orden de Recepción</div><div class="nro">N° ' + esc(d.nroRecepcion || "") + '</div><div class="emisor">Emitida por <b>' + esc(empresaNombre) + '</b> · ' + esc(d.fecha || "") + (d.hora ? ' ' + esc(d.hora) : '') + '</div></td>' +
+    '<td style="width:30%">' + (logoN ? '<img src="data:image/png;base64,' + logoN + '" style="height:44px;width:auto" alt="NUMMEROS by CONTAX">' : '<span style="font-size:24px;font-weight:700;color:' + verde + '">NUMMEROS</span><br><span style="color:' + suave + '">by CONTAX</span>') + '</td>' +
+    '<td style="text-align:center">' + (logoC ? '<img src="data:image/png;base64,' + logoC + '" style="height:62px;width:auto" alt="CONTAX">' : '<span style="font-size:30px;letter-spacing:.2em;color:#16233f">CONTAX</span>') + '</td>' +
+    '<td style="width:30%;text-align:right"><div class="lbl">Orden de Recepción</div><div class="nro">N° ' + esc(d.nroRecepcion || "") + '</div><div class="emisor">Emitida por <b>' + esc(empresaNombre) + '</b> · ' + esc(d.fecha || "") + (d.hora ? ' ' + esc(d.hora) : '') + '</div></td>' +
   '</tr></table>' +
   '<div class="wrap">' +
     '<table class="cols"><tr>' +

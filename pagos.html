@@ -557,7 +557,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         info("¿Por qué debo hacer Estados Financieros?", INFO.porque) +
         '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
         info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
-        '<button class="link" id="bVolver">Volver</button></div>';
+        (desdePortal ? '<a class="link" href="cliente.html" style="text-align:center;text-decoration:none;display:block;line-height:40px">Volver a mi Portal del Cliente</a>' : '<button class="link" id="bVolver">Volver</button>') + "</div>";
     } else if ((S.paso === "opcion" || S.paso === "detalle") && S.serv === "decl") {
       var pr = S.cfg.precios, enF = !S.per || S.per.enFecha !== false, esRep = !S.cli || S.cli.repartidor !== false;
       var planes = [["basico", "Básico", "Sin movimiento: no compraste ni vendiste con factura", pr.sinMov]];
@@ -837,7 +837,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" }), espera(3000)]).then(function (rs) {
         if (!rs[0].ok) { ir("nit", rs[0].error); return; }
         if (!rs[1].ok) { ir("nit", rs[1].error); return; }
-        S.cli = rs[0].cliente; S.cfg = rs[1]; ir("datos");
+        S.cli = rs[0].cliente; S.cfg = rs[1]; ir(desdePortal ? "servicio" : "datos");
       });
     };
     // Búsqueda automática: al dejar de escribir el NIT (1,2 s), se busca solo
@@ -983,7 +983,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   // NIT por enlace: pagos.html?nit=123456
   var porEnlace = false;
-  try { var qn = new URLSearchParams(location.search).get("nit"); if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
+  var desdePortal = false;
+  try { var qs = new URLSearchParams(location.search), qn = qs.get("nit"); desdePortal = qs.get("portal") === "1"; if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
   if (!porEnlace && recuperarEstado() && S.paso !== "nit") { try { history.replaceState({ paso: "nit" }, ""); history.pushState({ paso: S.paso }, ""); } catch (e) {} }
   var previa = false; try { previa = new URLSearchParams(location.search).get("vista") === "previa"; } catch (e) {}
   cargando("Cargando…");
@@ -991,6 +992,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (r && r.ok) { var guardado = S.cfg; S.cfg = r; if (guardado && guardado.eeff && S.paso !== "nit") S.cfg = Object.assign({}, r); }
     if (antesLanz() && S.serv === "eeff" && /^(pago|verif|cuenta)$/.test(S.paso)) { S.paso = "eeff4"; try { history.replaceState({ paso: "eeff4" }, ""); } catch (e) {} }
     pintar();
+    // Si llega con su NIT (desde el Portal del Cliente o un enlace), se busca solo
+    if (porEnlace && S.paso === "nit" && S.nit.length >= 5) { var f = document.getElementById("fNit"); if (f && f.onsubmit) f.onsubmit({ preventDefault: function () {} }); }
   });
 })();
 </script>

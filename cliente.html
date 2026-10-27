@@ -98,11 +98,16 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lista .it .tx{flex:1;min-width:0}.lista .it .tx b{display:block;font-size:14.5px}.lista .it .tx span{font-size:12.5px;color:var(--suave)}
 .dato{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--borde);font-size:14px}.dato:first-child{border-top:0}
 .dato span{color:var(--suave)}.dato b{text-align:right;word-break:break-word}
+.visor{position:fixed;inset:0;z-index:90;background:#051F20;display:flex;flex-direction:column}
+.visor .vhd{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(90deg,#0B2B26,#235347);color:#fff;border-bottom:3px solid #8EB69B}
+.visor .vhd b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.visor .vcu{flex:1;overflow:auto;background:#E9F1EC;padding:10px}
+.mini{height:32px;border:1px solid var(--borde);border-radius:8px;background:var(--campo);color:var(--txt);font-size:12.5px;padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .subir{border:2px dashed var(--bctl);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
 /* Flotantes */
 .flot{position:fixed;right:16px;bottom:18px;z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
 .flot button,.flot a{height:52px;border-radius:26px;border:0;display:inline-flex;align-items:center;gap:8px;padding:0 18px 0 14px;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;box-shadow:0 6px 18px rgba(5,31,32,.25)}
-.flot .wa{background:#1F8F55;color:#fff}.flot .ia{background:var(--btnF);color:#fff}
+.flot .wa{background:#163832;color:#DAF1DE;border:1.5px solid #8EB69B}.flot .ia{background:var(--btnF);color:#fff}
 @media(max-width:520px){.flot button span,.flot a span{display:none}.flot button,.flot a{width:52px;padding:0;justify-content:center}}
 /* Chat */
 .chat{position:fixed;right:16px;bottom:16px;z-index:60;width:min(400px,calc(100vw - 24px));height:min(560px,calc(100vh - 90px));background:var(--sup);border:1px solid var(--borde);border-radius:18px;box-shadow:0 20px 50px rgba(5,31,32,.35);display:flex;flex-direction:column;overflow:hidden}
@@ -117,6 +122,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .chat form input{height:44px;font-size:15px}.chat form button{height:44px;width:48px;padding:0;flex-shrink:0}
 .sug{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 8px}.sug button{border:1px solid var(--borde);background:var(--campo);color:var(--txt);border-radius:16px;padding:6px 10px;font-size:12.5px;cursor:pointer}
 /* Animación de marca */
+.animFull{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 50% 35%,#235347,#051F20 70%)}
+.animFull .animN{background:transparent;margin:0;max-width:460px;width:100%;padding:0}
+.animFull .animN .anC{width:150px;height:150px}.animFull .animN .anLogo{inset:35px;width:80px;height:80px}
+.animFull .animN b{font-size:22px;font-family:Akshar,sans-serif;letter-spacing:.3px}.animFull .animN span{font-size:15px;color:#B7D9C0}
+.animFull::before{content:"";position:absolute;top:28px;left:50%;transform:translateX(-50%);width:170px;height:28px;background:url(marca/logos/nummeros-logotipo-horizontal-blanco.svg) center/contain no-repeat;opacity:.9}
 .animN{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:26px 16px 20px;border-radius:20px;background:linear-gradient(160deg,#0B2B26,#235347);color:#DAF1DE;max-width:420px;margin:40px auto}
 .animN .anC{position:relative;width:104px;height:104px;margin-bottom:6px}
 .animN .anArc{position:absolute;inset:0;width:100%;height:100%;animation:anGiro 1.1s linear infinite}
@@ -163,12 +173,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     yo: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>', pago: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>',
     subir: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>', bajar: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>', chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
     wa: '<path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/><path d="M9 9.5c.3 1.6 1.9 3.6 4.5 4.6l1-1.2 2 .8c-.2 1-1.2 1.8-2.3 1.6-3-.6-5.6-3.2-6-6-.2-1 .6-2 1.6-2.2l.8 2-1.2 1"/>',
+    msj: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/>', ver: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     salir: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3"/>', fact: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>', rep: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>',
     tema: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>', ojo: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     enviar: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', check: '<path d="M20 6L9 17l-5-5"/>'
   };
   function ic(n, t) { return '<svg width="' + (t || 18) + '" height="' + (t || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + I[n] + "</svg>"; }
-  function anim(t1, t2) { return '<div class="animN" role="status"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg><img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo"></div><b>' + t1 + "</b><span>" + t2 + '</span><i class="anBar"><i></i></i></div>'; }
+  function anim(t1, t2) { return '<div class="animFull"><div class="animN" role="status"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg><img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo"></div><b>' + t1 + "</b><span>" + t2 + '</span><i class="anBar"><i></i></i></div></div>'; }
   var MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   var EST = {
     terminado: ["Terminado", "b-ok"], falta_declarar: ["En revisión final", "b-proc"], rcv: ["En proceso", "b-proc"], proceso: ["En proceso", "b-proc"],
@@ -226,7 +237,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function reloj(id) { return '<div class="r" data-cd="' + id + '"><div><b>--</b><span>días</span></div><div><b>--</b><span>horas</span></div><div><b>--</b><span>min</span></div><div><b>--</b><span>seg</span></div></div>'; }
   function cuentasHtml(login) {
     var c = cfg(), f = declFin(), l = lanzMs(), pr = (c && c.precios) || {}, h = "";
-    var nitQ = S.d ? "?nit=" + encodeURIComponent(S.d.cliente.nit) : "";
+    var nitQ = S.d ? "?portal=1&nit=" + encodeURIComponent(S.d.cliente.nit) : "";
     if (f) h += '<div class="cd"><div class="t">Declaración de ' + esc(f.mes) + " a Bs " + esc(pr.enFecha || 50) + " · Plan Estándar</div>" + reloj("decl") +
       '<div class="f">Paga hasta el ' + f.ult + " de " + esc(f.mes.toLowerCase()) + " a las 23:59. Desde el 1 de " + esc(f.mesSig) + " cuesta Bs " + esc(pr.fueraFecha || 60) + ".</div>" +
       (login ? "" : '<a class="btn" href="pagos.html' + nitQ + '" style="text-decoration:none">Pagar mi declaración</a>') + "</div>";
@@ -249,13 +260,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   var TABS = [["inicio", "Inicio", "casa"], ["decl", "Declaraciones", "decl"], ["serv", "Balances y trámites", "bal"], ["docs", "Documentos", "doc"], ["datos", "Mis datos", "yo"]];
   function pintarApp() {
     var c = S.d.cliente;
-    raiz.innerHTML = '<div class="top"><div class="topin"><img class="logo logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><img class="logo logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS">' +
+    raiz.innerHTML = (S.d.staff ? '<div style="background:#93370D;color:#fff;text-align:center;font-size:13px;padding:7px 12px;font-weight:600">Vista de CONTAX (' + esc(S.d.staff) + "): estás viendo el portal de este cliente tal como él lo ve.</div>" : "") + '<div class="top"><div class="topin"><img class="logo logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><img class="logo logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS">' +
       '<div class="who"><b>' + esc(c.nombre) + "</b><span>NIT " + esc(c.nit) + "</span></div>" +
       '<button class="icb" id="bTema" title="Modo claro u oscuro" aria-label="Cambiar modo claro u oscuro">' + ic("tema") + '</button><button class="icb" id="bSalir" title="Salir" aria-label="Salir del portal">' + ic("salir") + "</button></div>" +
       '<nav class="tabs" aria-label="Secciones">' + TABS.map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + ic(t[2], 16) + esc(t[1]) + "</button>"; }).join("") + "</nav></div>" +
       '<main id="cont"></main>' +
-      '<div class="flot">' + (WA ? '<a class="wa" href="' + wa() + '" target="_blank" rel="noopener" aria-label="WhatsApp">' + ic("wa", 22) + "<span>WhatsApp</span></a>" : "") +
-      '<button class="ia" id="bChat" aria-label="Asistente">' + ic("chat", 22) + "<span>Asistente</span></button></div>" + '<div id="chatBox"></div>';
+      '<div class="flot">' + (WA ? '<a class="wa" href="' + wa() + '" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">' + ic("msj", 22) + "<span>WhatsApp</span></a>" : "") +
+      '<button class="ia" id="bChat" aria-label="Asistente">' + '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" style="width:20px;height:24px">' + "<span>Asistente</span></button></div>" + '<div id="chatBox"></div>';
     document.getElementById("bSalir").onclick = function () { salir(); };
     document.getElementById("bTema").onclick = function () { var o = ["auto", "claro", "oscuro"]; pasTema.set(o[(o.indexOf(pasTema.get()) + 1) % 3]); };
     document.getElementById("bChat").onclick = function () { S.chatAbierto = true; pintarChat(); };
@@ -276,6 +287,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.tab === "inicio") promoIniciar();
     if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; }
     if (S.tab === "docs") enlazarDocs();
+    enlazarPdf(cont);
     if (document.getElementById("bChatIr")) document.getElementById("bChatIr").onclick = function () { S.chatAbierto = true; pintarChat(); };
   }
 
@@ -287,7 +299,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ["arquimedes-pensando.jpg", "¿Tienes dudas de tus impuestos?", "Pregúntale a nuestro asistente o escríbenos por WhatsApp. Te respondemos con tu información.", "Preguntar", "chat"]
   ];
   function tabInicio(d) {
-    var c = d.cliente, nitQ = "?nit=" + encodeURIComponent(c.nit);
+    var c = d.cliente, nitQ = "?portal=1&nit=" + encodeURIComponent(c.nit);
     var ult = d.declaraciones[0], bal = d.eeff.find ? d.eeff.find(function (x) { return x.gestion === String(cfg().eeffGestion); }) : null;
     var activo = c.grupo === "activo" || /ACTIV/i.test(c.estado || "");
     var p = PROMOS[S.promo % PROMOS.length];
@@ -306,7 +318,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<button data-ir="decl"><span class="ic">' + ic("rep") + "</span>Mis reportes<small>Ventas, compras e impuestos</small></button>" +
       '<button data-ir="serv"><span class="ic">' + ic("tram") + "</span>Trámites y balances<small>Estado de cada uno</small></button>" +
       '<button id="bChatIr"><span class="ic">' + ic("chat") + "</span>Asistente<small>Resuelve tus dudas</small></button>" +
-      (WA ? '<a href="' + wa() + '" target="_blank" rel="noopener"><span class="ic">' + ic("wa") + "</span>WhatsApp<small>Habla con el equipo</small></a>" : "") +
+      (WA ? '<a href="' + wa() + '" target="_blank" rel="noopener"><span class="ic">' + ic("msj") + "</span>WhatsApp<small>Habla con el equipo</small></a>" : "") +
       "</div>" +
       '<div><div class="promo" id="promo" style="background-image:url(marca/clasicos/' + p[0] + ')"><div class="tx"><b>' + esc(p[1]) + "</b><p>" + esc(p[2]) + "</p>" +
       (p[4] === "chat" ? '<a href="#" id="promoChat">' + esc(p[3]) + "</a>" : '<a href="pagos.html' + nitQ + '">' + esc(p[3]) + "</a>") + "</div></div>" +
@@ -333,12 +345,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var k = S.anio + "-" + ("0" + m).slice(-2), rs = d.declaraciones.filter(function (x) { return x.key === k; });
       if (!rs.length) { filas += "<tr><td><b>" + MESES[m - 1] + "</b></td><td>" + (k < hoyK && k >= primera ? '<span class="badge b-pend">No recepcionado</span>' : '<span class="suave">—</span>') + '</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>'; continue; }
       rs.forEach(function (r) { tv += r.ventas; tc += r.compras; ti += r.iva; tt += r.it;
-        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + "</div></td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
+        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div><button class="mini" data-pdf="declaracion|' + esc(r.id) + '" style="margin-top:4px">' + ic("ver", 14) + "Ver</button></td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
           '<td class="n">' + (r.ventas ? bs(r.ventas) : "—") + '</td><td class="n">' + (r.compras ? bs(r.compras) : "—") + '</td><td class="n">' + (r.iva ? bs(r.iva) : "—") + '</td><td class="n">' + (r.it ? bs(r.it) : "—") + "</td></tr>"; });
     }
     var util = Math.round((tv - tc) * 100) / 100;
     return '<div class="pila"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Declaraciones mensuales</h2><p class="c13 suave">Estado de cada mes y tu reporte de ventas, compras e impuestos.</p></div>' +
-      '<select id="selAnio" style="width:auto;height:42px;font-size:15px">' + lista.map(function (a) { return "<option" + (a === S.anio ? " selected" : "") + ">" + a + "</option>"; }).join("") + "</select></div>" +
+      '<div style="display:flex;gap:8px;align-items:center"><button class="btn2" data-pdf="reporte||' + esc(S.anio) + '">' + ic("bajar", 16) + 'Reporte PDF</button><select id="selAnio" style="width:auto;height:42px;font-size:15px">' + lista.map(function (a) { return "<option" + (a === S.anio ? " selected" : "") + ">" + a + "</option>"; }).join("") + "</select></div></div>" +
       '<div class="grid">' + kpi("rep", "Ventas " + S.anio, bs(tv), "Según tus facturas registradas.", "") + kpi("rep", "Compras " + S.anio, bs(tc), "Facturas de compras registradas.", "") +
       kpi("decl", "IVA + IT pagado o por pagar", bs(ti + tt), "IVA " + bs(ti) + " · IT " + bs(tt), "") + kpi("bal", "Utilidad estimada " + S.anio, bs(util), util > 0 ? "IUE estimado (25%): " + bs(util * 0.25) : "Sin utilidad estimada por ahora.", util > 0 ? "var(--ok)" : "") + "</div>" +
       '<div class="tw"><table><thead><tr><th>Mes</th><th>Estado</th><th class="n">Ventas</th><th class="n">Compras</th><th class="n">IVA</th><th class="n">IT</th></tr></thead><tbody>' + filas + "</tbody>" +
@@ -349,10 +361,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // ----- Balances, trámites, facturación -----
   function lista(arr, icn, vacio, sub) {
     if (!arr.length) return '<p class="c13 suave">' + vacio + "</p>";
-    return '<div class="lista">' + arr.map(function (x) { return '<div class="it"><span class="ic">' + ic(icn) + '</span><div class="tx"><b>' + esc(sub(x)) + "</b><span>" + esc((x.detalle || x.servicio || "") + (x.fecha ? " · recibido " + x.fecha : "") + (x.nro ? " · Orden N° " + x.nro : "")) + "</span></div>" + badge(x.estado) + "</div>"; }).join("") + "</div>";
+    return '<div class="lista">' + arr.map(function (x) { return '<div class="it"><span class="ic">' + ic(icn) + '</span><div class="tx"><b>' + esc(sub(x)) + "</b><span>" + esc((x.detalle || x.servicio || "") + (x.fecha ? " · recibido " + x.fecha : "") + (x.nro ? " · Orden N° " + x.nro : "")) + "</span></div><div style=\"display:flex;flex-direction:column;gap:6px;align-items:flex-end\">" + badge(x.estado) + (x.nro ? '<button class="mini" data-pdf="recibo|' + esc(x.id) + '">' + ic("doc", 14) + "Recibo</button>" : "") + "</div></div>"; }).join("") + "</div>";
   }
   function tabServ(d) {
-    var nitQ = "?nit=" + encodeURIComponent(d.cliente.nit);
+    var nitQ = "?portal=1&nit=" + encodeURIComponent(d.cliente.nit);
     return '<div class="pila"><h2>Balances, trámites y facturación</h2>' +
       '<div class="card"><h3 style="margin-bottom:6px">Estados financieros (balances)</h3>' + lista(d.eeff, "bal", "Todavía no tienes balances recepcionados.", function (x) { return "Gestión " + (x.gestion || "") + (x.balance ? " · " + x.balance : ""); }) +
       '<a class="btn2" href="pagos.html' + nitQ + '" style="margin-top:12px;text-decoration:none">' + ic("pago", 16) + "Reservar o pagar mi balance</a></div>" +
@@ -367,12 +379,17 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   var TIPOS_DOC = ["Carnet de identidad", "Certificado NIT", "Facturas", "Extracto bancario", "Contrato", "Matrícula / SEPREC", "Otro documento"];
   function tabDocs(d) {
     var docs = d.documentos || [], de = docs.filter(function (x) { return x.origen === "contax"; }), mios = docs.filter(function (x) { return x.origen !== "contax"; });
-    var fila = function (x) { return '<div class="it"><span class="ic">' + ic(x.origen === "contax" ? "doc" : "subir") + '</span><div class="tx"><b>' + esc(x.nombre) + "</b><span>" + esc(new Date(x.fecha).toLocaleDateString("es-BO")) + " · " + esc(x.kb) + ' KB</span></div><button class="btn2" data-bajar="' + esc(x.id) + '" style="height:38px">' + ic("bajar", 16) + "Descargar</button></div>"; };
+    var fila = function (x) { return '<div class="it"><span class="ic">' + ic(x.origen === "contax" ? "doc" : "subir") + '</span><div class="tx"><b>' + esc(x.nombre) + "</b><span>" + esc(new Date(x.fecha).toLocaleDateString("es-BO")) + " · " + esc(x.kb) + ' KB</span></div><button class="btn2" data-bajar="' + esc(x.id) + '" style="height:38px">' + ic("ver", 16) + "Ver</button></div>"; };
+    var recibos = [].concat(d.declaraciones, d.eeff, d.tramites, d.facturacion, d.otros).filter(function (x) { return x.nro; }).sort(function (a, b) { return String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")); });
+    var anios = {}; d.declaraciones.forEach(function (x) { if (x.key) anios[x.key.slice(0, 4)] = 1; }); anios[String(new Date().getFullYear())] = 1;
     return '<div class="pila"><h2>Documentos</h2>' +
       '<div class="card pila"><h3>Enviar documentos a CONTAX</h3><div class="subir">' +
       '<div><label class="l" for="dTipo">¿Qué documento es?</label><select id="dTipo">' + TIPOS_DOC.map(function (t) { return "<option>" + esc(t) + "</option>"; }).join("") + "</select></div>" +
       '<div><label class="l" for="dArch">Archivo (foto, PDF, Word o Excel · máximo 10 MB)</label><input id="dArch" type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple style="height:auto;padding:10px;font-size:14px"></div>' +
       '<button class="btn w" id="bSubir">' + ic("subir") + 'Enviar</button><div id="dMsg"></div></div></div>' +
+      '<div class="card"><h3 style="margin-bottom:6px">Reportes NUMMEROS</h3><p class="c13 suave" style="margin-bottom:10px">Tu resumen de ventas, compras e impuestos de cada año, en PDF.</p><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        Object.keys(anios).sort().reverse().map(function (a) { return '<button class="btn2" data-pdf="reporte||' + a + '">' + ic("rep", 16) + "Reporte " + a + "</button>"; }).join("") + "</div></div>" +
+      '<div class="card"><h3 style="margin-bottom:6px">Órdenes de recepción</h3>' + (recibos.length ? '<div class="lista">' + recibos.slice(0, 60).map(function (x) { return '<div class="it"><span class="ic">' + ic("doc") + '</span><div class="tx"><b>Orden N° ' + esc(x.nro) + " · " + esc(x.servicio || "Servicio") + "</b><span>" + esc((x.periodo || "") + (x.fecha ? " · " + x.fecha : "") + " · " + bs(x.importe)) + '</span></div><button class="btn2" data-pdf="recibo|' + esc(x.id) + '" style="height:38px">' + ic("ver", 16) + "Ver</button></div>"; }).join("") + "</div>" : '<p class="c13 suave">Aún no tienes órdenes de recepción.</p>') + "</div>" +
       '<div class="card"><h3 style="margin-bottom:6px">De CONTAX para ti</h3>' + (de.length ? '<div class="lista">' + de.map(fila).join("") + "</div>" : '<p class="c13 suave">Aquí aparecerán tus formularios, balances y documentos cuando el equipo los suba.</p>') + "</div>" +
       '<div class="card"><h3 style="margin-bottom:6px">Enviados por ti</h3>' + (mios.length ? '<div class="lista">' + mios.map(fila).join("") + "</div>" : '<p class="c13 suave">Todavía no enviaste documentos.</p>') + "</div></div>";
   }
@@ -397,10 +414,30 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       bt.disabled = true; var o = bt.innerHTML; bt.textContent = "Abriendo…";
       apiS({ action: "portal_archivo", id: bt.dataset.bajar }).then(function (r) {
         bt.disabled = false; bt.innerHTML = o;
-        if (!r.ok) { alert(r.error || "No se pudo descargar."); return; }
-        var a = document.createElement("a"); a.href = r.dataUrl; a.download = r.nombre; document.body.appendChild(a); a.click(); a.remove();
+        if (!r.ok) { alert(r.error || "No se pudo abrir."); return; }
+        abrirVisor(r);
       });
     }; });
+  }
+
+  // ----- Visor de documentos con formato NUMMEROS -----
+  function dataUrlABlob(du) { var m = du.match(/^data:([^;]+);base64,(.*)$/), bin = atob(m[2]), a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: m[1] }); }
+  function abrirVisor(r) {
+    var tipo = (r.dataUrl.match(/^data:([^;]+)/) || [])[1] || "", url = URL.createObjectURL(dataUrlABlob(r.dataUrl));
+    var cuerpo = /^image\//.test(tipo) ? '<img src="' + url + '" alt="' + esc(r.nombre) + '" style="max-width:100%;display:block;margin:0 auto">'
+      : /pdf/.test(tipo) ? '<iframe src="' + url + '" title="' + esc(r.nombre) + '" style="width:100%;height:100%;border:0;background:#fff"></iframe>'
+      : '<div class="aviso warn" style="margin:20px">Este tipo de archivo no se puede ver aquí. Descárgalo para abrirlo.</div>';
+    var bg = document.createElement("div"); bg.className = "visor";
+    bg.innerHTML = '<div class="vhd"><img src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS" style="height:20px"><b>' + esc(r.nombre) + '</b><a class="btn" href="' + url + '" download="' + esc(r.nombre) + '" style="height:38px;text-decoration:none;background:#8EB69B;color:#051F20">' + ic("bajar", 16) + 'Descargar</a><button class="icb" aria-label="Cerrar" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)">' + ic("x") + '</button></div><div class="vcu">' + cuerpo + "</div>";
+    document.body.appendChild(bg);
+    bg.querySelector(".icb").onclick = function () { bg.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 2000); };
+  }
+  function pedirPdf(btn, datos) {
+    btn.disabled = true; var o = btn.innerHTML; btn.textContent = "Preparando…";
+    apiS(datos).then(function (r) { btn.disabled = false; btn.innerHTML = o; if (!r.ok) { alert(r.error || "No se pudo generar."); return; } abrirVisor(r); });
+  }
+  function enlazarPdf(raizEl) {
+    (raizEl || document).querySelectorAll("[data-pdf]").forEach(function (b) { b.onclick = function () { var p = b.dataset.pdf.split("|"); pedirPdf(b, { action: "portal_pdf", tipo: p[0], id: p[1] || "", anio: p[2] || "" }); }; });
   }
 
   // ----- Mis datos -----
@@ -438,6 +475,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
 
   // ================= INICIO =================
   var tk = ""; try { tk = sessionStorage.getItem("portal-tk") || ""; } catch (e) {}
+  try { var mh = location.hash.match(/tk=([A-Za-z0-9-]+)/); if (mh) { tk = mh[1]; sessionStorage.setItem("portal-tk", tk); history.replaceState(null, "", location.pathname); } } catch (e) {}
   var nitGuardado = ""; try { nitGuardado = localStorage.getItem("portal-nit") || ""; } catch (e) {}
   api({ action: "pas_config" }).then(function (r) { if (r && r.ok) { S.cfgPub = { precios: r.precios, lanzamiento: r.lanzamiento, eeffGestion: r.eeff && r.eeff.gestion, diaDesde: r.diaDesde || 25 }; if (!S.d && document.getElementById("fLog")) { var n = document.getElementById("lNit"), ci = document.getElementById("lCi"); if (!ci || !ci.value) pintarLogin("", n ? n.value : nitGuardado); } } });
   if (tk) {
