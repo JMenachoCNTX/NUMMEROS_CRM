@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "55";
+const APP_VERSION = "56";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4446,20 +4446,21 @@ function paintPasarela() {
     const n = (id, v, lbl) => `<div class="field"><label>${lbl}</label><input id="${id}" type="number" min="0" step="1" value="${escape(String(v))}" ${dis}></div>`;
     let acum = 0;
     body = `${admin ? "" : `<p class="note">Solo un administrador puede cambiar precios y cupos.</p>`}
-      <div class="grid2" style="gap:16px;align-items:start">
-      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Declaración mensual</h3>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px">
+      <div class="formcard" style="max-width:none;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:4px 28px;align-items:start"><div><h3 style="margin:0 0 10px">Declaración mensual</h3>
         <div class="grid2">${n("pa_sin", c.precios.sinMov, "Básico · sin movimiento (Bs)")}${n("pa_prem", c.precios.premium, "Premium · 101 a 200 facturas (Bs)")}</div>
         <div class="grid2">${n("pa_en", c.precios.enFecha, "Estándar en fecha (Bs)")}${n("pa_fuera", c.precios.fueraFecha, "Estándar recepción tardía (Bs)")}</div>
         <div class="grid2">${n("pa_d1", c.diaDesde, "Recepción en fecha desde el día")}${n("pa_cierre", c.diaCierre, "Recepción tardía hasta el día")}</div>
         <p class="note" style="margin:0">Del día ${escape(String(c.diaDesde))} a fin de mes se recibe el mes actual a precio normal; del 1 al ${escape(String(c.diaCierre))} el mes anterior con recepción tardía; en los demás días la recepción está cerrada. Los meses atrasados pagan la tarifa del momento. El plan Estándar es solo para repartidores; las demás unipersonales pagan Premium.</p>
-        <h3 style="margin:16px 0 10px">Suscripción de facturación</h3>
+        </div><div><h3 style="margin:0 0 10px">Suscripción de facturación</h3>
         <div class="grid2">${n("pa_fact", c.precios.fact, "Precio mensual (Bs)")}</div>
-        <h3 style="margin:16px 0 10px">Cuenta que recibe los pagos</h3>
+        </div><div><h3 style="margin:0 0 10px">Cuenta que recibe los pagos</h3>
         <div class="field"><label>Palabras que deben aparecer en el comprobante (separadas por coma)</label><input id="pa_dest" value="${escape((c.destinoClaves || []).join(", "))}" placeholder="Ej. CONTAX, 4417" ${dis}></div>
         <p class="note" style="margin:0">Nombre del titular o últimos dígitos de la cuenta. Si el comprobante no las tiene, el pago queda en revisión.</p>
         <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600"><input type="checkbox" id="pa_activo" ${c.activo ? "checked" : ""} ${dis} style="width:auto"> Pasarela activa (los clientes pueden pagar)</label>
+        </div>
       </div>
-      <div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 10px">Balances · fases</h3>
+      <div class="formcard" style="max-width:none;margin:0;min-width:0"><h3 style="margin:0 0 10px">Balances · fases</h3>
         <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin fases)")}</div>
         <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cada balance cuenta en la fase que tiene su mismo precio. Se habilita la primera fase que tenga cupos libres.</p>
         ${eeffFasesHTML(PA_UI.cupos, eeffRecsPorPrecio(c.eeffGestion), PA_UI.reservas || {}, { editable: true, conMontos: true, dis })}

@@ -524,8 +524,16 @@ function pasVerificar(d) {
   if (!okMonto) motivos.push("Monto no coincide");
   // 2) Cuenta destino
   var claves = (c.destinoClaves || []).filter(function (k) { return String(k).trim(); });
-  var textoTodo = JSON.stringify(x).toUpperCase();
-  var okDest = !claves.length || claves.some(function (k) { return textoTodo.indexOf(String(k).trim().toUpperCase()) >= 0; });
+  // Se compara palabra por palabra y sin importar el orden ni las tildes: "MARIA SOLEDAD MASAPAIJA CHARIMO"
+  // coincide con "MASAPAIJA CHARIMO MARIA SOLEDAD". Basta que aparezcan casi todas las palabras de la clave.
+  var norm = function (t) { return String(t || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]+/g, " ").trim(); };
+  var textoTodo = " " + norm(JSON.stringify(x)) + " ";
+  var okDest = !claves.length || claves.some(function (k) {
+    var pal = norm(k).split(" ").filter(function (w) { return w.length >= 2; });
+    if (!pal.length) return false;
+    var hay = pal.filter(function (w) { return textoTodo.indexOf(" " + w + " ") >= 0 || (/^\d{3,}$/.test(w) && textoTodo.indexOf(w) >= 0); }).length;
+    return pal.length <= 2 ? hay === pal.length : hay >= pal.length - 1;
+  });
   checks.push({ label: "Cuenta destino", valor: x.destino || "—", ok: okDest && !lect.error, nota: okDest ? "Correcta" : "No es la cuenta de CONTAX" });
   if (!okDest) motivos.push("Cuenta destino distinta");
   // 3) Fecha
