@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "53";
+const APP_VERSION = "54";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -812,7 +812,11 @@ async function renderConfig() {
       <p class="note" style="margin:0 0 12px">Si tu IA principal (arriba) es DeepSeek, DeepSeek no puede leer imágenes. Pega aquí una clave de <b>Gemini</b>(empieza con <code>AIza</code>) que se usará <b>solo</b>para el lector de comprobantes del CRM. Todo lo demás sigue con la IA principal.</p>
       <label>Clave de Gemini (solo lector de comprobantes)</label>
       <input id="c_vision" type="password" placeholder="AIza… (déjalo vacío si tu IA principal ya es Gemini)" value="${escape(cfg.visionKey || "")}">
+      <label style="margin-top:10px">Modelo para leer comprobantes (pasarela y Recepción)</label>
+      <select id="c_vmodel">${[["gemini-2.5-flash", "Gemini 2.5 Flash · rápido y preciso (recomendado)"], ["gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite · el más rápido y barato"], ["gemini-2.0-flash", "Gemini 2.0 Flash"]].map(([v, l]) => `<option value="${v}" ${(cfg.visionModel || "gemini-2.5-flash") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <p class="note" style="margin:8px 0 10px">Para que lea en 2 a 4 segundos sin esperas, activa la <b>facturación</b> en Google AI Studio para el proyecto de esta clave (la misma clave pasa a ser de pago; no hay que cambiarla aquí). Si creas una clave nueva en un proyecto con facturación, pégala arriba.</p>
       <button class="btn" id="c_visionsave">Guardar clave de comprobantes</button>
+      <button class="btn sec" id="c_visiontest" style="border:1px solid var(--line)">Probar velocidad</button>
       <div class="msg" id="c_visionmsg"></div>
     </div>
     </div>
@@ -913,8 +917,27 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
   };
   el("c_visionsave").onclick = async () => {
     const msg = el("c_visionmsg"); msg.className = "msg"; msg.textContent = "Guardando…";
-    try { await setDoc(doc(db, "config", "app"), { visionKey: el("c_vision").value.trim(), updatedAt: serverTimestamp() }, { merge: true }); msg.className = "msg ok"; msg.textContent = "✓ Clave guardada. El lector de comprobantes ya puede usarla."; }
+    try { await setDoc(doc(db, "config", "app"), { visionKey: el("c_vision").value.trim(), visionModel: el("c_vmodel").value, updatedAt: serverTimestamp() }, { merge: true }); msg.className = "msg ok"; msg.textContent = "Guardado. La pasarela lo usa en máximo 2 minutos."; }
     catch (e) { msg.className = "msg err"; msg.textContent = "Error: " + (e.code || e.message); }
+  };
+  el("c_visiontest").onclick = async () => {
+    const msg = el("c_visionmsg"), key = el("c_vision").value.trim(), model = el("c_vmodel").value;
+    if (!key) { msg.className = "msg err"; msg.textContent = "Pega primero la clave."; return; }
+    msg.className = "msg"; msg.textContent = "Probando " + model + "…";
+    // Imagen de prueba pequeña con un texto de comprobante (se dibuja aquí mismo)
+    const cv = document.createElement("canvas"); cv.width = 600; cv.height = 300; const g = cv.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 300); g.fillStyle = "#000"; g.font = "22px sans-serif";
+    ["Banco Nacional de Bolivia", "Transferencia QR exitosa", "Importe: Bs 50.00", "Destino: CONTAX SRL", "Fecha: 26/10/2026 20:15", "Nro. operacion: 00123456"].forEach((t, i) => g.fillText(t, 30, 45 + i * 42));
+    const b64 = cv.toDataURL("image/jpeg", 0.8).split(",")[1];
+    const gen = Object.assign({ temperature: 0.1, maxOutputTokens: 200, responseMimeType: "application/json" }, /2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {});
+    const t0 = performance.now();
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: 'Lee el comprobante. Responde solo JSON {"importe":"","destino":"","nroOperacion":""}' }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }], generationConfig: gen }) });
+      const ms = Math.round(performance.now() - t0), txt = await r.text();
+      if (r.ok) { msg.className = "msg ok"; msg.textContent = `Respondió en ${(ms / 1000).toFixed(1)} segundos. ` + (ms > 6000 ? "Es lento: activa la facturación de la clave en Google AI Studio." : "Velocidad buena."); }
+      else { msg.className = "msg err"; msg.textContent = `Error ${r.status} en ${(ms / 1000).toFixed(1)} s` + (r.status === 429 ? ": se acabó el límite gratuito. Activa la facturación en Google AI Studio." : r.status === 503 ? ": Google está saturado (pasa más en el plan gratuito)." : ": " + txt.slice(0, 160)); }
+    } catch (e) { msg.className = "msg err"; msg.textContent = "No se pudo conectar: " + e.message; }
   };
   el("c_csave").onclick = async () => {
     const msg = el("c_cmsg"); msg.className = "msg"; msg.textContent = "Guardando…";
@@ -3270,7 +3293,7 @@ async function ocrComprobanteGemini(dataUrl) {
     "Extrae los datos y responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":""}. ' +
     "importe solo el número (ej. 150.00). Si un dato no aparece, déjalo como cadena vacía.";
-  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 600 } });
+  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" }, /2\.5-flash/.test(cfg.visionModel || "gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}) });
   const baseModel = /gemini/i.test(cfg.aiModel || cfg.geminiModel || "") ? (cfg.aiModel || cfg.geminiModel) : "gemini-2.5-flash";
   const models = [baseModel, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i && /gemini/i.test(m));
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));

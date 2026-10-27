@@ -570,24 +570,36 @@ function pasLeerComprobante_(dataUrl) {
     '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","cuentaDestino":"","fecha":"","hora":"","nroOperacion":"","glosa":"","pareceEditado":false}. ' +
     "importe solo el número (ej. 50.00). fecha en formato dd/mm/aaaa. destino = nombre del beneficiario. " +
     "pareceEditado=true si ves señales de que la imagen fue alterada. Si un dato no aparece, cadena vacía.";
-  var body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 700 } });
-  var modelos = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"];
+  // Rápido: sin "pensamiento" (thinkingBudget 0) y respuesta directa en JSON. Con una clave de pago
+  // (facturación activa en Google AI Studio) no hay esperas por límite de uso.
+  var contents = [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }];
+  var base = String(app.visionModel || "gemini-2.5-flash").trim();
+  var modelos = [base, "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"].filter(function (m, i, arr) { return m && arr.indexOf(m) === i; });
+  var t0 = Date.now(), intentos = [];
   for (var i = 0; i < modelos.length; i++) {
-    for (var t = 0; t < 3; t++) {
+    var gen = { temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" };
+    if (/2\.5/.test(modelos[i])) gen.thinkingConfig = { thinkingBudget: modelos[i].indexOf("pro") >= 0 ? 128 : 0 };
+    var body = JSON.stringify({ contents: contents, generationConfig: gen });
+    for (var t = 0; t < 2; t++) {
       var r = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models/" + modelos[i] + ":generateContent?key=" + encodeURIComponent(key),
         { method: "post", contentType: "application/json", payload: body, muteHttpExceptions: true });
       var code = r.getResponseCode();
+      intentos.push(modelos[i] + ":" + code);
       if (code === 200) {
         var j = JSON.parse(r.getContentText());
         var txt = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(function (p) { return p.text || ""; }).join("").trim();
         txt = txt.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
-        try { return { data: JSON.parse(txt) }; } catch (e) { var m = txt.match(/\{[\s\S]*\}/); if (m) { try { return { data: JSON.parse(m[0]) }; } catch (e2) {} } }
+        var ms = Date.now() - t0;
+        console.log("Comprobante leído con " + modelos[i] + " en " + ms + " ms (" + intentos.join(", ") + ")");
+        try { return { data: JSON.parse(txt), ms: ms, modelo: modelos[i] }; } catch (e) { var m = txt.match(/\{[\s\S]*\}/); if (m) { try { return { data: JSON.parse(m[0]), ms: ms, modelo: modelos[i] }; } catch (e2) {} } }
         return { error: "no_interpretado" };
       }
-      if (code === 503 || code === 429 || code === 500) { Utilities.sleep(1500 * (t + 1)); continue; }
-      break; // otro modelo
+      // Sobrecarga o límite: un reintento corto y luego se pasa al siguiente modelo (sin esperas largas)
+      if ((code === 503 || code === 429 || code === 500) && t === 0) { Utilities.sleep(600); continue; }
+      break;
     }
   }
+  console.warn("IA no disponible: " + intentos.join(", ") + " en " + (Date.now() - t0) + " ms");
   return { error: "ia_no_disponible" };
 }
 
