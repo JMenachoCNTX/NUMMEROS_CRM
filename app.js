@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "59";
+const APP_VERSION = "60";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -832,6 +832,13 @@ async function renderConfig() {
     </div>
     <div class="cfgpane" data-pane="conexiones" style="display:none">
     <div class="formcard">
+      <h3 style="margin:0 0 6px">Sistema Contable (sistema.contaxbolivia.com)</h3>
+      <p class="note" style="margin:0 0 12px">El Sistema Contable lee automáticamente la lista de <b>Estados Financieros</b> del panel y puede cambiar su estado (Pendiente / En proceso / Entregado). En el Sistema Contable, pestaña <b>Lista EEFF → Panel NUMMEROS</b>, pega esta clave una sola vez.</p>
+      ${isAdmin() ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="c_siskey" readonly value="${escape(cfg.sistemaKey || "")}" placeholder="Aún no hay clave" style="flex:1;min-width:240px;font-family:monospace">
+        <button class="btn sec" id="c_siscopy" style="border:1px solid var(--line)">Copiar</button><button class="btn" id="c_sisgen">${cfg.sistemaKey ? "Generar otra clave" : "Generar clave"}</button></div>
+        <div class="msg" id="c_sismsg"></div>` : `<p class="note">Solo el administrador puede ver la clave.</p>`}
+    </div>
+    <div class="formcard">
       <p class="note" style="margin:0">La Base de Datos y las Respuestas rápidas ahora viven 100% en la nube (Firebase); ya no necesitas puentes de Google Sheets para ellas. Aquí solo queda el puente de Recibos por correo.</p>
     </div>
     <div class="formcard">
@@ -914,6 +921,14 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
       await setDoc(doc(db, "config", "app"), { provider: provSel.value, aiKey: el("c_key").value.trim(), aiModel: el("c_model").value, updatedAt: serverTimestamp() }, { merge: true });
       msg.className = "msg ok"; msg.textContent = "✓ Guardado. La IA ya funciona para todo el equipo.";
     } catch (e) { msg.className = "msg err"; msg.textContent = "Error: " + (e.code || e.message); }
+  };
+  if (el("c_siscopy")) el("c_siscopy").onclick = () => { try { navigator.clipboard.writeText(el("c_siskey").value); el("c_sismsg").className = "msg ok"; el("c_sismsg").textContent = "Clave copiada."; } catch (e) {} };
+  if (el("c_sisgen")) el("c_sisgen").onclick = async () => {
+    if (el("c_siskey").value && !confirm("Si generas otra clave, el Sistema Contable dejará de conectarse hasta que pegues la nueva. ¿Continuar?")) return;
+    const a = new Uint8Array(18); crypto.getRandomValues(a);
+    const k = "sis_" + Array.from(a, b => b.toString(16).padStart(2, "0")).join("");
+    try { await setDoc(doc(db, "config", "app"), { sistemaKey: k, updatedAt: serverTimestamp() }, { merge: true }); el("c_siskey").value = k; el("c_sismsg").className = "msg ok"; el("c_sismsg").textContent = "Clave lista. Cópiala y pégala en el Sistema Contable (la conexión toma hasta 2 minutos en activarse)."; }
+    catch (e) { el("c_sismsg").className = "msg err"; el("c_sismsg").textContent = "Error: " + (e.code || e.message); }
   };
   el("c_visionsave").onclick = async () => {
     const msg = el("c_visionmsg"); msg.className = "msg"; msg.textContent = "Guardando…";

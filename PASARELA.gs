@@ -153,6 +153,7 @@ function pasarelaHandle_(d) {
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
   if (String(a || "").indexOf("portal_") === 0) return portalHandle_(d);
+  if (String(a || "").indexOf("sis_") === 0) return sistemaHandle_(d);
   return { ok: false, error: "accion_desconocida" };
 }
 
@@ -1197,4 +1198,47 @@ function portalHojaNummeros_(titulo, sub, cli, cuerpo) {
     '<td style="text-align:center">' + (logoC ? '<img src="data:image/png;base64,' + logoC + '" style="height:40px">' : "<b>CONTAX</b>") + '</td><td style="width:34%;text-align:right"><div class="t">' + esc(titulo) + '</div><div class="s">' + esc(sub) + "</div></td></tr></table>" +
     '<div class="w"><div class="cli"><b>' + esc(cli.nombre || "") + "</b> · NIT " + esc(cli.nitBuscado || "") + (cli.codigoId ? " · Cliente N° " + esc(cli.codigoId) : "") + " · Generado el " + esc(hoy.fecha) + "</div>" + cuerpo + "</div>" +
     '<table class="pie"><tr><td>' + (isoN ? '<img src="data:image/png;base64,' + isoN + '" style="height:14px;vertical-align:middle;margin-right:8px">' : "") + 'NUMMEROS by CONTAX · Sistema de gestión contable</td><td style="text-align:right">Santa Cruz - Bolivia · 690-21969 · info@contaxbolivia.com</td></tr></table></body></html>';
+}
+
+
+// =====================================================================
+//  SISTEMA CONTABLE (sistema.contaxbolivia.com): lee la lista de Estados Financieros
+//  del panel y puede cambiar su estado de trabajo. Protegido con la clave de conexión
+//  que se genera en el panel (Configuración → Conexiones).
+// =====================================================================
+var SIS_ESTADOS = [["pendiente", "Pendiente"], ["en_proceso", "En proceso"], ["entregado", "Entregado"]];
+function sistemaHandle_(d) {
+  var clave = String(pasCfgApp().sistemaKey || "");
+  if (!clave || String(d.key || "") !== clave) return { ok: false, error: "Clave de conexión incorrecta. Cópiala del panel NUMMEROS (Configuración → Conexiones)." };
+  if (d.action === "sis_eeff") return sistemaEeff_();
+  if (d.action === "sis_estado") return sistemaEstado_(d);
+  return { ok: false, error: "accion_desconocida" };
+}
+function sistemaEeff_() {
+  var docs = fsQuery_("recepciones", [["tipo", "EQUAL", "eeff"]], 1500), out = [];
+  docs.forEach(function (x) {
+    var r = x.data;
+    if (r.eliminado) return;
+    var pe = r.pasarela && r.pasarela.estado; if (pe === "rechazado") return;
+    var g = (r.periodoTipo === "gestion" && r.periodoAnio) ? String(r.periodoAnio) : ((String(r.mesRecepcion || "").match(/(20\d{2})/) || [])[1] || "");
+    var f = String(r.fechaISO || "").slice(0, 10);
+    var nuevo = r.origen !== "importado" || f >= "2026-10-23";
+    if (!(nuevo || (g && g >= "2026"))) return;     // mismo criterio que la lista del panel
+    out.push({ id: x.id, fecha: r.fecha || f, fechaISO: r.fechaISO || "", nro: r.nroRecepcion || "", cliente: r.clienteNombre || "", nit: String(r.nit || ""),
+      rubro: r.rubro || "", celular: r.clienteCelular || "", correo: r.clienteCorreo || "", detalle: r.detalleServicio || r.servicio || "", gestion: g,
+      importe: Number(r.importe) || 0, balance: (r.pasarela && r.pasarela.balance) || r.balanceNombre || "", estado: r.estadoTrabajo || "pendiente",
+      revision: pe === "revision", deuda: r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda" });
+  });
+  out.sort(function (a, b) { return String(b.fechaISO).localeCompare(String(a.fechaISO)); });
+  return { ok: true, filas: out, estados: SIS_ESTADOS, ahora: new Date().toISOString() };
+}
+function sistemaEstado_(d) {
+  var id = String(d.id || ""), est = String(d.estado || "");
+  if (!id || !SIS_ESTADOS.some(function (e) { return e[0] === est; })) return { ok: false, error: "Datos no válidos." };
+  var doc = fsGet_("recepciones/" + id);
+  if (!doc) return { ok: false, error: "No existe ese registro." };
+  var campos = { estadoTrabajo: est, estadoTrabajoPor: "Sistema contable: " + String(d.por || "").slice(0, 60), estadoTrabajoDesde: "sistema", _upd: Date.now() };
+  var mask = Object.keys(campos).map(function (k) { return "updateMask.fieldPaths=" + k; }).join("&");
+  fsReq_(fsBase_() + "/recepciones/" + id + "?" + mask, "patch", { fields: fsEnc_(campos).mapValue.fields });
+  return { ok: true };
 }
