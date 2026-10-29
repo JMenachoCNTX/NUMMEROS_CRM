@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "64";
+const APP_VERSION = "65";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4770,9 +4770,16 @@ function paintPasarela() {
     body = `<p class="note" style="margin:0 0 10px">Personas que <b>no son clientes</b> y se registraron en la pasarela para el plan sin contador. Están aparte de la Base de Datos de clientes. Los que se registraron y no pagaron son buenos para llamar.</p>
       ${PA_UI.noCliErr ? `<div class="formcard" style="max-width:none;border-color:var(--warn)"><b style="color:var(--warn)">No se pudo leer la lista (${escape(PA_UI.noCliErr)}).</b> <span class="note">Falta publicar las reglas de Firestore con la colección "noclientes".</span></div>` : ""}
       <div class="kpis"><div class="kpi"><div class="n">${L.length}</div><div class="l">Registrados</div></div><div class="kpi"><div class="n" style="color:var(--ok,#2E7D5B)">${L.filter(x => x.estado === "pagado").length}</div><div class="l">Pagaron</div></div><div class="kpi"><div class="n" style="color:var(--warn)">${L.filter(x => !x.estado || x.estado === "registrado").length}</div><div class="l">Sin pagar</div></div></div>
-      <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Registro</th><th>Nombre</th><th>NIT</th><th>C.I.</th><th>Celular</th><th>Correo</th><th>Estado</th><th>N° Rec</th></tr></thead><tbody>
+      <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Registro</th><th>Nombre</th><th>NIT</th><th>C.I.</th><th>Celular</th><th>Correo</th><th>Foto NIT</th><th>NIT abierto</th><th>EEFF 2025</th><th>Fact. manuales</th><th>Usuario SIN</th><th>Contraseña SIN</th><th>Estado</th><th>N° Rec</th></tr></thead><tbody>
       ${L.map(x => `<tr><td class="mono">${escape(fch(x.registradoISO))}</td><td><b>${escape(x.nombre || "")}</b></td><td class="mono">${escape(x.nit || x.id)}</td><td class="mono">${escape(x.ci || "")}</td>
-        <td class="mono">${wa(x) ? `<a href="${escape(wa(x))}" target="_blank" rel="noopener">${escape(x.celular)}</a>` : escape(x.celular || "")}</td><td>${escape(x.correo || "")}</td><td>${est(x)}</td><td class="mono">${escape(String(x.nroRecepcion || ""))}</td></tr>`).join("") || `<tr><td colspan="8" class="note">Todavía no hay registros.</td></tr>`}
+        <td class="mono">${wa(x) ? `<a href="${escape(wa(x))}" target="_blank" rel="noopener">${escape(x.celular)}</a>` : escape(x.celular || "")}</td><td>${escape(x.correo || "")}</td>
+        <td>${x.nitFotoUrl ? `<a class="mini" href="${escape(x.nitFotoUrl)}" target="_blank" rel="noopener">Ver</a>` : "—"}</td>
+        <td>${x.aperturaAntes2026 ? "Antes de 2026" : x.aperturaAntes2026 === false ? "En 2026" : "—"}</td>
+        <td>${x.eeffAnteriorUrl ? `<a class="mini" href="${escape(x.eeffAnteriorUrl)}" target="_blank" rel="noopener">Ver</a>` : x.eeffAnteriorPendiente ? `<span style="color:var(--warn);font-weight:600">Pendiente (WhatsApp)</span>` : x.aperturaAntes2026 ? "—" : "No aplica"}</td>
+        <td>${x.facturasManuales ? `<b style="color:var(--warn)">Sí</b>` : x.facturasManuales === false ? "No" : "—"}</td>
+        <td class="mono">${escape(x.sinUsuario || "")}</td>
+        <td class="mono">${x.sinClave ? (canEdit ? `<span class="nc-pw" data-pw="${escape(x.sinClave)}" style="cursor:pointer" title="Clic para ver">••••••</span>` : "••••••") : "—"}</td>
+        <td>${est(x)}</td><td class="mono">${escape(String(x.nroRecepcion || ""))}</td></tr>`).join("") || `<tr><td colspan="14" class="note">Todavía no hay registros.</td></tr>`}
       </tbody></table></div>`;
   } else if (PA_UI.tab === "premios") {
     const dis = admin ? "" : "disabled";
@@ -4833,6 +4840,7 @@ function paintPasarela() {
   V.querySelectorAll("#patabs .subtab").forEach(b => b.onclick = () => { PA_UI.tab = b.dataset.tab; paintPasarela(); });
   el("pa_copy").onclick = () => { try { navigator.clipboard.writeText(link); el("pa_copy").textContent = "✓ Copiado"; } catch (e) {} };
   V.querySelectorAll("[data-aprobar]").forEach(b => b.onclick = () => paResolver(b.dataset.aprobar, true));
+  V.querySelectorAll(".nc-pw").forEach(sp => sp.onclick = () => { sp.textContent = sp.textContent === "••••••" ? sp.dataset.pw : "••••••"; });
   V.querySelectorAll("[data-rechazar]").forEach(b => b.onclick = () => paResolver(b.dataset.rechazar, false));
   // Balances y beneficios
   if (el("pa_save_bal")) el("pa_save_bal").onclick = async () => {

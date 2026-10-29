@@ -132,7 +132,9 @@ var PAS_TERMINOS = {
     "Damos prioridad a nuestros clientes. Tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales para la gestión, incluida la prórroga que habilita cada año para el Formulario 500 y el Formulario 605.",
     "Te garantizamos que no tendrás multa del Formulario 500 ni del Formulario 605 por la fecha de presentación.",
     "La garantía se mantiene siempre que nos entregues tu información y documentación en el plazo que te indiquemos. No cubre multas ni errores de tus declaraciones mensuales anteriores; si hay que corregir o rectificar meses anteriores, se cotiza aparte.",
-    "Trabajamos con la información de tus compras y ventas registrada en el portal de Impuestos Nacionales.",
+    "Trabajamos con la información de tus compras y ventas registrada en el portal de Impuestos Nacionales. Para eso nos das tu usuario y contraseña de Impuestos Nacionales; cuando ingresemos te pediremos por WhatsApp el código de verificación, las veces que sea necesario.",
+    "Si abriste tu NIT antes de 2026, debes enviarnos tus estados financieros de la gestión 2025: con esos saldos hacemos el asiento de reapertura de la gestión 2026.",
+    "Si tienes facturas manuales, te pediremos una foto de cada una para registrarlas en la cuenta contable que corresponde.",
     "Incluye los 7 estados financieros, la declaración de los Formularios 500 (IUE) y 605 (envío de EEFF al SIN), y el envío en digital (PDF) con firma digital.",
     "Tus estados financieros no se entregan por el Portal de Clientes CONTAX, que es exclusivo para clientes. Si eres repartidor de Yango o MTG, te los entregamos en el Portal de Repartidores NUMMEROS; si eres repartidor de PedidosYa (o de otra actividad), te los enviamos en PDF por WhatsApp una vez culminados."
   ],
@@ -214,12 +216,27 @@ function pasRegistrarExterno(d) {
   if (cel.replace(/\D/g, "").length < 8) return { ok: false, error: "Escribe tu número de celular." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) return { ok: false, error: "Escribe un correo válido: ahí te enviamos tu Orden de Recepción." };
   if (d.sinContador !== true) return { ok: false, error: "Confirma que haces tus declaraciones por tu cuenta, sin contador." };
+  // Documentos y acceso a Impuestos Nacionales
+  var esArch = function (x) { return /^data:(image\/[a-z+.-]+|application\/pdf);base64,/.test(String(x || "")); };
+  if (!esArch(d.nitImg)) return { ok: false, error: "Sube una foto de tu NIT (certificado de inscripción)." };
+  if (d.aperturaAntes !== true && d.aperturaAntes !== false) return { ok: false, error: "Indica si abriste tu NIT en 2026 o antes." };
+  if (d.aperturaAntes === true && !esArch(d.eeffAnt) && d.eeffAntDespues !== true) return { ok: false, error: "Sube tus estados financieros de la gestión anterior (2025)." };
+  if (d.facturasManuales !== true && d.facturasManuales !== false) return { ok: false, error: "Indica si tienes facturas manuales." };
+  var sinUsu = String(d.sinUsuario || "").trim().slice(0, 120), sinClave = String(d.sinClave || "").slice(0, 120);
+  if (sinUsu.length < 4) return { ok: false, error: "Escribe tu usuario (correo) de Impuestos Nacionales." };
+  if (!sinClave) return { ok: false, error: "Escribe tu contraseña de Impuestos Nacionales." };
+  if (String(d.nitImg).length + String(d.eeffAnt || "").length > 9000000) return { ok: false, error: "Los archivos son muy pesados. Sube fotos o un PDF más livianos." };
   var ext = { externo: true, docId: "", campoEstado: "", nombre: nombre.toUpperCase(), codigoId: "", celular: cel, correo: correo, tipo: "", brinda: "", actP: "",
               fechaNit: "", estMat: "", estado: "EXTERNO", ci: ci, costo: "", nitBuscado: nit };
   pasCachePut_("ext_" + nit, ext, 21600);
   try {
     var ahoraIso = new Date().toISOString(), previo = fsGet_("noclientes/" + nit);
+    var urlNit = "", urlEeff = "";
+    try { urlNit = pasGuardarNoCli_(nit, ext.nombre, d.nitImg, "NIT_" + nit); } catch (e) { console.error(e); }
+    if (d.aperturaAntes === true && esArch(d.eeffAnt)) { try { urlEeff = pasGuardarNoCli_(nit, ext.nombre, d.eeffAnt, "EEFF_gestion_anterior_" + nit); } catch (e) { console.error(e); } }
     var dat = { nit: nit, ci: ci, nombre: ext.nombre, celular: cel, correo: correo, sinContador: true, plan: sc.nombre, precio: sc.precio, origen: "pasarela",
+                nitFotoUrl: urlNit, aperturaAntes2026: d.aperturaAntes === true, eeffAnteriorUrl: urlEeff, eeffAnteriorPendiente: d.aperturaAntes === true && !urlEeff,
+                facturasManuales: d.facturasManuales === true, sinUsuario: sinUsu, sinClave: sinClave,
                 actualizadoISO: ahoraIso, _upd: Date.now() };
     if (!previo) { dat.registradoISO = ahoraIso; dat.estado = "registrado"; }
     fsUpsert_("noclientes/" + nit, dat);
@@ -823,6 +840,15 @@ function pasReactivar_(cli, cot) {
   fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "cambio_estado", nombre: cli.nombre, estadoAnterior: cli.estado, estadoNuevo: nuevo,
                        porUid: "pasarela", porNombre: "Pasarela de pagos", detalle: "Reactivado al pagar " + cot.resumen });
   CacheService.getScriptCache().remove("cli_" + String(cli.nitBuscado || ""));
+}
+// Archivos de los no clientes: "NUMMEROS · No clientes/<NIT> · nombre"
+function pasGuardarNoCli_(nit, nombre, dataUrl, archivo) {
+  var raizN = "NUMMEROS · No clientes (plan sin contador)", it = DriveApp.getFoldersByName(raizN);
+  var raiz = it.hasNext() ? it.next() : DriveApp.createFolder(raizN);
+  var fi = raiz.getFoldersByName(nit + " · " + String(nombre || "").slice(0, 60)), f = fi.hasNext() ? fi.next() : raiz.createFolder(nit + " · " + String(nombre || "").slice(0, 60));
+  var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
+  var ext = mime === "application/pdf" ? ".pdf" : mime.indexOf("png") >= 0 ? ".png" : ".jpg";
+  return f.createFile(Utilities.newBlob(Utilities.base64Decode(dataUrl.replace(/^data:[^;]+;base64,/, "")), mime, archivo + ext)).getUrl();
 }
 function pasGuardarDrive_(dataUrl, nombre) {
   var it = DriveApp.getFoldersByName(PAS.carpetaDrive);

@@ -155,9 +155,10 @@ service cloud.firestore {
     }
 
     // ----- No clientes registrados en la pasarela (plan sin contador) -----
-    // Los crea el script de la pasarela; el portal los ve y puede editarlos; borra solo admin.
+    // Los crea el script de la pasarela; los roles de edición los ven y editan; borra solo admin.
     match /noclientes/{id} {
-      allow read: if portalView();
+      // Tiene el acceso a Impuestos Nacionales: no lo ve el rol "lector"
+      allow read: if portalEdit();
       allow update: if portalEdit();
       allow delete: if isAdmin();
     }

@@ -25,7 +25,7 @@ p{margin:0}.suave{color:var(--suave)}.chico{font-size:12px}.c13{font-size:13px}
 .pila{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--sup);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(5,31,32,.08)}
 .fila{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:6px 0}.fila span:first-child{color:var(--suave)}.fila b{text-align:right}
-label.l{font-size:14px;font-weight:600;display:block;margin-bottom:6px}
+label.l,span.l{font-size:14px;font-weight:600;display:block;margin-bottom:6px}
 input.nit,input.tx,select{width:100%;height:50px;border:1.5px solid var(--bctl);border-radius:6px;background:var(--campo);padding:0 14px;font-size:18px;color:var(--txt);font-family:inherit}
 input.nit{font-family:Akshar,sans-serif;font-size:22px;letter-spacing:1px}
 input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acento);outline-offset:2px}
@@ -557,7 +557,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<button class="btn" id="bScReg"' + (S.acepta && S.aceptaUtil ? "" : " disabled") + ">" + (S.acepta && S.aceptaUtil ? "Acepto · Registrar mis datos" : "Acepta la advertencia y los términos para continuar") + "</button>" +
         '<button class="link" id="bOtroNit">Volver al inicio</button></div>';
     } else if (S.paso === "externo") {
-      var SC = S.cfg.sinContador || {}, X = S.ext || {};
+      var SC = S.cfg.sinContador || {}, X = S.ext || {}, F = S.extF || {};
       h = '<div class="pila"><h2>Tus datos</h2><p class="suave" style="margin-top:-6px">' + esc(SC.nombre || "") + " · <b>Bs " + esc(SC.precio) + "</b>. Los usamos para registrarte, para tu Orden de Recepción y para escribirte cuando empecemos tu balance.</p>" +
         '<form class="card pila" id="fExt" novalidate>' +
         '<div><label class="l" for="exCi">Número de carnet (C.I.)</label><input class="tx nit" id="exCi" inputmode="numeric" value="' + esc(X.ci || "") + '"></div>' +
@@ -565,8 +565,22 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<div><label class="l" for="exNom">Nombre completo o razón social</label><input class="tx nit" id="exNom" autocomplete="name" value="' + esc(X.nombre || "") + '"></div>' +
         '<div><label class="l" for="exCel">Celular (WhatsApp)</label><input class="tx nit" id="exCel" inputmode="tel" autocomplete="tel" value="' + esc(X.celular || "") + '"></div>' +
         '<div><label class="l" for="exMail">Correo electrónico</label><input class="tx nit" id="exMail" type="email" autocomplete="email" value="' + esc(X.correo || "") + '"></div>' +
-        '<label class="acepto" style="display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:20px;cursor:pointer"><input type="checkbox" id="exSin"' + (X.sinContador ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Hago mis declaraciones por mi cuenta y no tengo contador.</span></label>' +
-        errHtml() + '<button class="btn" type="submit">Registrarme y pasar al pago</button></form>' +
+        '<label class="acepto" style="display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:20px;cursor:pointer"><input type="checkbox" id="exSin"' + (X.sinContador ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Hago mis declaraciones por mi cuenta y no tengo contador.</span></label></form>' +
+        // Documentos
+        '<div class="card pila"><b style="font-size:16px">Tus documentos</b><p class="chico suave" style="margin-top:-6px">Con esto revisamos y verificamos que toda tu información esté correcta.</p>' +
+        '<div><span class="l">Foto de tu NIT (certificado de inscripción)</span>' + archHtml("exNitImg", F.nitImg, "Subir foto de mi NIT") + "</div>" +
+        '<div><span class="l">¿Cuándo abriste tu NIT?</span><div class="tipos"><button type="button" data-ap="0" class="' + (X.aperturaAntes === false ? "sel" : "") + '">En 2026</button><button type="button" data-ap="1" class="' + (X.aperturaAntes === true ? "sel" : "") + '">Antes de 2026</button></div></div>' +
+        (X.aperturaAntes === true ? '<div class="aviso ok">Como abriste tu NIT antes de 2026, necesitamos tus <b>estados financieros de la gestión 2025</b>: con esos saldos hacemos el asiento de reapertura de tu gestión 2026.</div>' +
+          (X.eeffAntDespues ? "" : archHtml("exEeffAnt", F.eeffAnt, "Subir estados financieros 2025 (PDF o foto)")) +
+          '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:19px;cursor:pointer"><input type="checkbox" id="exEeffDesp"' + (X.eeffAntDespues ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>No los tengo a mano: los envío después por WhatsApp.</span></label>' : "") +
+        '<div><span class="l">¿Tienes facturas manuales?</span><div class="tipos"><button type="button" data-fm="1" class="' + (X.facturasManuales === true ? "sel" : "") + '">Sí</button><button type="button" data-fm="0" class="' + (X.facturasManuales === false ? "sel" : "") + '">No</button></div></div>' +
+        (X.facturasManuales === true ? '<div class="aviso ok">Te pediremos por WhatsApp una <b>foto de cada factura manual</b>, para registrar ese gasto en la cuenta contable que corresponde.</div>' : "") + "</div>" +
+        // Acceso a Impuestos Nacionales
+        '<div class="card pila"><b style="font-size:16px">Tu acceso a Impuestos Nacionales</b>' +
+        '<div><label class="l" for="exSinU">Usuario (el correo con el que entras a Impuestos Nacionales)</label><input class="tx nit" id="exSinU" type="email" autocomplete="off" value="' + esc(X.sinUsuario || "") + '"><p class="chico suave" style="margin-top:4px">Puede ser distinto al correo que pusiste arriba.</p></div>' +
+        '<div><label class="l" for="exSinC">Contraseña de Impuestos Nacionales</label><input class="tx nit" id="exSinC" type="password" autocomplete="new-password" value="' + esc(X.sinClave || "") + '"></div>' +
+        '<div class="aviso ok">Cuando ingresemos a tu cuenta de Impuestos Nacionales te pediremos por WhatsApp el <b>código de verificación</b> que te llega, las veces que sea necesario.</div></div>' +
+        errHtml() + '<button class="btn" id="bExtEnviar">Registrarme y pasar al pago</button>' +
         '<button class="link" data-ir="sc1">Volver</button></div>';
     } else if (S.paso === "datos") {
       var c = S.cli;
@@ -801,6 +815,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<div class="scGar">' + chk + '<span>Damos prioridad a nuestros clientes: tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales, con la prórroga que habilita cada año.</span></div>' +
       (conIncluye && SC.incluye && SC.incluye.length ? '<details class="incd"><summary>Incluye (' + SC.incluye.length + ')</summary><ul class="inc">' + SC.incluye.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") + "</div>";
   }
+  function archHtml(id, f, txt) {
+    return '<label class="subir" for="' + id + '" style="margin-top:6px">' + ICON.subir + (f ? "Cambiar archivo" : txt) + '</label><input type="file" id="' + id + '" accept="image/*,application/pdf" class="oculto">' +
+      (f ? '<p class="chico" style="margin-top:6px;color:var(--acento);font-weight:700">Listo: ' + esc(f.nombre) + "</p>" : "");
+  }
   function scVigente() { var SC = S.cfg && S.cfg.sinContador; return !!(SC && SC.vigente && Date.parse(SC.hasta || "") > Date.now()); }
   function scRelojHtml(dentro) {
     var SC = (S.cfg && S.cfg.sinContador) || {}; if (!scVigente()) return "";
@@ -931,12 +949,40 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; S.scNoEnc = ""; S.serv = ""; ir("nit"); };
     if ($("bScInfo")) $("bScInfo").onclick = function () { S.cli = null; S.scNoEnc = ""; S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.ext = S.ext || {}; ir("sc1"); };
     if ($("bScReg")) $("bScReg").onclick = function () { if (S.acepta && S.aceptaUtil) ir("externo"); };
-    if ($("fExt")) $("fExt").onsubmit = function (ev) {
-      ev.preventDefault();
-      S.ext = { ci: $("exCi").value, nit: $("exNit").value.replace(/\D/g, ""), nombre: $("exNom").value, celular: $("exCel").value, correo: $("exMail").value, sinContador: $("exSin").checked };
-      if (S.ext.nit.length < 5) { S.error = "Escribe tu NIT completo."; pintar(); return; }
+    var leerExt = function () {
+      if (!$("exCi")) return;
+      S.ext = Object.assign(S.ext || {}, { ci: $("exCi").value, nit: $("exNit").value.replace(/\D/g, ""), nombre: $("exNom").value, celular: $("exCel").value, correo: $("exMail").value,
+        sinContador: $("exSin").checked, sinUsuario: $("exSinU").value, sinClave: $("exSinC").value, eeffAntDespues: $("exEeffDesp") ? $("exEeffDesp").checked : !!(S.ext || {}).eeffAntDespues });
+    };
+    var repintarExt = function () { leerExt(); var y = window.scrollY; pintar(); window.scrollTo(0, y); };
+    document.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { leerExt(); S.ext.aperturaAntes = b.dataset.ap === "1"; repintarExt(); }; });
+    document.querySelectorAll("[data-fm]").forEach(function (b) { b.onclick = function () { leerExt(); S.ext.facturasManuales = b.dataset.fm === "1"; repintarExt(); }; });
+    if ($("exEeffDesp")) $("exEeffDesp").onchange = repintarExt;
+    [["exNitImg", "nitImg"], ["exEeffAnt", "eeffAnt"]].forEach(function (a) {
+      if (!$(a[0])) return;
+      $(a[0]).onchange = function () {
+        var file = this.files && this.files[0]; if (!file) return; leerExt();
+        var listo = function (data) { S.extF = S.extF || {}; S.extF[a[1]] = { nombre: file.name, data: data }; S.error = ""; repintarExt(); };
+        if (file.type === "application/pdf") {
+          if (file.size > 4500000) { S.error = "El PDF es muy pesado (máximo 4 MB)."; repintarExt(); return; }
+          var fr = new FileReader(); fr.onload = function () { listo(fr.result); }; fr.readAsDataURL(file);
+        } else comprimir(file).then(listo).catch(function (e) { S.error = e.message; repintarExt(); });
+      };
+    });
+    if ($("fExt")) $("fExt").onsubmit = function (ev) { ev.preventDefault(); if ($("bExtEnviar")) $("bExtEnviar").click(); };
+    if ($("bExtEnviar")) $("bExtEnviar").onclick = function () {
+      leerExt();
+      var X = S.ext, F = S.extF || {}, falta = "";
+      if (X.nit.length < 5) falta = "Escribe tu NIT completo.";
+      else if (!F.nitImg) falta = "Sube una foto de tu NIT.";
+      else if (X.aperturaAntes !== true && X.aperturaAntes !== false) falta = "Indica cuándo abriste tu NIT.";
+      else if (X.aperturaAntes && !F.eeffAnt && !X.eeffAntDespues) falta = "Sube tus estados financieros 2025 o marca que los envías después por WhatsApp.";
+      else if (X.facturasManuales !== true && X.facturasManuales !== false) falta = "Indica si tienes facturas manuales.";
+      else if (!X.sinUsuario || !X.sinClave) falta = "Escribe tu usuario y contraseña de Impuestos Nacionales.";
+      if (falta) { S.error = falta; repintarExt(); return; }
+      var envio = Object.assign({ action: "pas_externo", nitImg: F.nitImg.data, eeffAnt: X.aperturaAntes && F.eeffAnt ? F.eeffAnt.data : "" }, X);
       cargando("Registrando tus datos…");
-      api(Object.assign({ action: "pas_externo" }, S.ext)).then(function (r) {
+      api(envio).then(function (r) {
         if (!r.ok) { ir("externo", r.error); return; }
         S.nit = S.ext.nit; S.cli = r.cliente; S.serv = "eeff"; S.eeffFase = 0; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = true; S.aceptaUtil = true; S.per = perDefault();
         if (antesLanz()) { ir("eeff4"); cotizar(); return; }
