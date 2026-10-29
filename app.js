@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "67";
+const APP_VERSION = "68";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4485,7 +4485,7 @@ function paMontos() {
   add(c.precios.sinMov, "Plan Básico (sin movimiento)"); add(c.precios.enFecha, "Plan Estándar del 25 al 30"); add(c.precios.fueraFecha, "Plan Estándar del 1 al 5");
   add(c.precios.premium, "Plan Premium"); add(c.precios.eeffOtros, "Balance · otros rubros");
   add(c.precios.fact, "Suscripción de facturación");
-  const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (sc.activo !== false) add(sc.precio, "Balance para no clientes (sin contador)");
+  const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (sc.activo !== false) add(sc.precio, "Balance Independiente");
   (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
   return o.sort((a, b) => a.m - b.m);
 }
@@ -4556,7 +4556,7 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
   const scT = Date.parse(sc.hasta || ""), scAbierto = sc.activo !== false && (isNaN(scT) || Date.now() <= scT);
   const indCob = ind.reduce((a, r) => a + (Number(r.importe) || 0), 0);
   const fIso = r => { const d = new Date(r.fechaISO || ""); return isNaN(d) ? escape(r.fecha || "") : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
-  const filaInd = (ind.length || sc.activo !== false) ? `<tr style="border-top:2px solid var(--line)"><td><b>${escape(sc.nombre)}</b><div class="note" style="margin:0">No clientes e inactivos · sin contador</div></td><td><span class="mono">${money(sc.precio)}</span></td><td class="note">Sin límite</td>
+  const filaInd = (ind.length || sc.activo !== false) ? `<tr style="border-top:2px solid var(--line)"><td><b>${escape(sc.nombre)}</b><div class="note" style="margin:0">No clientes e inactivos</div></td><td><span class="mono">${money(sc.precio)}</span></td><td class="note">Sin límite</td>
       <td class="mono"><b>${ind.length}</b></td><td class="note">—</td><td class="note">—</td><td>${scAbierto ? `<span class="badge ok">Hasta ${escape(isNaN(scT) ? "" : new Date(scT).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit" }))}</span>` : '<span class="badge" style="background:#B42318;color:#fff">Cerrado</span>'}</td>
       ${conM ? `<td class="note" style="text-align:right">—</td><td class="mono" style="text-align:right">${money(indCob)}</td><td class="note" style="text-align:right">—</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="ind" ${ind.length ? "" : "disabled"}>Ver (${ind.length})</button></td></tr>
@@ -4760,9 +4760,9 @@ function paintPasarela() {
           <div class="field"><label>NIT desde (opcional)</label><input class="pa-bd" data-i="${i}" type="date" value="${escape(inf.nitDesde || "")}" ${dis}></div>
           <div class="field"><label>Qué incluye</label><textarea class="pa-bi" data-i="${i}" rows="4" style="width:100%;font-size:13px" ${dis}>${escape(inf.incluye.join("\n"))}</textarea></div></div>`; }).join("")}
         </div></div>
-      ${(() => { const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (/^\s*balance\s+sin\s+contador\s*$/i.test(sc.nombre || "")) sc.nombre = PAS_SC_DEF.nombre; const hl = String(sc.hasta || "").slice(0, 16); return `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Plan para no clientes (hacen su declaración sin contador)</h3>
-        <p class="note" style="margin:0 0 10px">Cuando alguien escribe un NIT que no está en la Base de Datos, la pasarela le ofrece este plan: precio fijo, sin cupos, solo hasta la fecha límite. Se le pide nombre, C.I., celular y correo. La recepción llega marcada como <b>NO CLIENTE</b> para que lo registres en la Base de Datos.</p>
-        <label style="display:flex;gap:8px;align-items:center;margin:0 0 10px;font-weight:600"><input type="checkbox" id="pa_sc_on" ${sc.activo !== false ? "checked" : ""} ${dis} style="width:auto"> Plan activo</label>
+      ${(() => { const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (/^\s*balance\s+sin\s+contador\s*$/i.test(sc.nombre || "")) sc.nombre = PAS_SC_DEF.nombre; const hl = String(sc.hasta || "").slice(0, 16); return `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Balance Independiente (no clientes e inactivos)</h3>
+        <p class="note" style="margin:0 0 10px">Cuando alguien escribe un NIT que no está en la Base de Datos (o es cliente inactivo), la pasarela le ofrece el Balance Independiente: precio fijo, sin cupos, solo hasta la fecha límite. Se le pide nombre, C.I., celular y correo. La recepción llega marcada como <b>NO CLIENTE</b> para que lo registres en la Base de Datos.</p>
+        <label style="display:flex;gap:8px;align-items:center;margin:0 0 10px;font-weight:600"><input type="checkbox" id="pa_sc_on" ${sc.activo !== false ? "checked" : ""} ${dis} style="width:auto"> Balance Independiente activo</label>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px">
           <div class="field"><label>Nombre</label><input id="pa_sc_nom" value="${escape(sc.nombre || "")}" ${dis}></div>
           <div class="field"><label>Precio fijo (Bs)</label><input id="pa_sc_pr" type="number" min="0" step="1" value="${escape(String(sc.precio || ""))}" ${dis}></div>
@@ -4782,7 +4782,7 @@ function paintPasarela() {
     const est = x => x.estado === "pagado" ? `<span class="badge ok">Pagó</span>` : x.estado === "pago_en_revision" ? `<span class="badge off" style="color:var(--warn)">Pago en revisión</span>` : `<span class="badge off">Registrado, sin pagar</span>`;
     const fch = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
     const wa = x => { const n = String(x.celular || "").replace(/\D/g, ""); return n ? "https://wa.me/" + (n.length === 8 ? "591" + n : n) : ""; };
-    body = `<p class="note" style="margin:0 0 10px">Personas que <b>no son clientes activos</b> (no clientes y clientes inactivos) y se registraron en la pasarela para el plan sin contador. Están aparte de la Base de Datos de clientes. Los que se registraron y no pagaron son buenos para llamar.</p>
+    body = `<p class="note" style="margin:0 0 10px">Personas que <b>no son clientes activos</b> (no clientes y clientes inactivos) y se registraron en la pasarela para el Balance Independiente. Están aparte de la Base de Datos de clientes. Los que se registraron y no pagaron son buenos para llamar.</p>
       ${PA_UI.noCliErr ? `<div class="formcard" style="max-width:none;border-color:var(--warn)"><b style="color:var(--warn)">No se pudo leer la lista (${escape(PA_UI.noCliErr)}).</b> <span class="note">Falta publicar las reglas de Firestore con la colección "noclientes".</span></div>` : ""}
       <div class="kpis"><div class="kpi"><div class="n">${L.length}</div><div class="l">Registrados</div></div><div class="kpi"><div class="n" style="color:var(--ok,#2E7D5B)">${L.filter(x => x.estado === "pagado").length}</div><div class="l">Pagaron</div></div><div class="kpi"><div class="n" style="color:var(--warn)">${L.filter(x => !x.estado || x.estado === "registrado").length}</div><div class="l">Sin pagar</div></div></div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Registro</th><th>Nombre</th><th>NIT</th><th>C.I.</th><th>Celular</th><th>Correo</th><th>Foto NIT</th><th>NIT abierto</th><th>EEFF 2025</th><th>Fact. manuales</th><th>Usuario SIN</th><th>Contraseña SIN</th><th>Estado</th><th>N° Rec</th></tr></thead><tbody>

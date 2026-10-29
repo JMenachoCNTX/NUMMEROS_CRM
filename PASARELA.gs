@@ -127,7 +127,7 @@ var PAS_TERMINOS = {
     "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
   ],
   sinContador: [
-    "Este plan es solo para personas que no son clientes activos de CONTAX (incluye a los clientes inactivos) y hacen sus declaraciones mensuales por su cuenta, sin contador.",
+    "El Balance Independiente es solo para personas que no son clientes activos de CONTAX (incluye a los clientes inactivos) y hacen sus declaraciones mensuales por su cuenta, sin contador.",
     "Precio fijo. Solo se puede pagar hasta la fecha límite indicada en la pasarela; después ya no está disponible.",
     "Damos prioridad a nuestros clientes. Tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales para la gestión, incluida la prórroga que habilita cada año para el Formulario 500 y el Formulario 605.",
     "Te garantizamos que no tendrás multa del Formulario 500 ni del Formulario 605 por la fecha de presentación.",
@@ -770,7 +770,7 @@ function pasConfirmar(token) {
       mesRecepcion: cot.periodo.texto, periodoTipo: cot.periodo.tipo, periodoMes: cot.periodo.mes, periodoAnio: cot.periodo.anio,
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
       importe: cot.monto, tipoPago: "QR", atencion: "PASARELA",
-      comentarios: (cli.externo ? "NO CLIENTE (plan sin contador) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (plan sin contador) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
+      comentarios: (cli.externo ? "NO CLIENTE (Balance Independiente) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (Balance Independiente) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
       clienteExterno: !!cli.externo, clienteCI: cli.ci || "", sinContador: !!cot.sinContador,
       compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: url,
       tipo: cot.tipo, balanceNombre: cot.balance || "", estado: "pendiente", estadoDeuda: "sin_deuda",
@@ -848,7 +848,7 @@ function pasReactivar_(cli, cot) {
 }
 // Archivos de los no clientes: "NUMMEROS · No clientes/<NIT> · nombre"
 function pasGuardarNoCli_(nit, nombre, dataUrl, archivo) {
-  var raizN = "NUMMEROS · No clientes (plan sin contador)", it = DriveApp.getFoldersByName(raizN);
+  var raizN = "NUMMEROS · Balance Independiente", it = DriveApp.getFoldersByName(raizN);
   var raiz = it.hasNext() ? it.next() : DriveApp.createFolder(raizN);
   var fi = raiz.getFoldersByName(nit + " · " + String(nombre || "").slice(0, 60)), f = fi.hasNext() ? fi.next() : raiz.createFolder(nit + " · " + String(nombre || "").slice(0, 60));
   var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";

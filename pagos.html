@@ -416,8 +416,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     pago: ["contrato-euclides-oscuro.jpg", "Pago seguro", "Paga con el QR de tu banco", "El QR ya trae el monto exacto. Después sube la captura de tu comprobante."],
     verif: ["arquimedes-saludo-claro.jpg", "Verificación", "Revisamos tu comprobante", "Nuestra IA lee tu captura y confirma el pago en segundos."],
     cuenta: ["los-cuatro-oscuro.jpg", "Muy pronto", "La nueva pasarela de pagos CONTAX", "Paga con QR desde tu celular y recibe tu Orden de Recepción al instante. Cupos limitados en los balances y premios para quienes paguen."],
-    sc1: ["contrato-euclides-oscuro.jpg", "Sin contador", "¿No tienes contador? Nosotros te ayudamos", "Hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
-    externo: ["contrato-euclides-oscuro.jpg", "Sin contador", "¿Haces tu declaración por tu cuenta?", "Nosotros hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
+    sc1: ["contrato-euclides-oscuro.jpg", "Balance Independiente", "¿No tienes contador? Nosotros te ayudamos", "Hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
+    externo: ["contrato-euclides-oscuro.jpg", "Balance Independiente", "¿Haces tu declaración por tu cuenta?", "Nosotros hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
     fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS."]
   };
   Object.keys(ESCENA).forEach(function (k) { var im = new Image(); im.src = FOTOS + ESCENA[k][0]; });
@@ -553,7 +553,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     } else if (S.paso === "sc1") {
       var SC1 = S.cfg.sinContador || {};
       h = '<div class="pila">' + (S.scNoEnc ? '<p class="c13 suave" style="margin-bottom:-6px">No encontramos el NIT ' + esc(S.scNoEnc) + ' en CONTAX</p>' : "") +
-        (S.scInact && S.cli && S.cli.inactivo ? '<div class="aviso warn">Tu cuenta en CONTAX figura como <b>inactiva</b>, por eso tu balance va con el plan para quienes hacen su declaración sin contador. Si quieres volver a ser cliente activo, escríbenos por WhatsApp.</div>' : "") +
+        (S.scInact && S.cli && S.cli.inactivo ? '<div class="aviso warn">Tu cuenta en CONTAX figura como <b>inactiva</b>, por eso tus estados financieros van con el <b>Balance Independiente</b>. Si quieres volver a ser cliente activo, escríbenos por WhatsApp.</div>' : "") +
         '<h2>¿No tienes contador? Nosotros te ayudamos</h2><p class="suave" style="margin-top:-6px">Si haces tus declaraciones por tu cuenta, nosotros hacemos tus estados financieros de la gestión ' + esc((S.cfg.eeff && S.cfg.eeff.gestion) || "") + ".</p>" +
         scPlanHtml(true) + scRelojHtml(true) + virtualHtml() + muestraEeff() + multasHtml() + advertenciaEeff() + terminosHtml() + errHtml() +
         '<button class="btn" id="bScReg"' + (S.acepta && S.aceptaUtil ? "" : " disabled") + ">" + (S.acepta && S.aceptaUtil ? "Acepto · Registrar mis datos" : "Acepta la advertencia y los términos para continuar") + "</button>" +
@@ -811,7 +811,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var SC = (S.cfg && S.cfg.sinContador) || {}, t = Date.parse(SC.hasta || "");
     var hasta = isNaN(t) ? "" : fechaBo(t);
     var chk = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>';
-    return '<div class="scPlan"><div class="scTop"><div><span class="c13 suave">Para quienes hacen su declaración sin contador</span><br><b>' + esc(SC.nombre || "Balance Sin Contador") + '</b></div><div class="scPr">Bs ' + esc(SC.precio) + '<small>precio fijo</small></div></div>' +
+    return '<div class="scPlan"><div class="scTop"><div><span class="c13 suave">Para quienes hacen su declaración por su cuenta</span><br><b>' + esc(SC.nombre || "Balance Sin Contador") + '</b></div><div class="scPr">Bs ' + esc(SC.precio) + '<small>precio fijo</small></div></div>' +
       (hasta ? '<div class="scHasta">Solo puedes pagarlo hasta el ' + esc(hasta) + ".</div>" : "") +
       '<div class="scGar">' + chk + '<span><b>Sin multa garantizado</b> del Formulario 500 ni del Formulario 605.</span></div>' +
       '<div class="scGar">' + chk + '<span><b>Entrega:</b> si eres repartidor de Yango o MTG, en el Portal de Repartidores NUMMEROS; si eres de PedidosYa (u otra actividad), en PDF por WhatsApp una vez culminado. El Portal de Clientes CONTAX es exclusivo para clientes.</span></div>' +
@@ -825,7 +825,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function scVigente() { var SC = S.cfg && S.cfg.sinContador; return !!(SC && SC.vigente && Date.parse(SC.hasta || "") > Date.now()); }
   function scRelojHtml(dentro) {
     var SC = (S.cfg && S.cfg.sinContador) || {}; if (!scVigente()) return "";
-    return '<div class="scInv"' + (dentro ? ' style="margin:0"' : "") + '><p class="cgT">Sin contador · ' + esc(SC.nombre || "") + " a Bs " + esc(SC.precio) + '</p>' +
+    return '<div class="scInv"' + (dentro ? ' style="margin:0"' : "") + '><p class="cgT">' + esc(SC.nombre || "Balance Independiente") + " a Bs " + esc(SC.precio) + '</p>' +
       '<div class="reloj"><div><b data-sc="d">--</b><span>días</span></div><div><b data-sc="h">--</b><span>horas</span></div><div><b data-sc="m">--</b><span>minutos</span></div><div><b data-sc="s">--</b><span>segundos</span></div></div>' +
       '<p class="cgF" style="margin-bottom:0">Solo hasta el ' + esc(fechaBo(Date.parse(SC.hasta))) + ".</p></div>";
   }
