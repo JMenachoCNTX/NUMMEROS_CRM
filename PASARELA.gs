@@ -31,6 +31,8 @@ var PAS_DEF = {
   eeffGestion: String(new Date().getFullYear()),
   cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }],
   destinoClaves: [],
+  // Plan para quienes no son clientes (hacen su declaración solos, sin contador): precio fijo, sin cupos, hasta una fecha
+  sinContador: { activo: true, nombre: "Balance Sin Contador", precio: 350, hasta: "2026-11-05T23:59:59-04:00", incluye: [] },
   campos: {},
   // Lanzamiento: antes de esta fecha la página de pagos muestra una cuenta regresiva
   lanzamiento: "2026-10-26T10:30:00-04:00",
@@ -58,7 +60,7 @@ var PAS_BAL_DEF = [
   { nombre: "Balance Esencial", incluye: balIncluyeDef_(1) },
   { nombre: "Balance Plus", incluye: balIncluyeDef_(2) },
   { nombre: "Balance Pro", incluye: balIncluyeDef_(3) },
-  { nombre: "Balance Total", incluye: balIncluyeDef_(4) }
+  { nombre: "Balance Integral", incluye: balIncluyeDef_(4) }
 ];
 // Si lo guardado es un texto antiguo (con "beneficios CONTAX", etc.) o la lista básica sin extras, se usa la lista vigente
 function balIncluyeViejo_(l) {
@@ -68,7 +70,8 @@ function balIncluyeViejo_(l) {
 }
 function pasBalInfo_(c, i) {
   var x = (c.cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {};
-  return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo_(x.incluye) ? x.incluye : (d.incluye || []),
+  var nom = /^\s*balance\s+total\s*$/i.test(x.nombre || "") ? "Balance Integral" : x.nombre;   // "Total" se confundía con la suma de todos
+  return { nombre: nom || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo_(x.incluye) ? x.incluye : (d.incluye || []),
            nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") };
 }
 // Fecha (aaaa-mm-dd) desde los formatos de la Base de Datos
@@ -88,7 +91,9 @@ function pasBalAplica_(info, cli) {
 
 // ---------------- Términos y condiciones por servicio (resumen del Manual CONTAX) ----------------
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
-var PAS_TERMINOS_VERSION = "2026-10-26";
+var PAS_TERMINOS_VERSION = "2026-10-29";
+// Términos de balances que solo aplican a los balances por cupos (no al plan sin contador)
+var PAS_TER_SOLO_CUPOS = /cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i;
 // Advertencia de balances (se muestra aparte, en rojo, y se acepta con su propia casilla; también va en el correo)
 var PAS_ADVERTENCIA_EEFF = [
   "Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de Impuestos Nacionales. Nuestro sistema contable NUMMEROS los genera de forma automática.",
@@ -119,6 +124,14 @@ var PAS_TERMINOS = {
     "Tus estados financieros y formularios se entregan en tu Portal de Clientes NUMMEROS (no se envían por WhatsApp).",
     "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
   ],
+  sinContador: [
+    "Este plan es solo para personas que no son clientes de CONTAX y hacen sus declaraciones mensuales por su cuenta, sin contador.",
+    "Precio fijo. Solo se puede pagar hasta la fecha límite indicada en la pasarela; después ya no está disponible.",
+    "Damos prioridad a nuestros clientes. Tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales para la gestión, incluida la prórroga que habilita cada año para el Formulario 500 y el Formulario 605.",
+    "Te garantizamos que no tendrás multa del Formulario 500 ni del Formulario 605 por la fecha de presentación.",
+    "La garantía se mantiene siempre que nos entregues tu información y documentación en el plazo que te indiquemos. No cubre multas ni errores de tus declaraciones mensuales anteriores; si hay que corregir o rectificar meses anteriores, se cotiza aparte.",
+    "Trabajamos con la información de tus compras y ventas registrada en el portal de Impuestos Nacionales."
+  ],
   facturacion: [
     "La suscripción cubre la emisión de tus facturas pendientes durante el mes pagado. No incluye la declaración mensual.",
     "Repartidores de Yango: emitimos tu factura semanal por el importe autorizado por la aplicación y la dejamos lista antes del jueves (la verificación cierra el jueves a las 18:00).",
@@ -144,6 +157,7 @@ function pasarelaHandle_(d) {
   var a = d.action;
   if (a === "pas_config") return pasConfigPublica();
   if (a === "pas_buscar") return pasBuscar(d.nit);
+  if (a === "pas_externo") return pasRegistrarExterno(d);
   if (a === "pas_cotizar") { var r = pasCotizar(d); if (r.ok) r.qr = pasQR_(r.monto); return r; }
   if ((a === "pas_reservar" || a === "pas_verificar") && d.servicio === "eeff") {
     var lz = Date.parse(pasCfg().lanzamiento || "");
@@ -173,6 +187,34 @@ function pasCfg() {
   c.precios = Object.assign({}, PAS_DEF.precios, p.precios || {});
   return c;
 }
+// Plan sin contador: vigente si está activo y no pasó su fecha límite
+function pasSinCont_(c) {
+  var s = Object.assign({}, PAS_DEF.sinContador, c.sinContador || {});
+  var t = Date.parse(s.hasta || ""), inc = (s.incluye && s.incluye.length) ? s.incluye : BAL_INCLUYE.slice();
+  return { activo: s.activo !== false, vigente: s.activo !== false && Number(s.precio) > 0 && (isNaN(t) || Date.now() <= t), nombre: s.nombre || "Balance Sin Contador",
+           precio: Number(s.precio) || 0, hasta: s.hasta || "", incluye: inc };
+}
+// Datos que dejó el no cliente al registrarse en la pasarela (6 horas)
+function pasExterno_(nit) { var e = pasCache_("ext_" + nit); return e && e.externo ? e : null; }
+function pasCliOExt_(nit) { return pasClienteCache_(nit) || pasExterno_(nit); }
+function pasRegistrarExterno(d) {
+  var c = pasCfg(), sc = pasSinCont_(c), nit = String(d.nit || "").replace(/\D/g, "");
+  if (!sc.vigente) return { ok: false, error: "El " + sc.nombre + " ya no está disponible. Escríbenos por WhatsApp." };
+  if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
+  if (pasClienteCache_(nit)) return { ok: false, error: "Tu NIT ya está registrado en CONTAX. Vuelve a escribirlo para pagar como cliente." };
+  var nombre = String(d.nombre || "").trim().replace(/\s+/g, " ").slice(0, 120), ci = String(d.ci || "").trim().slice(0, 20);
+  var cel = String(d.celular || "").replace(/[^\d+]/g, "").slice(0, 15), correo = String(d.correo || "").trim().toLowerCase().slice(0, 120);
+  if (nombre.length < 5) return { ok: false, error: "Escribe tu nombre completo o razón social." };
+  if (ci.replace(/\D/g, "").length < 5) return { ok: false, error: "Escribe tu número de C.I." };
+  if (cel.replace(/\D/g, "").length < 8) return { ok: false, error: "Escribe tu número de celular." };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) return { ok: false, error: "Escribe un correo válido: ahí te enviamos tu Orden de Recepción." };
+  if (d.sinContador !== true) return { ok: false, error: "Confirma que haces tus declaraciones por tu cuenta, sin contador." };
+  var ext = { externo: true, docId: "", campoEstado: "", nombre: nombre.toUpperCase(), codigoId: "", celular: cel, correo: correo, tipo: "", brinda: "", actP: "",
+              fechaNit: "", estMat: "", estado: "EXTERNO", ci: ci, costo: "", nitBuscado: nit };
+  pasCachePut_("ext_" + nit, ext, 21600);
+  return { ok: true, cliente: { nombre: ext.nombre, nit: nit, id: "", celular: pasOcultar_(cel, "cel"), correo: pasOcultar_(correo, "mail"), brinda: "", tieneCorreo: true,
+           repartidor: false, externo: true, aperturaNit: "", diaVence: 13 + Number(nit.slice(-1)) } };
+}
 function pasConfigPublica() {
   var c = pasCfg();
   if (!c.activo) return { ok: false, error: "La pasarela está pausada. Escríbenos por WhatsApp." };
@@ -188,7 +230,7 @@ function pasConfigPublica() {
     ufv: pasUfv_(), multasEeff: { f500: 50, f605: 100 },
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
-    beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "",
+    beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "", sinContador: pasSinCont_(c),
     premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
@@ -199,7 +241,7 @@ function pasBuscar(nitRaw) {
   if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
   var cli = pasClienteCache_(nit);
   if (cli && !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp para ayudarte." };
-  if (!cli) return { ok: false, error: "No encontramos ese NIT. Revisa el número o escríbenos por WhatsApp para registrarte." };
+  if (!cli) { var scB = pasSinCont_(pasCfg()); return { ok: false, noCliente: true, sinContador: scB.vigente, error: "No encontramos ese NIT. Revisa el número o escríbenos por WhatsApp para registrarte." }; }
   return {
     ok: true,
     cliente: {
@@ -413,9 +455,9 @@ function pasContarEeff_(g, precio) {
 // Reserva (o recupera) el cupo del cliente. Con candado: dos personas no pueden tomar el último cupo a la vez.
 function pasReservar(d) {
   var nit = String(d.nit || "").replace(/\D/g, "");
-  var cli = pasClienteCache_(nit);
+  var cli = pasCliOExt_(nit);
   if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
-  if (d.servicio !== "eeff" || !pasEsRepartidor_(cli)) { var q = pasCotizar(d); return q; }
+  if (d.servicio !== "eeff" || cli.externo || !pasEsRepartidor_(cli)) { var q = pasCotizar(d); return q; }
   var c = pasCfg(), g = String(c.eeffGestion || PAS_DEF.eeffGestion), props = PropertiesService.getScriptProperties();
   var lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
@@ -464,6 +506,13 @@ function pasCotizar(d) {
   }
   if (s === "eeff") {
     var cliE = d.nit ? pasClienteCache_(String(d.nit).replace(/\D/g, "")) : null;
+    var extE = !cliE && d.nit ? pasExterno_(String(d.nit).replace(/\D/g, "")) : null;
+    if (extE) {
+      var scE = pasSinCont_(c), gS = String(c.eeffGestion || PAS_DEF.eeffGestion);
+      if (!scE.vigente) return { ok: false, error: "El " + scE.nombre + " ya no está disponible. Escríbenos por WhatsApp." };
+      return { ok: true, monto: scE.precio, servicio: "BALANCE", detalle: "BALANCE SIN CONTADOR", tipo: "eeff", cupo: "", balance: scE.nombre, sinContador: true,
+               periodo: { tipo: "gestion", mes: "", anio: gS, texto: "Gestión " + gS }, resumen: "Estados financieros gestión " + gS + " · " + scE.nombre };
+    }
     if (cliE && !pasEsRepartidor_(cliE)) {
       var gO = String(c.eeffGestion || PAS_DEF.eeffGestion);
       return { ok: true, monto: Number(c.precios.eeffOtros), servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: "",
@@ -493,7 +542,7 @@ function pasQR_(monto) {
 
 // ---------------- Verificar comprobante con IA ----------------
 function pasVerificar(d) {
-  var cli = pasClienteCache_(String(d.nit || "").replace(/\D/g, ""));
+  var cli = pasCliOExt_(String(d.nit || "").replace(/\D/g, ""));
   if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
   var cot = pasCotizar(d);
   if (!cot.ok) return cot;
@@ -667,7 +716,7 @@ function pasConfirmar(token) {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     if (pasCache_("hecho_" + token)) return pasCache_("hecho_" + token);
-    var cli = pasClienteCache_(v.nit);
+    var cli = pasCliOExt_(v.nit);
     if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
     var x = v.x || {}, cot = v.cot, hoy = pasHoy_();
     var nro = String(x.nroOperacion || "").replace(/\s/g, "");
@@ -686,7 +735,9 @@ function pasConfirmar(token) {
       servicio: cot.servicio, servicioNombre: cot.servicio, detalleServicio: cot.detalle,
       mesRecepcion: cot.periodo.texto, periodoTipo: cot.periodo.tipo, periodoMes: cot.periodo.mes, periodoAnio: cot.periodo.anio,
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
-      importe: cot.monto, tipoPago: "QR", atencion: "PASARELA", comentarios: v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", ")),
+      importe: cot.monto, tipoPago: "QR", atencion: "PASARELA",
+      comentarios: (cli.externo ? "NO CLIENTE (plan sin contador) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
+      clienteExterno: !!cli.externo, clienteCI: cli.ci || "", sinContador: !!cot.sinContador,
       compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: url,
       tipo: cot.tipo, balanceNombre: cot.balance || "", estado: "pendiente", estadoDeuda: "sin_deuda",
       reciboNro: String(nroCom), reciboEnviado: false,
@@ -701,7 +752,7 @@ function pasConfirmar(token) {
     fsCreate_("recepciones", rec);
     if (cot.tipo === "eeff") {
       try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
-      if (v.aprobado) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
+      if (v.aprobado && !cot.sinContador) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
     }
     if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
     var enviado = false;
@@ -712,7 +763,7 @@ function pasConfirmar(token) {
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
           tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: "QR", atencion: "PASARELA", comentarios: "",
-          terminos: (PAS_TERMINOS[cot.tipo] || []).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []),
+          terminos: (cot.sinContador ? PAS_TERMINOS.sinContador.concat(PAS_TERMINOS.eeff.filter(function (t) { return !PAS_TER_SOLO_CUPOS.test(t); })) : (PAS_TERMINOS[cot.tipo] || [])).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []),
           premios: premios, terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
         });

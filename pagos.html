@@ -26,7 +26,7 @@ p{margin:0}.suave{color:var(--suave)}.chico{font-size:12px}.c13{font-size:13px}
 .card{background:var(--sup);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(5,31,32,.08)}
 .fila{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:6px 0}.fila span:first-child{color:var(--suave)}.fila b{text-align:right}
 label.l{font-size:14px;font-weight:600;display:block;margin-bottom:6px}
-input.nit,select{width:100%;height:50px;border:1.5px solid var(--bctl);border-radius:6px;background:var(--campo);padding:0 14px;font-size:18px;color:var(--txt);font-family:inherit}
+input.nit,input.tx,select{width:100%;height:50px;border:1.5px solid var(--bctl);border-radius:6px;background:var(--campo);padding:0 14px;font-size:18px;color:var(--txt);font-family:inherit}
 input.nit{font-family:Akshar,sans-serif;font-size:22px;letter-spacing:1px}
 input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acento);outline-offset:2px}
 .btn{height:50px;border:0;border-radius:10px;background:var(--acento);color:#fff;font-size:16px;font-weight:600;cursor:pointer;width:100%;font-family:inherit}
@@ -160,6 +160,12 @@ main > .pila{animation:entra .35s ease both}
 .cbar .u{display:inline-flex;align-items:baseline;gap:3px}.cbar .u small{font-size:11px;color:#B7D9C0;margin-right:4px}
 @media(max-width:560px){.cbar{padding:8px 10px;gap:5px}.cbF{flex-wrap:nowrap;gap:6px;justify-content:space-between}.cbar .cbT{font-size:9.5px;line-height:11.5px;letter-spacing:.2px;max-width:112px;text-align:left}.cbar b{font-size:21px;line-height:23px}.cbar .u{gap:1px}.cbar .u small{font-size:9px;margin-right:2px}.cbF.dec{padding-top:5px}}
 .cbar.oculto{display:none}
+input.tx{font-size:16px}
+.scPlan{border:2px solid var(--acento);border-radius:18px;padding:16px;background:var(--superficie,var(--card,#fff));display:flex;flex-direction:column;gap:10px}
+.scPlan .scTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.scPlan .scTop b{font-family:Akshar,sans-serif;font-size:22px;line-height:26px}
+.scPlan .scPr{font-family:Akshar,sans-serif;font-size:34px;line-height:36px;font-weight:700;white-space:nowrap}.scPlan .scPr small{display:block;font-family:inherit;font-size:11px;font-weight:600;text-align:right;opacity:.75;line-height:14px}
+.scHasta{background:#FEF3C7;color:#7A2E0B;border-radius:10px;padding:8px 12px;font-size:13.5px;font-weight:700;line-height:19px}
+.scGar{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:19px}.scGar svg{flex-shrink:0;margin-top:1px}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
 .opc,.subir,.btn2,.link,.seg,.ayuda{color:var(--acento)}
 .opc .ic{color:var(--acento)}
@@ -402,6 +408,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     pago: ["contrato-euclides-oscuro.jpg", "Pago seguro", "Paga con el QR de tu banco", "El QR ya trae el monto exacto. Después sube la captura de tu comprobante."],
     verif: ["arquimedes-saludo-claro.jpg", "Verificación", "Revisamos tu comprobante", "Nuestra IA lee tu captura y confirma el pago en segundos."],
     cuenta: ["los-cuatro-oscuro.jpg", "Muy pronto", "La nueva pasarela de pagos CONTAX", "Paga con QR desde tu celular y recibe tu Orden de Recepción al instante. Cupos limitados en los balances y premios para quienes paguen."],
+    externo: ["contrato-euclides-oscuro.jpg", "Sin contador", "¿Haces tu declaración por tu cuenta?", "Nosotros hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
     fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS."]
   };
   Object.keys(ESCENA).forEach(function (k) { var im = new Image(); im.src = FOTOS + ESCENA[k][0]; });
@@ -422,7 +429,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function ayuda() { return WA ? '<a class="ayuda" href="' + wa() + '" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg>¿Necesitas ayuda? Escríbenos por WhatsApp</a>' : ""; }
   function barras() {
-    var orden = { nit: 0, datos: 1, servicio: 1, opcion: 2, detalle: 2, eeff2: 2, eeff3: 2, eeff4: 2, pago: 3, verif: 4, fin: 4 }, k = orden[S.paso] || 0;
+    var orden = { nit: 0, externo: 1, datos: 1, servicio: 1, opcion: 2, detalle: 2, eeff2: 2, eeff3: 2, eeff4: 2, pago: 3, verif: 4, fin: 4 }, k = orden[S.paso] || 0;
     document.querySelectorAll("#barras i").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
     document.querySelectorAll("#pasos div").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
   }
@@ -434,6 +441,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // Paso al que se puede volver con los datos que hay
   function pasoValido(p) {
     if (p === "nit" || p === "cuenta") return true;
+    if (p === "externo") return !!S.cfg && !!(S.cfg.sinContador && S.cfg.sinContador.vigente);
     if (!S.cli || !S.cfg) return false;
     if (p === "datos" || p === "servicio") return true;
     if (S.fin) return false;                  // ya se pagó: no volver al QR ni al comprobante
@@ -533,6 +541,18 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
         (antesLanz() ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Declaraciones y facturación ya puedes pagarlas. Los balances puedes revisarlos desde ahora y pagarlos desde la apertura.</p>' : "") + "</div>";
+    } else if (S.paso === "externo") {
+      var SC = S.cfg.sinContador || {}, X = S.ext || {};
+      h = '<div class="pila"><h2>No encontramos tu NIT en CONTAX</h2><p class="suave">NIT <b>' + esc(S.nit) + '</b>. Si ya eres cliente, revisa el número. Si no lo eres, este plan es para ti:</p>' +
+        scPlanHtml(true) +
+        '<form class="card pila" id="fExt" novalidate><b style="font-size:16px">Tus datos</b><p class="chico suave" style="margin-top:-6px">Los usamos para tu Orden de Recepción y para escribirte cuando empecemos tu balance.</p>' +
+        '<div><label class="l" for="exNom">Nombre completo o razón social</label><input class="tx nit" id="exNom" autocomplete="name" value="' + esc(X.nombre || "") + '"></div>' +
+        '<div><label class="l" for="exCi">C.I.</label><input class="tx nit" id="exCi" inputmode="numeric" value="' + esc(X.ci || "") + '"></div>' +
+        '<div><label class="l" for="exCel">Celular (WhatsApp)</label><input class="tx nit" id="exCel" inputmode="tel" autocomplete="tel" value="' + esc(X.celular || "") + '"></div>' +
+        '<div><label class="l" for="exMail">Correo electrónico</label><input class="tx nit" id="exMail" type="email" autocomplete="email" value="' + esc(X.correo || "") + '"></div>' +
+        '<label class="acepto" style="display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:20px;cursor:pointer"><input type="checkbox" id="exSin"' + (X.sinContador ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Hago mis declaraciones por mi cuenta y no tengo contador.</span></label>' +
+        errHtml() + '<button class="btn" type="submit">Continuar con el ' + esc(SC.nombre || "plan") + '</button></form>' +
+        '<button class="link" id="bOtroNit">Revisar mi NIT</button></div>';
     } else if (S.paso === "datos") {
       var c = S.cli;
       var pn = String((c.nombre || "").trim().split(/\s+/).slice(-1)[0] || ""); pn = pn.charAt(0).toUpperCase() + pn.slice(1).toLowerCase();
@@ -550,6 +570,11 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var balCli = balanceDelCliente();
       var antesL = antesLanz();
       var eeffTxt = antesL ? "Revisa los balances · pago desde el " + esc(fechaLanzTxt().replace(/^Abrimos el /, "")) : rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
+      if (S.cli && S.cli.externo) {
+        var SCs = S.cfg.sinContador || {};
+        h = '<div class="pila"><h2>¿Qué quieres pagar?</h2><button class="opc" data-s="eeff"><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + esc(SCs.nombre || "") + " · Bs " + esc(SCs.precio) + "</span></span></button>" +
+          '<p class="chico suave">Las declaraciones mensuales y la facturación son para clientes de CONTAX. <a href="' + wa("Hola CONTAX, quiero ser cliente para mis declaraciones mensuales.") + '" target="_blank" rel="noopener">Quiero ser cliente</a></p><button class="link" id="bVolver">Volver</button></div>';
+      } else
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
         '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT · ' + (ven.tipo === "adelantado" ? "puedes pagar por adelantado · " : "") + "desde Bs " + esc(p.sinMov) + "</span></span></button>" +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
@@ -591,6 +616,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var OPC = [], hayGen = false; E.cupos.forEach(function (c) { if (c.libres <= 0 || !aplica(c)) return; if (c.nitDesde) OPC.push(c); else if (!hayGen) { OPC.push(c); hayGen = true; } });
       var A = OPC[0] || null; OPC.forEach(function (c) { if (S.eeffFase && c.n === S.eeffFase) A = c; });
       var nomb = function (c) { return c.nombre || ("Balance " + c.n); };
+      var esExt = !!(S.cli && S.cli.externo), SCe = S.cfg.sinContador || {};
       var contador = A ? '<div class="contador' + (A.libres <= 10 ? " poco" : "") + '">' + (A.libres <= 10 ? '<span class="fase" style="color:#FFE1DC">¡Últimos cupos!</span>' : "") + '<span class="fase">' + esc(nomb(A)) + ' · habilitado</span><span class="num">' + A.libres + '</span><span class="de">' + (A.libres === 1 ? "cupo disponible" : "cupos disponibles") + " de " + A.capacidad + '</span><span class="pr">Bs ' + esc(A.precio) + "</span>" + (E.reservados ? '<span class="de" style="margin-top:6px;font-size:12px;color:#B7D9C0">' + E.reservados + (E.reservados === 1 ? " cupo está reservado" : " cupos están reservados") + " ahora mismo por otros clientes</span>" : "") + "</div>"
         : '<div class="contador agot"><span class="fase">Gestión ' + esc(E.gestion) + '</span><span class="num" style="font-size:44px;line-height:48px">Agotado</span><span class="de">Se llenaron todos los balances. Escríbenos por WhatsApp.</span></div>';
       var premiosDe = function (c) { return (S.cfg.premios || []).filter(function (p) { return p.servicio === "eeff" && (!p.fase || Number(p.fase) === c.n); }); };
@@ -611,13 +637,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var ICO_SIG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="vertical-align:-3px;margin-left:6px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
       var precioEl = S.cot && S.cot.ok ? bs(S.cot.monto) : (A ? "Bs " + esc(A.precio) : "…");
       var elegido = function (pasoCambio) {
-        var nom = esRepE ? (A ? nomb(A) : "Estados financieros") : "Estados financieros";
+        var nom = esExt ? (SCe.nombre || "Estados financieros") : esRepE ? (A ? nomb(A) : "Estados financieros") : "Estados financieros";
         return '<div class="planElegido"><div><span>Tu plan · Gestión ' + esc(E.gestion) + '</span><b>' + esc(nom) + '</b><small>' + precioEl + '</small></div>' + (pasoCambio ? '<button class="link" data-ir="' + pasoCambio + '">Cambiar</button>' : "") + "</div>";
       };
       var tit = '<div class="pila"><h2>Estados financieros</h2>';
       if (S.paso === "opcion") {
         h = tit + '<p class="suave c13" style="margin-top:-6px">Gestión ' + esc(E.gestion) + (esRepE ? " · el precio sube cuando se llena cada balance. Mientras antes pagues, menos pagas." : "") + "</p>" +
-          bloque("¿Por qué debo hacer Estados Financieros?", INFO.porque) + (esRepE ? comparaHtml(E.cupos, A, aplica, premiosDe) : "") + multasHtml() + errHtml() +
+          (esExt ? scPlanHtml(false) : "") + bloque("¿Por qué debo hacer Estados Financieros?", INFO.porque) + (esRepE ? comparaHtml(E.cupos, A, aplica, premiosDe) : "") + multasHtml() + errHtml() +
           '<button class="btn" data-ir="' + (esRepE ? "eeff2" : "eeff3") + '">Siguiente' + ICO_SIG + "</button></div>";
       } else if (S.paso === "eeff2") {
         h = tit + '<p class="l" style="margin:4px 0 0">Elige tu balance</p><p class="chico suave" style="margin:-4px 0 0">' + (OPC.length > 1 ? "Tienes " + OPC.length + " balances habilitados: elige el que prefieras." : "Solo se puede elegir el balance habilitado.") + " El siguiente se habilita cuando se llenan los cupos del anterior.</p>" +
@@ -686,7 +712,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
         premiosHtml(f.premios) +
-        '<p class="c13 suave" style="line-height:19px">' + (ok ? "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS." : "Guarda este número por si necesitas consultarnos.") + "</p>" +
+        '<p class="c13 suave" style="line-height:19px">' + (ok ? (S.cli && S.cli.externo ? "El equipo de CONTAX ya tiene tu trámite. Te escribiremos por WhatsApp para pedirte la información de tu empresa." : "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS.") : "Guarda este número por si necesitas consultarnos.") + "</p>" +
         '<button class="btn2" id="bOtro">Hacer otro pago</button></div>';
     }
     // Imagen del paso (en celular va arriba del contenido; en computadora va en el panel de la izquierda)
@@ -701,6 +727,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function terminosHtml() {
     var k = { decl: "declaracion", eeff: "eeff", fact: "facturacion" }[S.serv];
     var t = S.cfg && S.cfg.terminos && S.cfg.terminos[k];
+    if (k === "eeff" && t && S.cli && S.cli.externo) t = ((S.cfg.terminos.sinContador) || []).concat(t.filter(function (x) { return !/cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i.test(x); }));
     if (!t || !t.length) { S.acepta = true; return ""; }
     return '<div class="terminos"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Términos y condiciones del servicio</h3><p class="lee">Léelos con atención antes de aceptar.</p><ul>' +
       t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico">Te los enviamos también en el correo de tu Orden de Recepción.</p>' +
@@ -745,6 +772,22 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function avisoNuevosHtml() {
     return '<div class="aviso warn"><b>Balance ¡Nuevos!: pago sujeto a revisión.</b><br>Solo aplica a NIT abiertos en octubre, noviembre o diciembre de 2026. Cuando recibamos tu pago verificaremos en tu portal de Impuestos Nacionales la fecha de apertura de tu NIT. Si no corresponde, rechazaremos la solicitud y te devolveremos tu dinero.</div>';
+  }
+  // Plan para no clientes (hacen su declaración solos, sin contador)
+  function scPlanHtml(conIncluye) {
+    var SC = (S.cfg && S.cfg.sinContador) || {}, t = Date.parse(SC.hasta || "");
+    var hasta = isNaN(t) ? "" : fechaBo(t);
+    var chk = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>';
+    return '<div class="scPlan"><div class="scTop"><div><span class="c13 suave">Para quienes hacen su declaración sin contador</span><br><b>' + esc(SC.nombre || "Balance Sin Contador") + '</b></div><div class="scPr">Bs ' + esc(SC.precio) + '<small>precio fijo</small></div></div>' +
+      (hasta ? '<div class="scHasta">Solo puedes pagarlo hasta el ' + esc(hasta) + ".</div>" : "") +
+      '<div class="scGar">' + chk + '<span><b>Sin multa garantizado</b> del Formulario 500 ni del Formulario 605.</span></div>' +
+      '<div class="scGar">' + chk + '<span>Damos prioridad a nuestros clientes: tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales, con la prórroga que habilita cada año.</span></div>' +
+      (conIncluye && SC.incluye && SC.incluye.length ? '<details class="incd"><summary>Incluye (' + SC.incluye.length + ')</summary><ul class="inc">' + SC.incluye.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") + "</div>";
+  }
+  function fechaBo(t) {
+    var dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"], meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    var bo = new Date(t - 4 * 3600000), hh = bo.getUTCHours(), mm = ("0" + bo.getUTCMinutes()).slice(-2);
+    return dias[bo.getUTCDay()] + " " + bo.getUTCDate() + " de " + meses[bo.getUTCMonth()] + " a las " + ("0" + hh).slice(-2) + ":" + mm;
   }
   function puedePagar() { return S.cot && S.cot.ok && S.acepta && (S.serv !== "eeff" || (S.aceptaUtil && !antesLanz())); }
   // Qué incluye cada balance (si la pasarela todavía trae los textos antiguos, se usa esta lista)
@@ -835,6 +878,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       clearTimeout(nitT);
       main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("nit") + "</div>"; window.scrollTo(0, 0);
       Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" }), espera(3000)]).then(function (rs) {
+        if (!rs[0].ok && rs[0].noCliente && rs[0].sinContador && rs[1].ok && !desdePortal) { S.cfg = rs[1]; S.cli = null; S.error = ""; ir("externo"); return; }
         if (!rs[0].ok) { ir("nit", rs[0].error); return; }
         if (!rs[1].ok) { ir("nit", rs[1].error); return; }
         S.cli = rs[0].cliente; S.cfg = rs[1]; ir(desdePortal ? "servicio" : "datos");
@@ -846,6 +890,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       if (v.length >= 7) nitT = setTimeout(function () { var f = $("fNit"); if (f && $("nit") && $("nit").value.replace(/\D/g, "") === v) f.requestSubmit ? f.requestSubmit() : f.onsubmit({ preventDefault: function () {} }); }, 1200);
     };
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
+    if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; ir("nit"); };
+    if ($("fExt")) $("fExt").onsubmit = function (ev) {
+      ev.preventDefault();
+      S.ext = { nombre: $("exNom").value, ci: $("exCi").value, celular: $("exCel").value, correo: $("exMail").value, sinContador: $("exSin").checked };
+      cargando("Registrando tus datos…");
+      api(Object.assign({ action: "pas_externo", nit: S.nit }, S.ext)).then(function (r) {
+        if (!r.ok) { ir("externo", r.error); return; }
+        reiniciarServicio(); S.cli = r.cliente; S.serv = "eeff"; S.per = perDefault(); ir("opcion"); cotizar();
+      });
+    };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
       S.serv = b.dataset.s; S.eeffFase = 0; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
@@ -874,7 +928,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     document.querySelectorAll("[data-ir]").forEach(function (b) { b.onclick = function () { ir(b.dataset.ir); }; });
     if ($("bVolverPlan")) $("bVolverPlan").onclick = function () { ir("opcion"); };
     if ($("bCambiarPlan")) $("bCambiarPlan").onclick = function () { ir("opcion"); };
-    if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? "datos" : "servicio"); };
+    if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? (S.cli && S.cli.externo ? "externo" : "datos") : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
       comprimir(f).then(function (d) { S.img = d; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
@@ -957,7 +1011,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     function tic() {
       var q = Math.floor((lanzMs() - Date.now()) / 1000), f = declFin(), enNit = S.paso === "nit";
       var verBal = lanzMs() && q > 0 && S.paso !== "cuenta" && !(enNit && document.getElementById("reloj"));
-      var verDec = f && !enNit && !document.querySelector(".cuentaDecl") && (!S.cli || S.cli.repartidor !== false);
+      var verDec = f && !enNit && S.paso !== "externo" && !(S.cli && S.cli.externo) && !document.querySelector(".cuentaDecl") && (!S.cli || S.cli.repartidor !== false);
       if (!verBal && !verDec) { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) document.title = tituloBase; return; }
       bar.classList.remove("oculto");
       var pr = (S.cfg && S.cfg.precios) || {};

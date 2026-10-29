@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "61";
+const APP_VERSION = "63";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4434,7 +4434,7 @@ const PAS_BAL_DEF = [
   { nombre: "Balance Esencial", incluye: balIncluyeDef(1) },
   { nombre: "Balance Plus", incluye: balIncluyeDef(2) },
   { nombre: "Balance Pro", incluye: balIncluyeDef(3) },
-  { nombre: "Balance Total", incluye: balIncluyeDef(4) }
+  { nombre: "Balance Integral", incluye: balIncluyeDef(4) }
 ];
 // Si lo guardado es un texto antiguo (con "beneficios CONTAX", etc.) o la lista básica sin extras, se usa la lista vigente
 function balIncluyeViejo(l) {
@@ -4454,7 +4454,8 @@ const PAS_PREM_DEF = [
     { id: "p9", nombre: "20% de devolución", descripcion: "Te devolvemos el 20% de tu pago por QR.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 },
     { id: "p10", nombre: "Un año de declaraciones gratis", descripcion: "12 declaraciones mensuales sin costo.", servicio: "eeff", fase: 5, tipo: "azar", ganadores: 1, entre: 30 }
 ];
-function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: x.nombre || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo(x.incluye) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
+function balInfo(cupos, i) { const x = (cupos || [])[i] || {}, d = PAS_BAL_DEF[i] || {}; return { nombre: (/^\s*balance\s+total\s*$/i.test(x.nombre || "") ? "Balance Integral" : x.nombre) || d.nombre || ("Balance " + (i + 1)), incluye: !balIncluyeViejo(x.incluye) ? x.incluye : (d.incluye || []), nitDesde: x.nitDesde !== undefined ? x.nitDesde : (d.nitDesde || "") }; }
+const PAS_SC_DEF = { activo: true, nombre: "Balance Sin Contador", precio: 350, hasta: "2026-11-05T23:59:59-04:00", incluye: [] };
 const PAS_DEF = { activo: true, precios: { sinMov: 30, enFecha: 50, fueraFecha: 60, premium: 95, fact: 20, eeffOtros: 780 }, diaDesde: 25, diaHasta: 31, diaCierre: 5, eeffGestion: String(new Date().getFullYear()), cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }], destinoClaves: [] };
 const PA_UI = { tab: "revision", cfg: null, qr: null, cupos: null };
 async function renderPasarela() {
@@ -4481,6 +4482,7 @@ function paMontos() {
   add(c.precios.sinMov, "Plan Básico (sin movimiento)"); add(c.precios.enFecha, "Plan Estándar del 25 al 30"); add(c.precios.fueraFecha, "Plan Estándar del 1 al 5");
   add(c.precios.premium, "Plan Premium"); add(c.precios.eeffOtros, "Balance · otros rubros");
   add(c.precios.fact, "Suscripción de facturación");
+  const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (sc.activo !== false) add(sc.precio, sc.nombre + " (no clientes)");
   (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
   return o.sort((a, b) => a.m - b.m);
 }
@@ -4740,6 +4742,14 @@ function paintPasarela() {
           <div class="field"><label>NIT desde (opcional)</label><input class="pa-bd" data-i="${i}" type="date" value="${escape(inf.nitDesde || "")}" ${dis}></div>
           <div class="field"><label>Qué incluye</label><textarea class="pa-bi" data-i="${i}" rows="4" style="width:100%;font-size:13px" ${dis}>${escape(inf.incluye.join("\n"))}</textarea></div></div>`; }).join("")}
         </div></div>
+      ${(() => { const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); const hl = String(sc.hasta || "").slice(0, 16); return `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Plan para no clientes (hacen su declaración sin contador)</h3>
+        <p class="note" style="margin:0 0 10px">Cuando alguien escribe un NIT que no está en la Base de Datos, la pasarela le ofrece este plan: precio fijo, sin cupos, solo hasta la fecha límite. Se le pide nombre, C.I., celular y correo. La recepción llega marcada como <b>NO CLIENTE</b> para que lo registres en la Base de Datos.</p>
+        <label style="display:flex;gap:8px;align-items:center;margin:0 0 10px;font-weight:600"><input type="checkbox" id="pa_sc_on" ${sc.activo !== false ? "checked" : ""} ${dis} style="width:auto"> Plan activo</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px">
+          <div class="field"><label>Nombre</label><input id="pa_sc_nom" value="${escape(sc.nombre || "")}" ${dis}></div>
+          <div class="field"><label>Precio fijo (Bs)</label><input id="pa_sc_pr" type="number" min="0" step="1" value="${escape(String(sc.precio || ""))}" ${dis}></div>
+          <div class="field"><label>Se puede pagar hasta (hora Bolivia)</label><input id="pa_sc_hasta" type="datetime-local" value="${escape(hl)}" ${dis}></div></div>
+        <div class="field"><label>Qué incluye (vacío = lo mismo que el Balance Esencial)</label><textarea id="pa_sc_inc" rows="4" style="width:100%;font-size:13px" ${dis}>${escape((sc.incluye || []).join("\n"))}</textarea></div></div>`; })()}
       <div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Beneficios de los planes</h3>
         <p class="note" style="margin:0 0 10px">Se muestran dentro de cada plan en la pasarela. Una línea por beneficio.</p>
         <div class="grid2" style="gap:12px">
@@ -4819,9 +4829,11 @@ function paintPasarela() {
     const lz = el("pa_lanz").value ? el("pa_lanz").value + ":00-04:00" : "";
     const contarDesde = el("pa_desde").value || "";
     const beneficios = { basico: lineas(el("pa_ben_basico").value), estandar: lineas(el("pa_ben_estandar").value), premium: lineas(el("pa_ben_premium").value), fact: lineas(el("pa_ben_fact").value) };
+    const sinContador = { activo: el("pa_sc_on").checked, nombre: el("pa_sc_nom").value.trim() || PAS_SC_DEF.nombre, precio: Number(el("pa_sc_pr").value) || 0,
+      hasta: el("pa_sc_hasta").value ? el("pa_sc_hasta").value + ":59-04:00" : "", incluye: lineas(el("pa_sc_inc").value) };
     try {
-      await setDoc(doc(db, "config", "app"), { pasarela: { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde }, updatedAt: serverTimestamp() }, { merge: true });
-      Object.assign(PA_UI.cfg, { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde });
+      await setDoc(doc(db, "config", "app"), { pasarela: { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde, sinContador }, updatedAt: serverTimestamp() }, { merge: true });
+      Object.assign(PA_UI.cfg, { cupos: PA_UI.cupos, beneficios, lanzamiento: lz, contarDesde, sinContador });
       EEFF_DESDE = eeffDesdeDe(PA_UI.cfg);
       try { await eeffSincronizarConteo(PA_UI.cfg.eeffGestion, true); } catch (e) {}
       paintPasarela(); const m2 = el("pa_msg_bal"); if (m2) { m2.className = "msg ok"; m2.textContent = "Guardado. Los clientes ya lo ven en la pasarela."; }
