@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "65";
+const APP_VERSION = "66";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4521,7 +4521,7 @@ async function eeffFasesCfg() {
   const cfg = await loadConfigDoc(), p = cfg.pasarela || {};
   EEFF_DESDE = eeffDesdeDe(p);
   return { gestion: String(p.eeffGestion || PAS_DEF.eeffGestion), cupos: (p.cupos && p.cupos.length ? p.cupos : PAS_DEF.cupos).map(c => Object.assign({}, c)),
-           otros: Number((p.precios && p.precios.eeffOtros) || PAS_DEF.precios.eeffOtros) };
+           otros: Number((p.precios && p.precios.eeffOtros) || PAS_DEF.precios.eeffOtros), sc: Object.assign({}, PAS_SC_DEF, p.sinContador || {}) };
 }
 // opts: { editable, conMontos, dis }
 function eeffFasesHTML(cupos, recs, reservas, opts) {
@@ -4548,9 +4548,24 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
       ${conM ? `<td class="mono" style="text-align:right">${money(proy)}</td><td class="mono" style="text-align:right">${money(cob)}</td><td class="mono" style="text-align:right">${money(pend)}</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="${i}" ${ven ? "" : "disabled"}>Ver (${ven})</button>${opts.editable && isAdmin() ? ` <button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>` + detalle;
   }).join("");
+  // Balance Independiente (no clientes, sin contador): precio fijo y sin cupos; se cuenta aparte
+  const esInd = r => r.sinContador === true || r.clienteExterno === true || /\(NO CLIENTE\)|SIN CONTADOR/i.test(String(r.detalleServicio || ""));
+  const ind = [].concat(...Object.values(recs)).filter(esInd).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
+  const recsF = {}; Object.keys(recs).forEach(k => { const l = recs[k].filter(r => !esInd(r)); if (l.length) recsF[k] = l; });
+  const sc = Object.assign({}, PAS_SC_DEF, opts.sc || {}); if (/^\s*balance\s+sin\s+contador\s*$/i.test(sc.nombre || "")) sc.nombre = PAS_SC_DEF.nombre;
+  const scT = Date.parse(sc.hasta || ""), scAbierto = sc.activo !== false && (isNaN(scT) || Date.now() <= scT);
+  const indCob = ind.reduce((a, r) => a + (Number(r.importe) || 0), 0);
+  const fIso = r => { const d = new Date(r.fechaISO || ""); return isNaN(d) ? escape(r.fecha || "") : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+  const filaInd = (ind.length || sc.activo !== false) ? `<tr style="border-top:2px solid var(--line)"><td><b>${escape(sc.nombre)}</b><div class="note" style="margin:0">No clientes · sin contador</div></td><td><span class="mono">${money(sc.precio)}</span></td><td class="note">Sin límite</td>
+      <td class="mono"><b>${ind.length}</b></td><td class="note">—</td><td class="note">—</td><td>${scAbierto ? `<span class="badge ok">Hasta ${escape(isNaN(scT) ? "" : new Date(scT).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit" }))}</span>` : '<span class="badge" style="background:#B42318;color:#fff">Cerrado</span>'}</td>
+      ${conM ? `<td class="note" style="text-align:right">—</td><td class="mono" style="text-align:right">${money(indCob)}</td><td class="note" style="text-align:right">—</td>` : ""}
+      <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="ind" ${ind.length ? "" : "disabled"}>Ver (${ind.length})</button></td></tr>
+    <tr class="ef-det" data-fase="ind" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${ind.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th><th>Celular</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Estado del pago</th></tr></thead><tbody>${ind.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${fIso(r)}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b></td><td class="mono">${escape(String(r.nit || ""))}</td><td class="mono">${escape(r.clienteCelular || "")}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${(r.pasarela && r.pasarela.estado === "revision") ? '<span style="color:var(--warn);font-weight:600">En revisión</span>' : "Aprobado"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó este balance.</span>'}</td></tr>
+    <tr style="font-weight:700"><td colspan="3">Total general (fases + ${escape(sc.nombre)})</td><td class="mono">${tVen + ind.length}</td><td colspan="3"></td>${conM ? `<td></td><td class="mono" style="text-align:right">${money(tCob + indCob)}</td><td></td>` : ""}<td></td></tr>` : "";
+  recs = recsF;
   const fuera = Object.keys(recs).filter(k => precios.indexOf(k) < 0);
   return `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Balance</th><th>Precio${opts.editable ? " (Bs)" : ""}</th><th>Cupos</th><th>Vendidos</th><th>Reservados</th><th>Libres</th><th>Estado</th>${conM ? '<th style="text-align:right">Ingreso proyectado</th><th style="text-align:right">Ya vendido</th><th style="text-align:right">Por vender</th>' : ""}<th></th></tr></thead><tbody>${filas}
-    <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">Total · ${tCap} cupos</td><td class="mono">${tVen}</td><td class="mono">${tRes}</td><td class="mono">${Math.max(0, tCap - tVen - tRes)}</td><td></td>${conM ? `<td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td>` : ""}<td></td></tr></tbody></table></div>
+    <tr style="font-weight:700;border-top:2px solid var(--line)"><td colspan="3">Total · ${tCap} cupos</td><td class="mono">${tVen}</td><td class="mono">${tRes}</td><td class="mono">${Math.max(0, tCap - tVen - tRes)}</td><td></td>${conM ? `<td class="mono" style="text-align:right">${money(tProy)}</td><td class="mono" style="text-align:right">${money(tCob)}</td><td class="mono" style="text-align:right">${money(tPend)}</td>` : ""}<td></td></tr>${filaInd}</tbody></table></div>
     <p class="note" style="margin:8px 0 0">Solo cuentan los balances recepcionados desde el ${escape(EEFF_DESDE.split("-").reverse().join("/"))} (se cambia en Balances y beneficios). Reservados = clientes que están pagando ahora en la pasarela (tienen 30 minutos). Toca «Ver» para la lista de quienes pagaron en cada fase.${conM ? " Ingreso proyectado = precio × cupos · Ya vendido = precio × vendidos · Por vender = precio × libres." : ""}</p>
     ${dup.length ? `<p class="msg err" style="margin:6px 0 0">Dos fases tienen el mismo precio (Bs ${escape(dup.join(", "))}). Cada fase debe tener un precio distinto para contar bien los cupos.</p>` : ""}
     ${fuera.length ? `<p class="note" style="margin:6px 0 0">Balances con precios que no son de ninguna fase (no ocupan cupos): ${fuera.map(k => `Bs ${escape(k)} × ${recs[k].length}`).join(" · ")}.</p>` : ""}`;
@@ -4571,7 +4586,7 @@ async function eeffFasesBloque(contId, conMontos) {
   try {
     const f = await eeffFasesCfg();
     const [res] = await Promise.all([eeffReservasScript(), recSync().catch(() => null)]);
-    box.innerHTML = `<h3 style="margin:0 0 4px">Balances por fase · Gestión ${escape(f.gestion)}</h3><p class="note" style="margin:0 0 10px">Solo consulta. Los precios y cupos se cambian en Pasarela de pagos.</p>` + eeffFasesHTML(f.cupos, eeffRecsPorPrecio(f.gestion), res, { editable: false, conMontos });
+    box.innerHTML = `<h3 style="margin:0 0 4px">Balances por fase · Gestión ${escape(f.gestion)}</h3><p class="note" style="margin:0 0 10px">Solo consulta. Los precios y cupos se cambian en Pasarela de pagos.</p>` + eeffFasesHTML(f.cupos, eeffRecsPorPrecio(f.gestion), res, { editable: false, conMontos, sc: f.sc });
     eeffFasesEnlazar(box);
   } catch (e) { box.innerHTML = '<p class="note">No se pudo cargar el cuadro de fases.</p>'; }
 }
@@ -4719,7 +4734,7 @@ function paintPasarela() {
       <div class="formcard" style="max-width:none;margin:0;min-width:0"><h3 style="margin:0 0 10px">Balances · fases</h3>
         <div class="grid2">${n("pa_gest", c.eeffGestion, "Gestión")}${n("pa_eeffo", c.precios.eeffOtros, "Otros rubros (Bs, sin fases)")}</div>
         <p class="note" style="margin:0 0 10px">Balances de esa gestión ya recepcionados: <b>${usadosEeff}</b>. Cada balance cuenta en la fase que tiene su mismo precio. Se habilita la primera fase que tenga cupos libres.</p>
-        ${eeffFasesHTML(PA_UI.cupos, eeffRecsPorPrecio(c.eeffGestion), PA_UI.reservas || {}, { editable: true, conMontos: true, dis })}
+        ${eeffFasesHTML(PA_UI.cupos, eeffRecsPorPrecio(c.eeffGestion), PA_UI.reservas || {}, { editable: true, conMontos: true, dis, sc: c.sinContador })}
         ${`            <p class="note" style="margin:6px 0 0"><b>¿Aumentar cupos de una fase agotada?</b> Sube el número de cupos y guarda: la fase se vuelve a abrir y pasa a ser la habilitada (porque es la primera con cupos libres) hasta que se llene de nuevo. Lo vendido en las otras fases no cambia.</p>`}
         ${admin ? `<button class="mini" id="pa_addcupo" style="margin-top:8px">+ Agregar fase</button>` : ""}
       </div></div>
@@ -4834,12 +4849,15 @@ function paintPasarela() {
     ${faltanQR ? `<div class="formcard" style="max-width:none;border-color:var(--warn);margin-bottom:14px"><b style="color:var(--warn)">Faltan ${faltanQR} QR.</b> <span class="note">Súbelos en la pestaña "QR por importe" para que los clientes puedan pagar esos montos.</span></div>` : ""}
     <div class="kpis"><div class="kpi"><div class="n">${deHoy.length}</div><div class="l">Pagos por la pasarela hoy</div></div>
       <div class="kpi"><div class="n">${deHoy.filter(r => (r.pasarela || {}).estado === "aprobado").length}</div><div class="l">Recepcionados solos hoy</div></div>
-      <div class="kpi"><div class="n" style="color:var(--warn)">${revision.length}</div><div class="l">En revisión</div></div></div>
+      <div class="kpi"><div class="n" style="color:var(--warn)">${revision.length}</div><div class="l">En revisión</div></div>
+      ${(() => { const L = todos.filter(r => recValida(r) && (r.sinContador === true || r.clienteExterno === true || /\(NO CLIENTE\)/i.test(String(r.detalleServicio || "")))); const nm = (Object.assign({}, PAS_SC_DEF, c.sinContador || {}).nombre || "").replace(/^\s*balance\s+sin\s+contador\s*$/i, PAS_SC_DEF.nombre);
+        return `<div class="kpi" style="cursor:pointer" id="pa_kind" title="Ver la lista en Precios y cupos"><div class="n">${L.length}</div><div class="l">${escape(nm)} pagados · ${money(L.reduce((a, r) => a + (Number(r.importe) || 0), 0))}</div></div>`; })()}</div>
     <div class="subtabs" id="patabs">${tabs.map(([k, l]) => `<button class="subtab ${PA_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
   const V = el("v-pasarela");
   V.querySelectorAll("#patabs .subtab").forEach(b => b.onclick = () => { PA_UI.tab = b.dataset.tab; paintPasarela(); });
   el("pa_copy").onclick = () => { try { navigator.clipboard.writeText(link); el("pa_copy").textContent = "✓ Copiado"; } catch (e) {} };
   V.querySelectorAll("[data-aprobar]").forEach(b => b.onclick = () => paResolver(b.dataset.aprobar, true));
+  if (el("pa_kind")) el("pa_kind").onclick = () => { PA_UI.tab = "config"; paintPasarela(); setTimeout(() => { const b = el("v-pasarela").querySelector('.ef-ver[data-fase="ind"]'); if (b && !b.disabled) { b.click(); b.scrollIntoView({ block: "center" }); } }, 50); };
   V.querySelectorAll(".nc-pw").forEach(sp => sp.onclick = () => { sp.textContent = sp.textContent === "••••••" ? sp.dataset.pw : "••••••"; });
   V.querySelectorAll("[data-rechazar]").forEach(b => b.onclick = () => paResolver(b.dataset.rechazar, false));
   // Balances y beneficios
