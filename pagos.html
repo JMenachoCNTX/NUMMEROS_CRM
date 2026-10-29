@@ -203,11 +203,11 @@ html.oscuro .app{background:var(--fondo)}
 .cuentaDecl.chico{padding:12px 10px;border-radius:16px;margin:0}.cuentaDecl.chico .reloj b{font-size:30px;line-height:34px}.cuentaDecl.chico .cgT{font-size:12.5px;margin-bottom:8px}.cuentaDecl.chico .cgF{font-size:12.5px}
 @keyframes cdLat{0%,100%{box-shadow:0 10px 30px rgba(194,65,12,.3)}50%{box-shadow:0 10px 40px rgba(253,176,34,.55)}}
 @media(prefers-reduced-motion:reduce){.cuentaDecl{animation:none}}
-.cuentaGr{background:linear-gradient(160deg,#0B2B26,#235347);border-radius:20px;padding:18px 14px 14px;text-align:center;color:#DAF1DE;margin-bottom:16px;box-shadow:0 10px 30px rgba(11,43,38,.35);animation:cgLat 2.4s ease-in-out infinite}
-.cuentaGr .cgT{margin:0 0 10px;font-size:14px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A}
-.cuentaGr .cgF{margin:10px 0 0;font-size:13.5px;font-weight:600;color:#fff}
+.cuentaGr{background:linear-gradient(160deg,#0B2B26,#235347);border-radius:20px;padding:16px 14px 14px;text-align:center;color:#DAF1DE;margin-bottom:16px;box-shadow:0 10px 30px rgba(11,43,38,.35);animation:cgLat 2.4s ease-in-out infinite}
+.cuentaGr .cgT{margin:0 0 10px;font-size:14px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#FFE08A}
+.cuentaGr .cgF{margin:10px 0 0;font-size:13.5px;font-weight:600;color:#fff;line-height:19px}
 .cuentaGr .reloj div{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)}
-.cuentaGr .reloj b{font-size:46px;line-height:50px;color:#fff}
+.cuentaGr .reloj b{font-size:42px;line-height:46px;color:#fff}
 @keyframes cgLat{0%,100%{box-shadow:0 10px 30px rgba(11,43,38,.35)}50%{box-shadow:0 10px 40px rgba(253,176,34,.45)}}
 @media(prefers-reduced-motion:reduce){.cuentaGr{animation:none}}
 .reloj{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -528,7 +528,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     barras();
     var h = "";
     if (S.paso === "nit") {
-      h = declRelojHtml(false) + (antesLanz() ? relojHtml("Venta de balances · gestión " + esc((S.cfg && S.cfg.eeff && S.cfg.eeff.gestion) || "")) : "") + '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
+      h = declRelojHtml(false) + (lanzMs() > Date.now() ? relojHtml("Venta de balances · gestión " + esc((S.cfg && S.cfg.eeff && S.cfg.eeff.gestion) || "")) : "") + '<div class="pila"><div><p class="c13 suave" style="margin-bottom:4px">CONTAX · Contabilidad e Impuestos</p><h1 class="solo-movil">Paga tu servicio en un minuto</h1><h2 class="solo-pc">Empecemos con tu NIT</h2>' +
         '<p class="suave solo-movil" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
