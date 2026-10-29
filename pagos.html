@@ -161,7 +161,7 @@ main > .pila{animation:entra .35s ease both}
 @media(max-width:560px){.cbar{padding:8px 10px;gap:5px}.cbF{flex-wrap:nowrap;gap:6px;justify-content:space-between}.cbar .cbT{font-size:9.5px;line-height:11.5px;letter-spacing:.2px;max-width:112px;text-align:left}.cbar b{font-size:21px;line-height:23px}.cbar .u{gap:1px}.cbar .u small{font-size:9px;margin-right:2px}.cbF.dec{padding-top:5px}}
 .cbar.oculto{display:none}
 input.tx{font-size:16px}
-.scPlan{border:2px solid var(--acento);border-radius:18px;padding:16px;background:var(--superficie,var(--card,#fff));display:flex;flex-direction:column;gap:10px}
+.scPlan{border:2px solid var(--acento);border-radius:18px;padding:16px;background:var(--sup);color:var(--txt);display:flex;flex-direction:column;gap:10px}
 .scPlan .scTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.scPlan .scTop b{font-family:Akshar,sans-serif;font-size:22px;line-height:26px}
 .scPlan .scPr{font-family:Akshar,sans-serif;font-size:34px;line-height:36px;font-weight:700;white-space:nowrap}.scPlan .scPr small{display:block;font-family:inherit;font-size:11px;font-weight:600;text-align:right;opacity:.75;line-height:14px}
 .scInv{background:linear-gradient(160deg,#1E3A5F,#2B5C8A);color:#E6F0FA;border-radius:20px;padding:16px 14px 14px;text-align:center;box-shadow:0 10px 30px rgba(30,58,95,.3)}
@@ -170,6 +170,7 @@ input.tx{font-size:16px}
 .scInv .reloj div{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}.scInv .reloj b{font-size:42px;line-height:46px;color:#fff}.scInv .reloj span{color:#C9DDF2}
 .scInv .cgF{margin:10px 0 12px;font-size:13.5px;font-weight:600;color:#fff;line-height:19px}
 .scInv .btn{background:#FFE08A;color:#1E3A5F}
+.scPlan .scTop .suave{color:var(--suave)}.scPlan .scPr{color:var(--acento)}
 .scHasta{background:#FEF3C7;color:#7A2E0B;border-radius:10px;padding:8px 12px;font-size:13.5px;font-weight:700;line-height:19px}
 .scGar{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:19px}.scGar svg{flex-shrink:0;margin-top:1px}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
@@ -742,7 +743,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var k = { decl: "declaracion", eeff: "eeff", fact: "facturacion" }[S.serv];
     var t = S.cfg && S.cfg.terminos && S.cfg.terminos[k];
     if (S.paso === "sc1") { k = "eeff"; t = S.cfg && S.cfg.terminos && S.cfg.terminos.eeff; }
-    if (k === "eeff" && t && ((S.cli && S.cli.externo) || S.paso === "sc1")) t = ((S.cfg.terminos.sinContador) || []).concat(t.filter(function (x) { return !/cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i.test(x); }));
+    if (k === "eeff" && t && ((S.cli && S.cli.externo) || S.paso === "sc1")) t = ((S.cfg.terminos.sinContador) || []).concat(t.filter(function (x) { return !/cupo|reservad|¡Nuevos!|premios al azar|balance habilitado|Portal de Clientes|Incluye lo detallado/i.test(x); }));
     if (!t || !t.length) { S.acepta = true; return ""; }
     return '<div class="terminos"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Términos y condiciones del servicio</h3><p class="lee">Léelos con atención antes de aceptar.</p><ul>' +
       t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico">Te los enviamos también en el correo de tu Orden de Recepción.</p>' +
@@ -756,7 +757,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function muestraEeff() {
     var pag = [["portada", "Portada"], ["balance", "Balance general"], ["resultados", "Estado de resultados"], ["flujo", "Flujo de efectivo"], ["notas", "Notas a los EEFF"]];
-    return '<div class="card pila" style="gap:10px"><div><b style="font-size:16px">Así recibirás tus estados financieros</b><p class="chico suave" style="margin-top:2px">Ejemplo con datos ficticios. Son 7 reportes con firma del contador. Los descargas desde tu Portal de Clientes NUMMEROS.</p></div>' +
+    return '<div class="card pila" style="gap:10px"><div><b style="font-size:16px">Así recibirás tus estados financieros</b><p class="chico suave" style="margin-top:2px">Ejemplo con datos ficticios. Son 7 reportes con firma del contador. ' + (S.paso === "sc1" || S.paso === "externo" || (S.cli && S.cli.externo) ? "Te los entregamos en el Portal de Repartidores NUMMEROS (Yango y MTG) o en PDF por WhatsApp (PedidosYa y otros)." : "Los descargas desde tu Portal de Clientes NUMMEROS.") + '</p></div>' +
       '<div class="muestra">' + pag.map(function (x) { return '<a href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener"><img src="marca/ejemplos/eeff-' + x[0] + '.jpg" alt="Ejemplo: ' + x[1] + '" loading="lazy">' + x[1] + "</a>"; }).join("") + "</div>" +
       '<a class="btn2" href="marca/ejemplos/eeff-ejemplo.pdf" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>Ver el ejemplo completo (PDF)</a></div>';
   }
@@ -796,6 +797,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     return '<div class="scPlan"><div class="scTop"><div><span class="c13 suave">Para quienes hacen su declaración sin contador</span><br><b>' + esc(SC.nombre || "Balance Sin Contador") + '</b></div><div class="scPr">Bs ' + esc(SC.precio) + '<small>precio fijo</small></div></div>' +
       (hasta ? '<div class="scHasta">Solo puedes pagarlo hasta el ' + esc(hasta) + ".</div>" : "") +
       '<div class="scGar">' + chk + '<span><b>Sin multa garantizado</b> del Formulario 500 ni del Formulario 605.</span></div>' +
+      '<div class="scGar">' + chk + '<span><b>Entrega:</b> si eres repartidor de Yango o MTG, en el Portal de Repartidores NUMMEROS; si eres de PedidosYa (u otra actividad), en PDF por WhatsApp una vez culminado. El Portal de Clientes CONTAX es exclusivo para clientes.</span></div>' +
       '<div class="scGar">' + chk + '<span>Damos prioridad a nuestros clientes: tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales, con la prórroga que habilita cada año.</span></div>' +
       (conIncluye && SC.incluye && SC.incluye.length ? '<details class="incd"><summary>Incluye (' + SC.incluye.length + ')</summary><ul class="inc">' + SC.incluye.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") + "</div>";
   }

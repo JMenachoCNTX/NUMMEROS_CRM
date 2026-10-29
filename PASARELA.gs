@@ -93,7 +93,9 @@ function pasBalAplica_(info, cli) {
 // Se muestran antes del QR (el cliente debe aceptarlos) y se envían con el correo de la Orden de Recepción.
 var PAS_TERMINOS_VERSION = "2026-10-29";
 // Términos de balances que solo aplican a los balances por cupos (no al plan sin contador)
-var PAS_TER_SOLO_CUPOS = /cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i;
+var PAS_TER_SOLO_CUPOS = /cupo|reservad|¡Nuevos!|premios al azar|balance habilitado|Portal de Clientes|Incluye lo detallado/i;
+// Entrega para no clientes: el Portal de Clientes CONTAX es exclusivo para clientes
+var PAS_SC_ENTREGA = "Entrega: si eres repartidor de Yango o MTG, en el Portal de Repartidores NUMMEROS; si eres repartidor de PedidosYa (o de otra actividad), te lo enviamos en PDF por WhatsApp una vez culminado.";
 // Advertencia de balances (se muestra aparte, en rojo, y se acepta con su propia casilla; también va en el correo)
 var PAS_ADVERTENCIA_EEFF = [
   "Tus estados financieros se elaboran con la información de tus compras y ventas registradas en el portal de Impuestos Nacionales. Nuestro sistema contable NUMMEROS los genera de forma automática.",
@@ -130,7 +132,9 @@ var PAS_TERMINOS = {
     "Damos prioridad a nuestros clientes. Tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales para la gestión, incluida la prórroga que habilita cada año para el Formulario 500 y el Formulario 605.",
     "Te garantizamos que no tendrás multa del Formulario 500 ni del Formulario 605 por la fecha de presentación.",
     "La garantía se mantiene siempre que nos entregues tu información y documentación en el plazo que te indiquemos. No cubre multas ni errores de tus declaraciones mensuales anteriores; si hay que corregir o rectificar meses anteriores, se cotiza aparte.",
-    "Trabajamos con la información de tus compras y ventas registrada en el portal de Impuestos Nacionales."
+    "Trabajamos con la información de tus compras y ventas registrada en el portal de Impuestos Nacionales.",
+    "Incluye los 7 estados financieros, la declaración de los Formularios 500 (IUE) y 605 (envío de EEFF al SIN), y el envío en digital (PDF) con firma digital.",
+    "Tus estados financieros no se entregan por el Portal de Clientes CONTAX, que es exclusivo para clientes. Si eres repartidor de Yango o MTG, te los entregamos en el Portal de Repartidores NUMMEROS; si eres repartidor de PedidosYa (o de otra actividad), te los enviamos en PDF por WhatsApp una vez culminados."
   ],
   facturacion: [
     "La suscripción cubre la emisión de tus facturas pendientes durante el mes pagado. No incluye la declaración mensual.",
@@ -190,7 +194,7 @@ function pasCfg() {
 // Plan sin contador: vigente si está activo y no pasó su fecha límite
 function pasSinCont_(c) {
   var s = Object.assign({}, PAS_DEF.sinContador, c.sinContador || {});
-  var t = Date.parse(s.hasta || ""), inc = (s.incluye && s.incluye.length) ? s.incluye : BAL_INCLUYE.slice();
+  var t = Date.parse(s.hasta || ""), inc = (s.incluye && s.incluye.length) ? s.incluye : BAL_INCLUYE.filter(function (x) { return !/Portal de Clientes/i.test(x); }).concat([PAS_SC_ENTREGA]);
   var nomS = !s.nombre || /^\s*balance\s+sin\s+contador\s*$/i.test(s.nombre) ? "Balance Independiente" : s.nombre;
   return { activo: s.activo !== false, vigente: s.activo !== false && Number(s.precio) > 0 && (isNaN(t) || Date.now() <= t), nombre: nomS,
            precio: Number(s.precio) || 0, hasta: s.hasta || "", incluye: inc };
