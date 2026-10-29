@@ -32,7 +32,7 @@ var PAS_DEF = {
   cupos: [{ precio: 250, capacidad: 40 }, { precio: 300, capacidad: 30 }, { precio: 380, capacidad: 30 }, { precio: 480, capacidad: 30 }, { precio: 780, capacidad: 500 }],
   destinoClaves: [],
   // Plan para quienes no son clientes (hacen su declaración solos, sin contador): precio fijo, sin cupos, hasta una fecha
-  sinContador: { activo: true, nombre: "Balance Sin Contador", precio: 350, hasta: "2026-11-05T23:59:59-04:00", incluye: [] },
+  sinContador: { activo: true, nombre: "Balance Independiente", precio: 350, hasta: "2026-11-05T23:59:59-04:00", incluye: [] },
   campos: {},
   // Lanzamiento: antes de esta fecha la página de pagos muestra una cuenta regresiva
   lanzamiento: "2026-10-26T10:30:00-04:00",
@@ -191,7 +191,8 @@ function pasCfg() {
 function pasSinCont_(c) {
   var s = Object.assign({}, PAS_DEF.sinContador, c.sinContador || {});
   var t = Date.parse(s.hasta || ""), inc = (s.incluye && s.incluye.length) ? s.incluye : BAL_INCLUYE.slice();
-  return { activo: s.activo !== false, vigente: s.activo !== false && Number(s.precio) > 0 && (isNaN(t) || Date.now() <= t), nombre: s.nombre || "Balance Sin Contador",
+  var nomS = !s.nombre || /^\s*balance\s+sin\s+contador\s*$/i.test(s.nombre) ? "Balance Independiente" : s.nombre;
+  return { activo: s.activo !== false, vigente: s.activo !== false && Number(s.precio) > 0 && (isNaN(t) || Date.now() <= t), nombre: nomS,
            precio: Number(s.precio) || 0, hasta: s.hasta || "", incluye: inc };
 }
 // Datos que dejó el no cliente al registrarse en la pasarela (6 horas)
@@ -212,6 +213,13 @@ function pasRegistrarExterno(d) {
   var ext = { externo: true, docId: "", campoEstado: "", nombre: nombre.toUpperCase(), codigoId: "", celular: cel, correo: correo, tipo: "", brinda: "", actP: "",
               fechaNit: "", estMat: "", estado: "EXTERNO", ci: ci, costo: "", nitBuscado: nit };
   pasCachePut_("ext_" + nit, ext, 21600);
+  try {
+    var ahoraIso = new Date().toISOString(), previo = fsGet_("noclientes/" + nit);
+    var dat = { nit: nit, ci: ci, nombre: ext.nombre, celular: cel, correo: correo, sinContador: true, plan: sc.nombre, precio: sc.precio, origen: "pasarela",
+                actualizadoISO: ahoraIso, _upd: Date.now() };
+    if (!previo) { dat.registradoISO = ahoraIso; dat.estado = "registrado"; }
+    fsUpsert_("noclientes/" + nit, dat);
+  } catch (e) { console.error(e); }
   return { ok: true, cliente: { nombre: ext.nombre, nit: nit, id: "", celular: pasOcultar_(cel, "cel"), correo: pasOcultar_(correo, "mail"), brinda: "", tieneCorreo: true,
            repartidor: false, externo: true, aperturaNit: "", diaVence: 13 + Number(nit.slice(-1)) } };
 }
@@ -510,7 +518,7 @@ function pasCotizar(d) {
     if (extE) {
       var scE = pasSinCont_(c), gS = String(c.eeffGestion || PAS_DEF.eeffGestion);
       if (!scE.vigente) return { ok: false, error: "El " + scE.nombre + " ya no está disponible. Escríbenos por WhatsApp." };
-      return { ok: true, monto: scE.precio, servicio: "BALANCE", detalle: "BALANCE SIN CONTADOR", tipo: "eeff", cupo: "", balance: scE.nombre, sinContador: true,
+      return { ok: true, monto: scE.precio, servicio: "BALANCE", detalle: String(scE.nombre).toUpperCase() + " (NO CLIENTE)", tipo: "eeff", cupo: "", balance: scE.nombre, sinContador: true,
                periodo: { tipo: "gestion", mes: "", anio: gS, texto: "Gestión " + gS }, resumen: "Estados financieros gestión " + gS + " · " + scE.nombre };
     }
     if (cliE && !pasEsRepartidor_(cliE)) {
@@ -755,6 +763,7 @@ function pasConfirmar(token) {
       if (v.aprobado && !cot.sinContador) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
     }
     if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
+    if (cli.externo) { try { fsUpsert_("noclientes/" + v.nit, { estado: v.aprobado ? "pagado" : "pago_en_revision", nroRecepcion: nroRec, importe: cot.monto, pagoISO: new Date().toISOString(), _upd: Date.now() }); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {
       try {
@@ -862,6 +871,11 @@ function fsReq_(url, method, payload) {
   if (code === 404) return null;
   if (code >= 300) throw new Error("Firestore " + code + ": " + r.getContentText().slice(0, 300));
   return JSON.parse(r.getContentText() || "{}");
+}
+// Crea o actualiza solo los campos indicados de un documento
+function fsUpsert_(path, obj) {
+  var q = Object.keys(obj).map(function (k) { return "updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(k)); }).join("&");
+  return fsReq_(fsBase_() + "/" + path + "?" + q, "patch", { fields: fsEnc_(obj).mapValue.fields });
 }
 function fsGet_(path) { var d = fsReq_(fsBase_() + "/" + path); return d ? fsDec_(d.fields || {}) : null; }
 function fsCreate_(coll, obj) { return fsReq_(fsBase_() + "/" + coll, "post", { fields: fsEnc_(obj).mapValue.fields }); }

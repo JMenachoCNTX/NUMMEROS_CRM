@@ -154,6 +154,14 @@ service cloud.firestore {
                        .hasOnly(['done', 'terminadoPor', 'terminadoPorUid', 'terminadoAt', 'reabiertoPor', 'reabiertoAt', 'notaAgente']);
     }
 
+    // ----- No clientes registrados en la pasarela (plan sin contador) -----
+    // Los crea el script de la pasarela; el portal los ve y puede editarlos; borra solo admin.
+    match /noclientes/{id} {
+      allow read: if portalView();
+      allow update: if portalEdit();
+      allow delete: if isAdmin();
+    }
+
     // ----- Egresos / gastos de la empresa (pestaña Egresos) -----
     // Los ve el portal; registran/editan los roles de edición; borra solo admin.
     match /egresos/{id} {

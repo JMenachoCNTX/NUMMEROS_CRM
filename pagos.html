@@ -164,6 +164,12 @@ input.tx{font-size:16px}
 .scPlan{border:2px solid var(--acento);border-radius:18px;padding:16px;background:var(--superficie,var(--card,#fff));display:flex;flex-direction:column;gap:10px}
 .scPlan .scTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.scPlan .scTop b{font-family:Akshar,sans-serif;font-size:22px;line-height:26px}
 .scPlan .scPr{font-family:Akshar,sans-serif;font-size:34px;line-height:36px;font-weight:700;white-space:nowrap}.scPlan .scPr small{display:block;font-family:inherit;font-size:11px;font-weight:600;text-align:right;opacity:.75;line-height:14px}
+.scInv{background:linear-gradient(160deg,#1E3A5F,#2B5C8A);color:#E6F0FA;border-radius:20px;padding:16px 14px 14px;text-align:center;box-shadow:0 10px 30px rgba(30,58,95,.3)}
+.scInv .cgT{margin:0 0 4px;font-size:14px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:#FFE08A}
+.scInv h3{margin:0 0 10px;font-family:Akshar,sans-serif;font-size:24px;line-height:28px;color:#fff}
+.scInv .reloj div{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}.scInv .reloj b{font-size:42px;line-height:46px;color:#fff}.scInv .reloj span{color:#C9DDF2}
+.scInv .cgF{margin:10px 0 12px;font-size:13.5px;font-weight:600;color:#fff;line-height:19px}
+.scInv .btn{background:#FFE08A;color:#1E3A5F}
 .scHasta{background:#FEF3C7;color:#7A2E0B;border-radius:10px;padding:8px 12px;font-size:13.5px;font-weight:700;line-height:19px}
 .scGar{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:19px}.scGar svg{flex-shrink:0;margin-top:1px}
 .nav{position:sticky;top:0;z-index:20;background:var(--fondo);padding-bottom:8px}
@@ -408,6 +414,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     pago: ["contrato-euclides-oscuro.jpg", "Pago seguro", "Paga con el QR de tu banco", "El QR ya trae el monto exacto. Después sube la captura de tu comprobante."],
     verif: ["arquimedes-saludo-claro.jpg", "Verificación", "Revisamos tu comprobante", "Nuestra IA lee tu captura y confirma el pago en segundos."],
     cuenta: ["los-cuatro-oscuro.jpg", "Muy pronto", "La nueva pasarela de pagos CONTAX", "Paga con QR desde tu celular y recibe tu Orden de Recepción al instante. Cupos limitados en los balances y premios para quienes paguen."],
+    sc1: ["contrato-euclides-oscuro.jpg", "Sin contador", "¿No tienes contador? Nosotros te ayudamos", "Hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
     externo: ["contrato-euclides-oscuro.jpg", "Sin contador", "¿Haces tu declaración por tu cuenta?", "Nosotros hacemos tus estados financieros y te garantizamos que no tendrás multa del Formulario 500 ni del 605."],
     fin: ["los-cuatro-oscuro.jpg", "Gracias", "Gracias por confiar en CONTAX", "Tu trámite ya está en manos de nuestro equipo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS."]
   };
@@ -429,7 +436,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   function ayuda() { return WA ? '<a class="ayuda" href="' + wa() + '" target="_blank" rel="noopener"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg>¿Necesitas ayuda? Escríbenos por WhatsApp</a>' : ""; }
   function barras() {
-    var orden = { nit: 0, externo: 1, datos: 1, servicio: 1, opcion: 2, detalle: 2, eeff2: 2, eeff3: 2, eeff4: 2, pago: 3, verif: 4, fin: 4 }, k = orden[S.paso] || 0;
+    var orden = { nit: 0, sc1: 1, externo: 1, datos: 1, servicio: 1, opcion: 2, detalle: 2, eeff2: 2, eeff3: 2, eeff4: 2, pago: 3, verif: 4, fin: 4 }, k = orden[S.paso] || 0;
     document.querySelectorAll("#barras i").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
     document.querySelectorAll("#pasos div").forEach(function (b, i) { b.classList.toggle("on", i <= k); });
   }
@@ -441,7 +448,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // Paso al que se puede volver con los datos que hay
   function pasoValido(p) {
     if (p === "nit" || p === "cuenta") return true;
-    if (p === "externo") return !!S.cfg && !!(S.cfg.sinContador && S.cfg.sinContador.vigente);
+    if (p === "externo" || p === "sc1") return !!S.cfg && !!(S.cfg.sinContador && S.cfg.sinContador.vigente);
     if (!S.cli || !S.cfg) return false;
     if (p === "datos" || p === "servicio") return true;
     if (S.fin) return false;                  // ya se pagó: no volver al QR ni al comprobante
@@ -540,19 +547,26 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<p class="suave solo-movil" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
-        (antesLanz() ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Declaraciones y facturación ya puedes pagarlas. Los balances puedes revisarlos desde ahora y pagarlos desde la apertura.</p>' : "") + "</div>";
+        (antesLanz() ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Declaraciones y facturación ya puedes pagarlas. Los balances puedes revisarlos desde ahora y pagarlos desde la apertura.</p>' : "") + scInvitaHtml() + "</div>";
+    } else if (S.paso === "sc1") {
+      var SC1 = S.cfg.sinContador || {};
+      h = '<div class="pila">' + (S.scNoEnc ? '<p class="c13 suave" style="margin-bottom:-6px">No encontramos el NIT ' + esc(S.scNoEnc) + ' en CONTAX</p>' : "") +
+        '<h2>¿No tienes contador? Nosotros te ayudamos</h2><p class="suave" style="margin-top:-6px">Si haces tus declaraciones por tu cuenta, nosotros hacemos tus estados financieros de la gestión ' + esc((S.cfg.eeff && S.cfg.eeff.gestion) || "") + ".</p>" +
+        scPlanHtml(true) + scRelojHtml(true) + virtualHtml() + muestraEeff() + multasHtml() + advertenciaEeff() + terminosHtml() + errHtml() +
+        '<button class="btn" id="bScReg"' + (S.acepta && S.aceptaUtil ? "" : " disabled") + ">" + (S.acepta && S.aceptaUtil ? "Acepto · Registrar mis datos" : "Acepta la advertencia y los términos para continuar") + "</button>" +
+        '<button class="link" id="bOtroNit">Volver al inicio</button></div>';
     } else if (S.paso === "externo") {
       var SC = S.cfg.sinContador || {}, X = S.ext || {};
-      h = '<div class="pila"><h2>No encontramos tu NIT en CONTAX</h2><p class="suave">NIT <b>' + esc(S.nit) + '</b>. Si ya eres cliente, revisa el número. Si no lo eres, este plan es para ti:</p>' +
-        scPlanHtml(true) +
-        '<form class="card pila" id="fExt" novalidate><b style="font-size:16px">Tus datos</b><p class="chico suave" style="margin-top:-6px">Los usamos para tu Orden de Recepción y para escribirte cuando empecemos tu balance.</p>' +
+      h = '<div class="pila"><h2>Tus datos</h2><p class="suave" style="margin-top:-6px">' + esc(SC.nombre || "") + " · <b>Bs " + esc(SC.precio) + "</b>. Los usamos para registrarte, para tu Orden de Recepción y para escribirte cuando empecemos tu balance.</p>" +
+        '<form class="card pila" id="fExt" novalidate>' +
+        '<div><label class="l" for="exCi">Número de carnet (C.I.)</label><input class="tx nit" id="exCi" inputmode="numeric" value="' + esc(X.ci || "") + '"></div>' +
+        '<div><label class="l" for="exNit">NIT</label><input class="tx nit" id="exNit" inputmode="numeric" value="' + esc(X.nit || "") + '"></div>' +
         '<div><label class="l" for="exNom">Nombre completo o razón social</label><input class="tx nit" id="exNom" autocomplete="name" value="' + esc(X.nombre || "") + '"></div>' +
-        '<div><label class="l" for="exCi">C.I.</label><input class="tx nit" id="exCi" inputmode="numeric" value="' + esc(X.ci || "") + '"></div>' +
         '<div><label class="l" for="exCel">Celular (WhatsApp)</label><input class="tx nit" id="exCel" inputmode="tel" autocomplete="tel" value="' + esc(X.celular || "") + '"></div>' +
         '<div><label class="l" for="exMail">Correo electrónico</label><input class="tx nit" id="exMail" type="email" autocomplete="email" value="' + esc(X.correo || "") + '"></div>' +
         '<label class="acepto" style="display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:20px;cursor:pointer"><input type="checkbox" id="exSin"' + (X.sinContador ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Hago mis declaraciones por mi cuenta y no tengo contador.</span></label>' +
-        errHtml() + '<button class="btn" type="submit">Continuar con el ' + esc(SC.nombre || "plan") + '</button></form>' +
-        '<button class="link" id="bOtroNit">Revisar mi NIT</button></div>';
+        errHtml() + '<button class="btn" type="submit">Registrarme y pasar al pago</button></form>' +
+        '<button class="link" data-ir="sc1">Volver</button></div>';
     } else if (S.paso === "datos") {
       var c = S.cli;
       var pn = String((c.nombre || "").trim().split(/\s+/).slice(-1)[0] || ""); pn = pn.charAt(0).toUpperCase() + pn.slice(1).toLowerCase();
@@ -727,7 +741,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function terminosHtml() {
     var k = { decl: "declaracion", eeff: "eeff", fact: "facturacion" }[S.serv];
     var t = S.cfg && S.cfg.terminos && S.cfg.terminos[k];
-    if (k === "eeff" && t && S.cli && S.cli.externo) t = ((S.cfg.terminos.sinContador) || []).concat(t.filter(function (x) { return !/cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i.test(x); }));
+    if (S.paso === "sc1") { k = "eeff"; t = S.cfg && S.cfg.terminos && S.cfg.terminos.eeff; }
+    if (k === "eeff" && t && ((S.cli && S.cli.externo) || S.paso === "sc1")) t = ((S.cfg.terminos.sinContador) || []).concat(t.filter(function (x) { return !/cupo|reservad|¡Nuevos!|premios al azar|balance habilitado/i.test(x); }));
     if (!t || !t.length) { S.acepta = true; return ""; }
     return '<div class="terminos"><h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Términos y condiciones del servicio</h3><p class="lee">Léelos con atención antes de aceptar.</p><ul>' +
       t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico">Te los enviamos también en el correo de tu Orden de Recepción.</p>' +
@@ -784,6 +799,27 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<div class="scGar">' + chk + '<span>Damos prioridad a nuestros clientes: tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales, con la prórroga que habilita cada año.</span></div>' +
       (conIncluye && SC.incluye && SC.incluye.length ? '<details class="incd"><summary>Incluye (' + SC.incluye.length + ')</summary><ul class="inc">' + SC.incluye.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></details>" : "") + "</div>";
   }
+  function scVigente() { var SC = S.cfg && S.cfg.sinContador; return !!(SC && SC.vigente && Date.parse(SC.hasta || "") > Date.now()); }
+  function scRelojHtml(dentro) {
+    var SC = (S.cfg && S.cfg.sinContador) || {}; if (!scVigente()) return "";
+    return '<div class="scInv"' + (dentro ? ' style="margin:0"' : "") + '><p class="cgT">Sin contador · ' + esc(SC.nombre || "") + " a Bs " + esc(SC.precio) + '</p>' +
+      '<div class="reloj"><div><b data-sc="d">--</b><span>días</span></div><div><b data-sc="h">--</b><span>horas</span></div><div><b data-sc="m">--</b><span>minutos</span></div><div><b data-sc="s">--</b><span>segundos</span></div></div>' +
+      '<p class="cgF" style="margin-bottom:0">Solo hasta el ' + esc(fechaBo(Date.parse(SC.hasta))) + ".</p></div>";
+  }
+  // Invitación visible en el inicio: para que los clientes pasen la voz a quienes no tienen contador
+  function scInvitaHtml() {
+    var SC = (S.cfg && S.cfg.sinContador) || {}; if (!scVigente()) return "";
+    return '<div class="scInv"><p class="cgT">¿No tienes contador?</p><h3>Nosotros te ayudamos</h3>' +
+      '<div class="reloj"><div><b data-sc="d">--</b><span>días</span></div><div><b data-sc="h">--</b><span>horas</span></div><div><b data-sc="m">--</b><span>minutos</span></div><div><b data-sc="s">--</b><span>segundos</span></div></div>' +
+      '<p class="cgF">Si haces tus declaraciones por tu cuenta, hacemos tus estados financieros por <b>Bs ' + esc(SC.precio) + "</b>, sin multa garantizado del Form-500 ni del 605. Solo hasta el " + esc(fechaBo(Date.parse(SC.hasta))) + ".</p>" +
+      '<button class="btn" id="bScInfo">Nosotros te ayudamos con tus estados financieros</button></div>';
+  }
+  setInterval(function () {
+    var SC = S.cfg && S.cfg.sinContador, t = SC ? Date.parse(SC.hasta || "") : NaN; if (isNaN(t)) return;
+    var q = Math.max(0, Math.floor((t - Date.now()) / 1000)), z = function (n) { return ("0" + n).slice(-2); };
+    var v = { d: Math.floor(q / 86400), h: Math.floor(q % 86400 / 3600), m: Math.floor(q % 3600 / 60), s: q % 60 };
+    document.querySelectorAll("[data-sc]").forEach(function (e) { e.textContent = z(v[e.dataset.sc]); });
+  }, 1000);
   function fechaBo(t) {
     var dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"], meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
     var bo = new Date(t - 4 * 3600000), hh = bo.getUTCHours(), mm = ("0" + bo.getUTCMinutes()).slice(-2);
@@ -878,7 +914,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       clearTimeout(nitT);
       main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("nit") + "</div>"; window.scrollTo(0, 0);
       Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" }), espera(3000)]).then(function (rs) {
-        if (!rs[0].ok && rs[0].noCliente && rs[0].sinContador && rs[1].ok && !desdePortal) { S.cfg = rs[1]; S.cli = null; S.error = ""; ir("externo"); return; }
+        if (!rs[0].ok && rs[0].noCliente && rs[0].sinContador && rs[1].ok && !desdePortal) { S.cfg = rs[1]; S.cli = null; S.error = ""; S.scNoEnc = S.nit; S.ext = Object.assign({}, S.ext || {}, { nit: S.nit }); S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; ir("sc1"); return; }
         if (!rs[0].ok) { ir("nit", rs[0].error); return; }
         if (!rs[1].ok) { ir("nit", rs[1].error); return; }
         S.cli = rs[0].cliente; S.cfg = rs[1]; ir(desdePortal ? "servicio" : "datos");
@@ -890,14 +926,23 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       if (v.length >= 7) nitT = setTimeout(function () { var f = $("fNit"); if (f && $("nit") && $("nit").value.replace(/\D/g, "") === v) f.requestSubmit ? f.requestSubmit() : f.onsubmit({ preventDefault: function () {} }); }, 1200);
     };
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
-    if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; ir("nit"); };
+    if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; S.scNoEnc = ""; S.serv = ""; ir("nit"); };
+    if ($("bScInfo")) $("bScInfo").onclick = function () { S.cli = null; S.scNoEnc = ""; S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.ext = S.ext || {}; ir("sc1"); };
+    if ($("bScReg")) $("bScReg").onclick = function () { if (S.acepta && S.aceptaUtil) ir("externo"); };
     if ($("fExt")) $("fExt").onsubmit = function (ev) {
       ev.preventDefault();
-      S.ext = { nombre: $("exNom").value, ci: $("exCi").value, celular: $("exCel").value, correo: $("exMail").value, sinContador: $("exSin").checked };
+      S.ext = { ci: $("exCi").value, nit: $("exNit").value.replace(/\D/g, ""), nombre: $("exNom").value, celular: $("exCel").value, correo: $("exMail").value, sinContador: $("exSin").checked };
+      if (S.ext.nit.length < 5) { S.error = "Escribe tu NIT completo."; pintar(); return; }
       cargando("Registrando tus datos…");
-      api(Object.assign({ action: "pas_externo", nit: S.nit }, S.ext)).then(function (r) {
+      api(Object.assign({ action: "pas_externo" }, S.ext)).then(function (r) {
         if (!r.ok) { ir("externo", r.error); return; }
-        reiniciarServicio(); S.cli = r.cliente; S.serv = "eeff"; S.per = perDefault(); ir("opcion"); cotizar();
+        S.nit = S.ext.nit; S.cli = r.cliente; S.serv = "eeff"; S.eeffFase = 0; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = true; S.aceptaUtil = true; S.per = perDefault();
+        if (antesLanz()) { ir("eeff4"); cotizar(); return; }
+        cargando("Preparando tu pago…");
+        api({ action: "pas_reservar", nit: S.nit, servicio: "eeff", fase: "" }).then(function (q) {
+          if (!q.ok) { ir("eeff4", q.error); return; }
+          S.cot = q; ir("pago");
+        });
       });
     };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
@@ -1011,7 +1056,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     function tic() {
       var q = Math.floor((lanzMs() - Date.now()) / 1000), f = declFin(), enNit = S.paso === "nit";
       var verBal = lanzMs() && q > 0 && S.paso !== "cuenta" && !(enNit && document.getElementById("reloj"));
-      var verDec = f && !enNit && S.paso !== "externo" && !(S.cli && S.cli.externo) && !document.querySelector(".cuentaDecl") && (!S.cli || S.cli.repartidor !== false);
+      var verDec = f && !enNit && S.paso !== "externo" && S.paso !== "sc1" && !(S.cli && S.cli.externo) && !document.querySelector(".cuentaDecl") && (!S.cli || S.cli.repartidor !== false);
       if (!verBal && !verDec) { bar.classList.add("oculto"); if (!lanzMs() || q <= 0) document.title = tituloBase; return; }
       bar.classList.remove("oculto");
       var pr = (S.cfg && S.cfg.precios) || {};
