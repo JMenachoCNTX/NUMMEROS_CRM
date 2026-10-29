@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "66";
+const APP_VERSION = "67";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4549,14 +4549,14 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="${i}" ${ven ? "" : "disabled"}>Ver (${ven})</button>${opts.editable && isAdmin() ? ` <button class="mini pa-del" data-i="${i}">Quitar</button>` : ""}</td></tr>` + detalle;
   }).join("");
   // Balance Independiente (no clientes, sin contador): precio fijo y sin cupos; se cuenta aparte
-  const esInd = r => r.sinContador === true || r.clienteExterno === true || /\(NO CLIENTE\)|SIN CONTADOR/i.test(String(r.detalleServicio || ""));
+  const esInd = r => r.sinContador === true || r.clienteExterno === true || /\((NO CLIENTE|CLIENTE INACTIVO)\)|SIN CONTADOR/i.test(String(r.detalleServicio || ""));
   const ind = [].concat(...Object.values(recs)).filter(esInd).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
   const recsF = {}; Object.keys(recs).forEach(k => { const l = recs[k].filter(r => !esInd(r)); if (l.length) recsF[k] = l; });
   const sc = Object.assign({}, PAS_SC_DEF, opts.sc || {}); if (/^\s*balance\s+sin\s+contador\s*$/i.test(sc.nombre || "")) sc.nombre = PAS_SC_DEF.nombre;
   const scT = Date.parse(sc.hasta || ""), scAbierto = sc.activo !== false && (isNaN(scT) || Date.now() <= scT);
   const indCob = ind.reduce((a, r) => a + (Number(r.importe) || 0), 0);
   const fIso = r => { const d = new Date(r.fechaISO || ""); return isNaN(d) ? escape(r.fecha || "") : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
-  const filaInd = (ind.length || sc.activo !== false) ? `<tr style="border-top:2px solid var(--line)"><td><b>${escape(sc.nombre)}</b><div class="note" style="margin:0">No clientes · sin contador</div></td><td><span class="mono">${money(sc.precio)}</span></td><td class="note">Sin límite</td>
+  const filaInd = (ind.length || sc.activo !== false) ? `<tr style="border-top:2px solid var(--line)"><td><b>${escape(sc.nombre)}</b><div class="note" style="margin:0">No clientes e inactivos · sin contador</div></td><td><span class="mono">${money(sc.precio)}</span></td><td class="note">Sin límite</td>
       <td class="mono"><b>${ind.length}</b></td><td class="note">—</td><td class="note">—</td><td>${scAbierto ? `<span class="badge ok">Hasta ${escape(isNaN(scT) ? "" : new Date(scT).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit" }))}</span>` : '<span class="badge" style="background:#B42318;color:#fff">Cerrado</span>'}</td>
       ${conM ? `<td class="note" style="text-align:right">—</td><td class="mono" style="text-align:right">${money(indCob)}</td><td class="note" style="text-align:right">—</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="ind" ${ind.length ? "" : "disabled"}>Ver (${ind.length})</button></td></tr>
@@ -4782,11 +4782,11 @@ function paintPasarela() {
     const est = x => x.estado === "pagado" ? `<span class="badge ok">Pagó</span>` : x.estado === "pago_en_revision" ? `<span class="badge off" style="color:var(--warn)">Pago en revisión</span>` : `<span class="badge off">Registrado, sin pagar</span>`;
     const fch = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
     const wa = x => { const n = String(x.celular || "").replace(/\D/g, ""); return n ? "https://wa.me/" + (n.length === 8 ? "591" + n : n) : ""; };
-    body = `<p class="note" style="margin:0 0 10px">Personas que <b>no son clientes</b> y se registraron en la pasarela para el plan sin contador. Están aparte de la Base de Datos de clientes. Los que se registraron y no pagaron son buenos para llamar.</p>
+    body = `<p class="note" style="margin:0 0 10px">Personas que <b>no son clientes activos</b> (no clientes y clientes inactivos) y se registraron en la pasarela para el plan sin contador. Están aparte de la Base de Datos de clientes. Los que se registraron y no pagaron son buenos para llamar.</p>
       ${PA_UI.noCliErr ? `<div class="formcard" style="max-width:none;border-color:var(--warn)"><b style="color:var(--warn)">No se pudo leer la lista (${escape(PA_UI.noCliErr)}).</b> <span class="note">Falta publicar las reglas de Firestore con la colección "noclientes".</span></div>` : ""}
       <div class="kpis"><div class="kpi"><div class="n">${L.length}</div><div class="l">Registrados</div></div><div class="kpi"><div class="n" style="color:var(--ok,#2E7D5B)">${L.filter(x => x.estado === "pagado").length}</div><div class="l">Pagaron</div></div><div class="kpi"><div class="n" style="color:var(--warn)">${L.filter(x => !x.estado || x.estado === "registrado").length}</div><div class="l">Sin pagar</div></div></div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Registro</th><th>Nombre</th><th>NIT</th><th>C.I.</th><th>Celular</th><th>Correo</th><th>Foto NIT</th><th>NIT abierto</th><th>EEFF 2025</th><th>Fact. manuales</th><th>Usuario SIN</th><th>Contraseña SIN</th><th>Estado</th><th>N° Rec</th></tr></thead><tbody>
-      ${L.map(x => `<tr><td class="mono">${escape(fch(x.registradoISO))}</td><td><b>${escape(x.nombre || "")}</b></td><td class="mono">${escape(x.nit || x.id)}</td><td class="mono">${escape(x.ci || "")}</td>
+      ${L.map(x => `<tr><td class="mono">${escape(fch(x.registradoISO))}</td><td><b>${escape(x.nombre || "")}</b>${x.clienteInactivo ? `<div class="note" style="margin:0;color:var(--warn)">Cliente inactivo${x.codigoId ? " · ID " + escape(String(x.codigoId)) : ""}</div>` : ""}</td><td class="mono">${escape(x.nit || x.id)}</td><td class="mono">${escape(x.ci || "")}</td>
         <td class="mono">${wa(x) ? `<a href="${escape(wa(x))}" target="_blank" rel="noopener">${escape(x.celular)}</a>` : escape(x.celular || "")}</td><td>${escape(x.correo || "")}</td>
         <td>${x.nitFotoUrl ? `<a class="mini" href="${escape(x.nitFotoUrl)}" target="_blank" rel="noopener">Ver</a>` : "—"}</td>
         <td>${x.aperturaAntes2026 ? "Antes de 2026" : x.aperturaAntes2026 === false ? "En 2026" : "—"}</td>
@@ -4850,7 +4850,7 @@ function paintPasarela() {
     <div class="kpis"><div class="kpi"><div class="n">${deHoy.length}</div><div class="l">Pagos por la pasarela hoy</div></div>
       <div class="kpi"><div class="n">${deHoy.filter(r => (r.pasarela || {}).estado === "aprobado").length}</div><div class="l">Recepcionados solos hoy</div></div>
       <div class="kpi"><div class="n" style="color:var(--warn)">${revision.length}</div><div class="l">En revisión</div></div>
-      ${(() => { const L = todos.filter(r => recValida(r) && (r.sinContador === true || r.clienteExterno === true || /\(NO CLIENTE\)/i.test(String(r.detalleServicio || "")))); const nm = (Object.assign({}, PAS_SC_DEF, c.sinContador || {}).nombre || "").replace(/^\s*balance\s+sin\s+contador\s*$/i, PAS_SC_DEF.nombre);
+      ${(() => { const L = todos.filter(r => recValida(r) && (r.sinContador === true || r.clienteExterno === true || /\((NO CLIENTE|CLIENTE INACTIVO)\)/i.test(String(r.detalleServicio || "")))); const nm = (Object.assign({}, PAS_SC_DEF, c.sinContador || {}).nombre || "").replace(/^\s*balance\s+sin\s+contador\s*$/i, PAS_SC_DEF.nombre);
         return `<div class="kpi" style="cursor:pointer" id="pa_kind" title="Ver la lista en Precios y cupos"><div class="n">${L.length}</div><div class="l">${escape(nm)} pagados · ${money(L.reduce((a, r) => a + (Number(r.importe) || 0), 0))}</div></div>`; })()}</div>
     <div class="subtabs" id="patabs">${tabs.map(([k, l]) => `<button class="subtab ${PA_UI.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div>${body}`;
   const V = el("v-pasarela");

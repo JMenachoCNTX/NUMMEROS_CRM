@@ -127,7 +127,7 @@ var PAS_TERMINOS = {
     "Las multas por presentar fuera de plazo debido a documentación entregada tarde corren por tu cuenta."
   ],
   sinContador: [
-    "Este plan es solo para personas que no son clientes de CONTAX y hacen sus declaraciones mensuales por su cuenta, sin contador.",
+    "Este plan es solo para personas que no son clientes activos de CONTAX (incluye a los clientes inactivos) y hacen sus declaraciones mensuales por su cuenta, sin contador.",
     "Precio fijo. Solo se puede pagar hasta la fecha límite indicada en la pasarela; después ya no está disponible.",
     "Damos prioridad a nuestros clientes. Tus estados financieros se entregan y presentan dentro del plazo que fije Impuestos Nacionales para la gestión, incluida la prórroga que habilita cada año para el Formulario 500 y el Formulario 605.",
     "Te garantizamos que no tendrás multa del Formulario 500 ni del Formulario 605 por la fecha de presentación.",
@@ -203,12 +203,15 @@ function pasSinCont_(c) {
 }
 // Datos que dejó el no cliente al registrarse en la pasarela (6 horas)
 function pasExterno_(nit) { var e = pasCache_("ext_" + nit); return e && e.externo ? e : null; }
+// Clientes inactivos: para balances van con el plan sin contador mientras esté vigente
+function pasInactivo_(cli) { var g = cli ? pasGrupoEstado_(cli.estado) : ""; return g === "inactivo" || g === "susc_inact"; }
 function pasCliOExt_(nit) { return pasClienteCache_(nit) || pasExterno_(nit); }
 function pasRegistrarExterno(d) {
   var c = pasCfg(), sc = pasSinCont_(c), nit = String(d.nit || "").replace(/\D/g, "");
   if (!sc.vigente) return { ok: false, error: "El " + sc.nombre + " ya no está disponible. Escríbenos por WhatsApp." };
   if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
-  if (pasClienteCache_(nit)) return { ok: false, error: "Tu NIT ya está registrado en CONTAX. Vuelve a escribirlo para pagar como cliente." };
+  var yaCli = pasClienteCache_(nit);
+  if (yaCli && !pasInactivo_(yaCli)) return { ok: false, error: "Tu NIT ya está registrado en CONTAX como cliente activo. Vuelve a escribirlo para pagar como cliente." };
   var nombre = String(d.nombre || "").trim().replace(/\s+/g, " ").slice(0, 120), ci = String(d.ci || "").trim().slice(0, 20);
   var cel = String(d.celular || "").replace(/[^\d+]/g, "").slice(0, 15), correo = String(d.correo || "").trim().toLowerCase().slice(0, 120);
   if (nombre.length < 5) return { ok: false, error: "Escribe tu nombre completo o razón social." };
@@ -228,6 +231,7 @@ function pasRegistrarExterno(d) {
   if (String(d.nitImg).length + String(d.eeffAnt || "").length > 9000000) return { ok: false, error: "Los archivos son muy pesados. Sube fotos o un PDF más livianos." };
   var ext = { externo: true, docId: "", campoEstado: "", nombre: nombre.toUpperCase(), codigoId: "", celular: cel, correo: correo, tipo: "", brinda: "", actP: "",
               fechaNit: "", estMat: "", estado: "EXTERNO", ci: ci, costo: "", nitBuscado: nit };
+  if (yaCli) { ext.codigoId = yaCli.codigoId || ""; ext.exCliente = true; }
   pasCachePut_("ext_" + nit, ext, 21600);
   try {
     var ahoraIso = new Date().toISOString(), previo = fsGet_("noclientes/" + nit);
@@ -236,13 +240,13 @@ function pasRegistrarExterno(d) {
     if (d.aperturaAntes === true && esArch(d.eeffAnt)) { try { urlEeff = pasGuardarNoCli_(nit, ext.nombre, d.eeffAnt, "EEFF_gestion_anterior_" + nit); } catch (e) { console.error(e); } }
     var dat = { nit: nit, ci: ci, nombre: ext.nombre, celular: cel, correo: correo, sinContador: true, plan: sc.nombre, precio: sc.precio, origen: "pasarela",
                 nitFotoUrl: urlNit, aperturaAntes2026: d.aperturaAntes === true, eeffAnteriorUrl: urlEeff, eeffAnteriorPendiente: d.aperturaAntes === true && !urlEeff,
-                facturasManuales: d.facturasManuales === true, sinUsuario: sinUsu, sinClave: sinClave,
+                facturasManuales: d.facturasManuales === true, sinUsuario: sinUsu, sinClave: sinClave, clienteInactivo: !!yaCli, codigoId: yaCli ? (yaCli.codigoId || "") : "",
                 actualizadoISO: ahoraIso, _upd: Date.now() };
     if (!previo) { dat.registradoISO = ahoraIso; dat.estado = "registrado"; }
     fsUpsert_("noclientes/" + nit, dat);
   } catch (e) { console.error(e); }
   return { ok: true, cliente: { nombre: ext.nombre, nit: nit, id: "", celular: pasOcultar_(cel, "cel"), correo: pasOcultar_(correo, "mail"), brinda: "", tieneCorreo: true,
-           repartidor: false, externo: true, aperturaNit: "", diaVence: 13 + Number(nit.slice(-1)) } };
+           repartidor: false, externo: true, inactivo: !!yaCli, aperturaNit: "", diaVence: 13 + Number(nit.slice(-1)) } };
 }
 function pasConfigPublica() {
   var c = pasCfg();
@@ -276,7 +280,7 @@ function pasBuscar(nitRaw) {
     cliente: {
       nombre: cli.nombre, nit: nit, id: cli.codigoId,
       celular: pasOcultar_(cli.celular, "cel"), correo: pasOcultar_(cli.correo, "mail"),
-      brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli), aperturaNit: pasFechaISO_(cli.fechaNit),
+      brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli), aperturaNit: pasFechaISO_(cli.fechaNit), inactivo: pasInactivo_(cli),
       diaVence: 13 + Number(nit.slice(-1))
     }
   };
@@ -486,7 +490,7 @@ function pasReservar(d) {
   var nit = String(d.nit || "").replace(/\D/g, "");
   var cli = pasCliOExt_(nit);
   if (!cli || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
-  if (d.servicio !== "eeff" || cli.externo || !pasEsRepartidor_(cli)) { var q = pasCotizar(d); return q; }
+  if (d.servicio !== "eeff" || cli.externo || !pasEsRepartidor_(cli) || (pasInactivo_(cli) && pasSinCont_(pasCfg()).vigente)) { var q = pasCotizar(d); return q; }
   var c = pasCfg(), g = String(c.eeffGestion || PAS_DEF.eeffGestion), props = PropertiesService.getScriptProperties();
   var lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
@@ -536,10 +540,11 @@ function pasCotizar(d) {
   if (s === "eeff") {
     var cliE = d.nit ? pasClienteCache_(String(d.nit).replace(/\D/g, "")) : null;
     var extE = !cliE && d.nit ? pasExterno_(String(d.nit).replace(/\D/g, "")) : null;
-    if (extE) {
+    var inaE = !!cliE && pasInactivo_(cliE) && pasSinCont_(c).vigente;
+    if (extE || inaE) {
       var scE = pasSinCont_(c), gS = String(c.eeffGestion || PAS_DEF.eeffGestion);
       if (!scE.vigente) return { ok: false, error: "El " + scE.nombre + " ya no está disponible. Escríbenos por WhatsApp." };
-      return { ok: true, monto: scE.precio, servicio: "BALANCE", detalle: String(scE.nombre).toUpperCase() + " (NO CLIENTE)", tipo: "eeff", cupo: "", balance: scE.nombre, sinContador: true,
+      return { ok: true, monto: scE.precio, servicio: "BALANCE", detalle: String(scE.nombre).toUpperCase() + (inaE ? " (CLIENTE INACTIVO)" : " (NO CLIENTE)"), tipo: "eeff", cupo: "", balance: scE.nombre, sinContador: true,
                periodo: { tipo: "gestion", mes: "", anio: gS, texto: "Gestión " + gS }, resumen: "Estados financieros gestión " + gS + " · " + scE.nombre };
     }
     if (cliE && !pasEsRepartidor_(cliE)) {
@@ -765,7 +770,7 @@ function pasConfirmar(token) {
       mesRecepcion: cot.periodo.texto, periodoTipo: cot.periodo.tipo, periodoMes: cot.periodo.mes, periodoAnio: cot.periodo.anio,
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
       importe: cot.monto, tipoPago: "QR", atencion: "PASARELA",
-      comentarios: (cli.externo ? "NO CLIENTE (plan sin contador) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
+      comentarios: (cli.externo ? "NO CLIENTE (plan sin contador) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (plan sin contador) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
       clienteExterno: !!cli.externo, clienteCI: cli.ci || "", sinContador: !!cot.sinContador,
       compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: url,
       tipo: cot.tipo, balanceNombre: cot.balance || "", estado: "pendiente", estadoDeuda: "sin_deuda",
@@ -783,8 +788,8 @@ function pasConfirmar(token) {
       try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
       if (v.aprobado && !cot.sinContador) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
     }
-    if (v.aprobado) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
-    if (cli.externo) { try { fsUpsert_("noclientes/" + v.nit, { estado: v.aprobado ? "pagado" : "pago_en_revision", nroRecepcion: nroRec, importe: cot.monto, pagoISO: new Date().toISOString(), _upd: Date.now() }); } catch (e) { console.error(e); } }
+    if (v.aprobado && !cot.sinContador) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
+    if (cli.externo || cot.sinContador) { try { fsUpsert_("noclientes/" + v.nit, { estado: v.aprobado ? "pagado" : "pago_en_revision", nroRecepcion: nroRec, importe: cot.monto, pagoISO: new Date().toISOString(), _upd: Date.now() }); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {
       try {

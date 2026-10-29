@@ -553,6 +553,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     } else if (S.paso === "sc1") {
       var SC1 = S.cfg.sinContador || {};
       h = '<div class="pila">' + (S.scNoEnc ? '<p class="c13 suave" style="margin-bottom:-6px">No encontramos el NIT ' + esc(S.scNoEnc) + ' en CONTAX</p>' : "") +
+        (S.scInact && S.cli && S.cli.inactivo ? '<div class="aviso warn">Tu cuenta en CONTAX figura como <b>inactiva</b>, por eso tu balance va con el plan para quienes hacen su declaración sin contador. Si quieres volver a ser cliente activo, escríbenos por WhatsApp.</div>' : "") +
         '<h2>¿No tienes contador? Nosotros te ayudamos</h2><p class="suave" style="margin-top:-6px">Si haces tus declaraciones por tu cuenta, nosotros hacemos tus estados financieros de la gestión ' + esc((S.cfg.eeff && S.cfg.eeff.gestion) || "") + ".</p>" +
         scPlanHtml(true) + scRelojHtml(true) + virtualHtml() + muestraEeff() + multasHtml() + advertenciaEeff() + terminosHtml() + errHtml() +
         '<button class="btn" id="bScReg"' + (S.acepta && S.aceptaUtil ? "" : " disabled") + ">" + (S.acepta && S.aceptaUtil ? "Acepto · Registrar mis datos" : "Acepta la advertencia y los términos para continuar") + "</button>" +
@@ -599,7 +600,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var p = S.cfg.precios, e = S.cfg.eeff, ven = S.cfg.ventana || { abierta: true }, rep_ = !S.cli || S.cli.repartidor !== false;
       var balCli = balanceDelCliente();
       var antesL = antesLanz();
-      var eeffTxt = antesL ? "Revisa los balances · pago desde el " + esc(fechaLanzTxt().replace(/^Abrimos el /, "")) : rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
+      var inaSc = !!(S.cli && S.cli.inactivo) && scVigente(), SCi = S.cfg.sinContador || {};
+      var eeffTxt = inaSc ? esc(SCi.nombre || "") + " · Bs " + esc(SCi.precio) : antesL ? "Revisa los balances · pago desde el " + esc(fechaLanzTxt().replace(/^Abrimos el /, "")) : rep_ ? (!balCli ? "cupos agotados" : esc(balCli.nombre || ("Balance " + balCli.n)) + " · hoy Bs " + esc(balCli.precio)) : "Bs " + esc(p.eeffOtros);
       if (S.cli && S.cli.externo) {
         var SCs = S.cfg.sinContador || {};
         h = '<div class="pila"><h2>¿Qué quieres pagar?</h2><button class="opc" data-s="eeff"><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + esc(SCs.nombre || "") + " · Bs " + esc(SCs.precio) + "</span></span></button>" +
@@ -608,7 +610,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       h = '<div class="pila"><h2>¿Qué quieres pagar?</h2>' +
         '<button class="opc" data-s="decl"><span class="ic">' + ICON.decl + '</span><span class="t"><b>Declaración mensual</b><span>IVA e IT · ' + (ven.tipo === "adelantado" ? "puedes pagar por adelantado · " : "") + "desde Bs " + esc(p.sinMov) + "</span></span></button>" +
         info("¿En qué consiste la declaración mensual?", INFO.decl) +
-        '<button class="opc" data-s="eeff"' + (!antesL && rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
+        '<button class="opc" data-s="eeff"' + (!inaSc && !antesL && rep_ && !balCli ? " disabled" : "") + '><span class="ic">' + ICON.eeff + '</span><span class="t"><b>Estados financieros</b><span>Gestión ' + esc(e.gestion) + " · " + eeffTxt + "</span></span></button>" +
         info("¿Por qué debo hacer Estados Financieros?", INFO.porque) +
         '<button class="opc" data-s="fact"><span class="ic">' + ICON.fact + '</span><span class="t"><b>Suscripción de facturación</b><span>Emisión de tus facturas del mes · Bs ' + esc(p.fact) + "</span></span></button>" +
         info("¿En qué consiste la suscripción de facturación?", INFO.fact) +
@@ -948,7 +950,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     };
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; S.scNoEnc = ""; S.serv = ""; ir("nit"); };
-    if ($("bScInfo")) $("bScInfo").onclick = function () { S.cli = null; S.scNoEnc = ""; S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.ext = S.ext || {}; ir("sc1"); };
+    if ($("bScInfo")) $("bScInfo").onclick = function () { S.cli = null; S.scInact = false; S.scNoEnc = ""; S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.ext = S.ext || {}; ir("sc1"); };
     if ($("bScReg")) $("bScReg").onclick = function () { if (S.acepta && S.aceptaUtil) ir("externo"); };
     var leerExt = function () {
       if (!$("exCi")) return;
@@ -996,6 +998,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     };
     if ($("bNo")) $("bNo").onclick = function () { S.cli = null; ir("nit"); };
     document.querySelectorAll("[data-s]").forEach(function (b) { b.onclick = function () {
+      if (b.dataset.s === "eeff" && S.cli && S.cli.inactivo && !S.cli.externo && scVigente()) {
+        S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.scNoEnc = ""; S.scInact = true; S.ext = Object.assign({}, S.ext || {}, { nit: S.nit, nombre: S.ext && S.ext.nombre || S.cli.nombre || "" }); ir("sc1"); return;
+      }
       S.serv = b.dataset.s; S.eeffFase = 0; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.acepta = false; S.aceptaUtil = false; S.per = perDefault(); S.img = ""; ir("opcion");
       if (S.serv !== "decl") cotizar();
     }; });
