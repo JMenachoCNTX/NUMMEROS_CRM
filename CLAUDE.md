@@ -18,7 +18,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - `config.js` — datos de Firebase `crm-contax` (públicos por diseño). `pagos-config.js` — URL `/exec` del puente y WhatsApp.
 - `PUENTE-RECIBOS.gs` + `PASARELA.gs` + `appsscript.json` — **un solo proyecto de Apps Script** ("PUENTE RECIBOS",
   cuenta info@contaxbolivia.com): envía la Orden de Recepción en PDF por Gmail, atiende la pasarela (`pas_*`),
-  el Portal del Cliente (`portal_*`), el Sistema Contable (`sis_*`) y tareas de admin (`admin_*`, incluye los accesos a CONTROL y al Portal de repartidores).
+  el Portal del Cliente (`portal_*`), el Sistema Contable (`sis_*`) y tareas de admin (`admin_*`, incluye los accesos a CONTROL y al Portal de repartidores, y `admin_ctrl_hoja`: CONTROL lee en vivo BDYango y HistPagosMTG/PPendientes exportando la hoja como CSV con la cuenta del script; la API de Sheets no está habilitada en el proyecto de Google Cloud).
 - `firestore-rules-COMPLETO.txt` — **reglas vigentes** del proyecto `crm-contax`.
 - `firestore-rules.txt` — reglas viejas del CRM original (no usar; le faltan casi todas las colecciones).
 - `README.md`, `GUIA.md`, `LEEME-*.txt` — guías de la primera instalación (CRM "crm-atencion"); en parte desactualizadas.

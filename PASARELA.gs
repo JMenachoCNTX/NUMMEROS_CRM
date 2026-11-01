@@ -989,6 +989,7 @@ function adminHandle(d) {
       return { ok: true, token: tkP };
     }
     if (d.action === "admin_ctrl_sesion") return ctrlSesion_(d.idToken, d.reponer === true);   // CONTROL: entrar con el usuario del panel
+    if (d.action === "admin_ctrl_hoja") return ctrlHoja_(d.idToken, d.hoja);                   // CONTROL: leer BDYango / pagos de Google Sheets
     var yo = admVerificar_(d.idToken);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
     if (d.action === "admin_ctrl_sync") return ctrlSync_(d.uid);
@@ -1421,6 +1422,36 @@ function ctrlSesion_(idToken, reponer) {
   CTRL_PROYECTOS.forEach(function (p) { ctrlEspejo_(p, u.localId, correo, nombre, rol, llave, reponer); });
   try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "control_entrada", nombre: correo, detalle: nombre + " entró a CONTROL (" + rol + ")", porUid: u.localId, porNombre: nombre }); } catch (e) {}
   return { ok: true, correo: correo, nombre: nombre, rol: rol, rolPanel: perfil.role, llave: llave };
+}
+/** CONTROL: lee en vivo hojas de Google Sheets (las abre la cuenta dueña de este script; se exportan como CSV).
+ *  "bdyango" = BOL Registro Activación (cualquier rol de CONTROL); "pagos" = HistPagosMTG + PPendientes (solo admin). */
+var CTRL_HOJAS = {
+  bdyango: { id: "18LUKvNl6FwiKap8j2HOpA8LsgCHuPXgqi5ZY6QALgBU", cols: 39, desde: 0, conId: 1,
+    hojas: [["Activation/Deactivation SCZ", 0], ["Activation/Desactivation CBBA", 959986509], ["Activation/Desactivation LPZ", 1800018432]] },
+  pagos: { id: "16msr7Jhd0gmsUkzk-lIEmJyhgI-J03Rf9ah7Mmq0K_0", cols: 14, desde: 2, admin: true,
+    hojas: [["HistPagosMTG", 2090002887], ["PPendientes", 252827038]] }
+};
+function ctrlHoja_(idToken, hoja) {
+  var h = CTRL_HOJAS[hoja];
+  if (!h) return { ok: false, error: "Hoja desconocida." };
+  if (!idToken) throw new Error("Falta la sesión del panel.");
+  var r = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + ADM_API_KEY,
+    { method: "post", contentType: "application/json", payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error("Tu sesión venció. Vuelve a entrar.");
+  var u = (JSON.parse(r.getContentText()).users || [])[0];
+  var rol = u ? ctrlRolDe_(fsGet_("users/" + u.localId)) : "";
+  if (!rol) return { ok: false, error: "Tu usuario no tiene acceso a CONTROL." };
+  if (h.admin && rol !== "admin") return { ok: false, error: "Solo un administrador de CONTROL puede leer estas hojas." };
+  var token = ScriptApp.getOAuthToken(), hojas = [];
+  for (var i = 0; i < h.hojas.length; i++) {
+    var s = UrlFetchApp.fetch("https://docs.google.com/spreadsheets/d/" + h.id + "/export?format=csv&gid=" + h.hojas[i][1],
+      { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true });
+    if (s.getResponseCode() !== 200) return { ok: false, error: "No se pudo leer «" + h.hojas[i][0] + "» (" + s.getResponseCode() + ")." };
+    var filas = Utilities.parseCsv(s.getContentText("UTF-8")).slice(h.desde).map(function (f) { return f.slice(0, h.cols); })
+      .filter(function (f, j) { return h.conId != null ? (j === 0 || /\d{4,}/.test(f[h.conId])) : f.some(function (c) { return c !== ""; }); });
+    hojas.push({ nombre: h.hojas[i][0], filas: filas });
+  }
+  return { ok: true, hojas: hojas, leido: new Date().toISOString() };
 }
 /** Panel → Usuarios: al cambiar rol, estado o acceso a CONTROL se actualizan los permisos al instante */
 function ctrlSync_(uid) {
