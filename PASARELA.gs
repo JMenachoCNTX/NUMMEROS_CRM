@@ -583,7 +583,7 @@ function pasVerificar(d) {
   if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
   if (cot.tipo === "eeff" && d.aceptaUtilidad !== true) return { ok: false, error: "Debes aceptar la advertencia sobre la utilidad de tus estados financieros." };
   var img = String(d.imagen || "");
-  if (img.indexOf("data:") !== 0) return { ok: false, error: "Sube la imagen del comprobante." };
+  if (img.indexOf("data:") !== 0) return { ok: false, error: "Sube la captura o el PDF del comprobante." };
   if (img.length > 3500000) return { ok: false, error: "La imagen es muy pesada. Toma una captura más pequeña." };
   // Si el cliente sube el comprobante con la reserva vigente, se le dan 15 minutos más para terminar
   if (cot.tipo === "eeff") {
@@ -706,7 +706,7 @@ function pasLeerComprobante_(dataUrl) {
   if (!key) return { error: "sin_clave" };
   var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
   var b64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
-  var prompt = "Eres un asistente contable en Bolivia. La imagen es un comprobante de pago QR o transferencia bancaria. " +
+  var prompt = "Eres un asistente contable en Bolivia. El archivo (imagen o PDF) es un comprobante de pago QR o transferencia bancaria. " +
     "Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","bancoDestino":"","importe":"","moneda":"","depositante":"","destino":"","cuentaDestino":"","fecha":"","hora":"","nroOperacion":"","glosa":"","pareceEditado":false}. ' +
     "importe solo el número (ej. 50.00). fecha en formato dd/mm/aaaa. destino = nombre del beneficiario. cuentaDestino = número de cuenta del beneficiario tal como aparece (con asteriscos si está oculto). banco = banco o app desde donde se pagó; bancoDestino = banco del beneficiario si aparece. " +
@@ -859,7 +859,7 @@ function pasGuardarDrive_(dataUrl, nombre) {
   var it = DriveApp.getFoldersByName(PAS.carpetaDrive);
   var carpeta = it.hasNext() ? it.next() : DriveApp.createFolder(PAS.carpetaDrive);
   var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
-  var blob = Utilities.newBlob(Utilities.base64Decode(dataUrl.replace(/^data:[^;]+;base64,/, "")), mime, nombre + (mime.indexOf("png") >= 0 ? ".png" : ".jpg"));
+  var blob = Utilities.newBlob(Utilities.base64Decode(dataUrl.replace(/^data:[^;]+;base64,/, "")), mime, nombre + (mime === "application/pdf" ? ".pdf" : mime.indexOf("png") >= 0 ? ".png" : ".jpg"));
   return carpeta.createFile(blob).getUrl();
 }
 

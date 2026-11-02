@@ -6,7 +6,7 @@ Es el **sistema central de CONTAX** y la **fuente de usuarios** de todos los sis
 - `index.html` + `app.js` — **Panel** del equipo: inicio, bandeja/chats de WhatsApp, clientes y ficha, Base de Datos,
   recepciones (órdenes de recepción y recibos), arqueo, tarifas, calendario, declaraciones, EEFF, facturación,
   trámites, egresos, reportes, pasarela, CONTROL, usuarios, configuración, asistente IA.
-- `pagos.html` — **Pasarela de pagos** pública: el cliente busca su NIT, ve el precio, paga por QR y sube el comprobante (lo lee la IA).
+- `pagos.html` — **Pasarela de pagos** pública: el cliente busca su NIT, ve el precio, paga por QR y sube el comprobante en foto o PDF (máx. 2,5 MB; lo lee la IA).
   Incluye la venta de balances (Balance Integral / Balance Independiente para no clientes).
 - `cliente.html` — **Portal del Cliente**: el cliente activo entra con NIT y C.I. y ve sus datos y documentos.
 - `privacy-policy.html` — política de privacidad.

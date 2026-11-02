@@ -708,10 +708,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       h = '<div class="pila"><h2>Paga con QR</h2>' + resHtml + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
         (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
               : '<div class="aviso warn">El QR de este monto no está disponible en este momento. <a href="' + wa("Hola, quiero pagar " + q.resumen + " (" + bs(q.monto) + ") y no me aparece el QR.") + '" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>.</div>') +
-        '</div><div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
-        (S.img ? '<img class="prev" src="' + S.img + '" alt="Comprobante subido">' : "") + errHtml() +
-        '<label class="subir" for="fComp">' + ICON.subir + (S.img ? "Cambiar comprobante" : "Subir comprobante") + '</label><input type="file" id="fComp" accept="image/*" class="oculto">' +
-        (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Al subir la captura verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
+        '</div><div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura o el PDF del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
+        (S.img ? (S.img.indexOf("data:application/pdf") === 0 ? '<div class="card" style="text-align:center"><b>PDF del comprobante listo</b><p class="chico suave">' + esc(S.imgNombre || "comprobante.pdf") + "</p></div>" : '<img class="prev" src="' + S.img + '" alt="Comprobante subido">') : "") + errHtml() +
+        '<label class="subir" for="fComp">' + ICON.subir + (S.img ? "Cambiar comprobante" : "Subir comprobante") + '</label><input type="file" id="fComp" accept="image/*,application/pdf" class="oculto">' +
+        (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Puedes subir la captura o el PDF del comprobante. Al subirlo verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
     } else if (S.paso === "verif") {
       var v = S.ver;
       // Solo se muestran los datos leídos con su check; no se explica qué se revisa ni por qué falla
@@ -1030,7 +1030,15 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if ($("bVolver")) $("bVolver").onclick = function () { ir(S.paso === "servicio" ? (S.cli && S.cli.externo ? "externo" : "datos") : "servicio"); };
     if ($("fComp")) $("fComp").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
-      comprimir(f).then(function (d) { S.img = d; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
+      // PDF del comprobante: se manda tal cual (la IA lo lee igual que una foto)
+      if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
+        if (f.size > 2500000) { S.error = "El PDF es muy pesado (máximo 2,5 MB). Sube una captura del comprobante."; pintar(); return; }
+        var fr = new FileReader();
+        fr.onload = function () { S.img = String(fr.result).replace(/^data:[^;]*;/, "data:application/pdf;"); S.imgNombre = f.name; S.error = ""; verificarComprobante(); };
+        fr.onerror = function () { S.error = "No se pudo abrir el PDF."; pintar(); };
+        fr.readAsDataURL(f); return;
+      }
+      comprimir(f).then(function (d) { S.img = d; S.imgNombre = ""; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
     };
     if ($("bVerif")) $("bVerif").onclick = verificarComprobante;
     if ($("bOtra")) $("bOtra").onclick = function () { S.img = ""; ir("pago"); };
