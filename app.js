@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "79";
+const APP_VERSION = "80";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4603,45 +4603,43 @@ function openDDJJ(r, alGuardar) {
   bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:860px;max-width:96vw;max-height:94vh;overflow:auto">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
       <div><h3 style="margin:0">${escape(r.clienteNombre || "—")}</h3>
-        <div class="note" style="margin:2px 0 0">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
+        <div class="note" style="margin:2px 0 0">NIT <b class="mono">${escape(String(r.nit || "—"))}</b>${r.nit ? ` <button class="mini" id="dj_nitcopy" title="Copiar NIT" type="button">📋</button>` : ""}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
       <button class="mini" id="dj_x">✕</button></div>
     <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? "🔑 Cargando accesos del cliente…" : "🔑 Accesos visibles solo para quienes pueden editar."}</div>
     <style>.dj-dos{display:grid;grid-template-columns:3fr 2fr;gap:12px;align-items:start;margin-bottom:10px}.dj-eq,.dj-ia{border-radius:10px;padding:10px 12px}.dj-eq{border:1px solid var(--line)}
       .dj-ia{border:1.5px dashed var(--accent);background:var(--panel2)}.dj-tit{font-size:12px;font-weight:700;letter-spacing:.03em;margin:0 0 8px;color:var(--muted)}.dj-ia .dj-tit{color:var(--accent)}
       .dj-dos .grid2{gap:0 12px}@media(max-width:760px){.dj-dos{grid-template-columns:1fr}}</style>
-    <div class="fs">1) RCV</div>
-    <div class="dj-dos">
-      <div class="dj-eq"><div class="dj-tit">✍️ LO LLENA EL EQUIPO</div><div class="grid2">
-        ${f("RCV realizado por", sel("dj_rcvPor", [""].concat(eq), r.dj_rcvPor))}
-        <div class="field"><label>&nbsp;</label>${chk("dj_rcvIniciado", r.dj_rcvIniciado, "RCV iniciado" + ts(r.dj_rcvIniciadoAt))}${chk("dj_rcvConsolidado", r.dj_rcvConsolidado, "🛡 Consolidado sin multa (falta terminar)" + ts(r.dj_rcvConsolidadoAt))}${chk("dj_rcvFinalizado", r.dj_rcvFinalizado, "RCV finalizado" + ts(r.dj_rcvFinalizadoAt))}${chk("dj_rcvMulta", r.dj_rcvMulta, "Multa fuera de plazo RCV")}</div>
-        ${f("¿Cuánto le falta?", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
-        ${f("Crédito fiscal (mes anterior)", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
-        ${f("Estado RCV", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
-        ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
-      </div>${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}</div>
-      <div class="dj-ia"><div class="dj-tit">🤖 LO LLENA LA IA AL SUBIR EL RCV <span style="font-weight:400">(puedes corregir)</span></div>
+    <div class="fs">1) Lo llena la IA <span class="note" style="font-weight:400">— al subir el RCV, el F200 y el F400 en «4) Entrega al cliente» (puedes corregir)</span></div>
+    <div class="dj-ia" style="margin-bottom:10px"><div class="grid3" style="gap:0 12px">
         ${f("Cant. facturas", inp("dj_cantFacturas", r.dj_cantFacturas, "Ej. 12"))}
         ${f("Total compras netas", inp("dj_totalCompras", r.dj_totalCompras, "0,00"))}
         ${f("Total ventas", inp("dj_totalVentas", r.dj_totalVentas, "0,00"))}
-      </div>
-    </div>
-    <div class="fs" style="margin-top:6px">2) Declaración</div>
-    <div id="dj_calc" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:13px"></div>
-    <div class="dj-dos">
-      <div class="dj-eq"><div class="dj-tit">✍️ LO LLENA EL EQUIPO</div><div class="grid2">
-        ${f("Declarado por", sel("dj_declaradoPor", [""].concat(eq), r.dj_declaradoPor))}
-        <div class="field"><label>&nbsp;</label>${chk("dj_multaIVA", r.dj_multaIVA, "Multa fuera de plazo IVA")}${chk("dj_multaIT", r.dj_multaIT, "Multa fuera de plazo IT")}</div>
-        ${f("ESTADO", `<select id="dj_estado" ${dis}><option value="">Automático (${escape((DJ_ESTADOS.find(e => e[0] === djEstado(Object.assign({}, r, { dj_estado: "" }))) || [])[1] || "")})</option>${DJ_ESTADOS.map(([k, l]) => `<option value="${k}" ${r.dj_estado === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
-      </div></div>
-      <div class="dj-ia"><div class="dj-tit">🤖 LO LLENA LA IA CON EL F200 Y F400 <span style="font-weight:400">(puedes corregir)</span></div><div class="grid2">
         ${f("Fecha de declaración", inp("dj_fechaDeclaracion", r.dj_fechaDeclaracion, "", "date"))}
         ${f("IVA a pagar", inp("dj_ivaPagar", r.dj_ivaPagar, "0,00"))}
-        ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
         ${f("IT a pagar", inp("dj_itPagar", r.dj_itPagar, "0,00"))}
+        ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
         ${f("Compensación del IUE", inp("dj_compIUE", r.dj_compIUE, "0,00"))}
-      </div><div id="dj_iue"></div></div>
+      </div><div id="dj_iue"></div>
+      <div id="dj_calc" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0 0;font-size:13px"></div></div>
+    <div class="fs" style="margin-top:6px">2) Lo llena el equipo</div>
+    <div class="dj-eq" style="margin-bottom:10px">
+      <input type="hidden" id="dj_rcvPor" value="${escape(r.dj_rcvPor || "")}"><input type="hidden" id="dj_declaradoPor" value="${escape(r.dj_declaradoPor || "")}">
+      <div class="grid2" style="gap:0 18px">
+        <div class="field"><label>RCV <span class="note" id="dj_rcvPorTxt" style="font-weight:400">${r.dj_rcvPor ? "· por " + escape(r.dj_rcvPor) : ""}</span></label>${chk("dj_rcvIniciado", r.dj_rcvIniciado, "RCV iniciado" + ts(r.dj_rcvIniciadoAt))}${chk("dj_rcvConsolidado", r.dj_rcvConsolidado, "🛡 Consolidado sin multa (falta terminar)" + ts(r.dj_rcvConsolidadoAt))}${chk("dj_rcvFinalizado", r.dj_rcvFinalizado, "RCV finalizado" + ts(r.dj_rcvFinalizadoAt))}${chk("dj_rcvMulta", r.dj_rcvMulta, "Multa fuera de plazo RCV")}</div>
+        <div class="field"><label>Declaración <span class="note" id="dj_declPorTxt" style="font-weight:400">${r.dj_declaradoPor ? "· por " + escape(r.dj_declaradoPor) : ""}</span></label>${chk("dj_declarado", !!(r.dj_declaradoPor || r.dj_fechaDeclaracion), "Declarado")}${chk("dj_multaIVA", r.dj_multaIVA, "Multa fuera de plazo IVA")}${chk("dj_multaIT", r.dj_multaIT, "Multa fuera de plazo IT")}</div>
+        ${f("¿Cuánto le falta? <span class=\"note\" style=\"font-weight:400\">(opcional)</span>", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
+        ${f("Crédito fiscal (mes anterior) <span class=\"note\" id=\"dj_cfOrigen\" style=\"font-weight:400\"></span>", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
+        ${f("ESTADO", `<select id="dj_estado" ${dis}><option value="">Automático (${escape((DJ_ESTADOS.find(e => e[0] === djEstado(Object.assign({}, r, { dj_estado: "" }))) || [])[1] || "")})</option>${DJ_ESTADOS.map(([k, l]) => `<option value="${k}" ${r.dj_estado === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+        ${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}
+      </div>
+      <details id="dj_espera" ${r.dj_estadoRcv || r.dj_respuestaCliente ? "open" : ""} style="margin-top:6px;border:1px solid var(--warn, #C77C2E);border-radius:8px;padding:8px 10px">
+        <summary style="cursor:pointer;font-weight:600">⏳ Hay un inconveniente y esperamos al cliente${r.dj_estadoRcv || r.dj_respuestaCliente ? " · " + escape([r.dj_estadoRcv, r.dj_respuestaCliente].filter(Boolean).join(" · ")) : ""}</summary>
+        <div class="grid2" style="gap:0 12px;margin-top:8px">
+          ${f("Problema (estado RCV)", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
+          ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
+        </div></details>
     </div>
-    <div class="fs" style="margin-top:6px">3) Seguimiento</div>
+    <div class="fs" style="margin-top:6px">3) Seguimiento: Solo PedidosYa</div>
     <div class="grid3">
       ${f("¿El cliente pagó impuestos?", sel("dj_pagoImpuestos", DJ_PAGO_IMP, r.dj_pagoImpuestos))}
       ${f("Fecha que pagó impuestos", inp("dj_fechaPagoImp", r.dj_fechaPagoImp, "", "date"))}
@@ -4681,10 +4679,17 @@ function openDDJJ(r, alGuardar) {
   // Atajos: al marcar RCV o poner fecha, se completa el responsable con quien está usando el panel
   if (canEdit) {
     const yo = djYo();
-    ["dj_rcvIniciado", "dj_rcvConsolidado", "dj_rcvFinalizado"].forEach(id => $(id).onchange = () => { if ($(id).checked && !$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo; });
-    $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo; };
-    $("dj_declaradoPor").onchange = () => { if ($("dj_declaradoPor").value && !$("dj_fechaDeclaracion").value) $("dj_fechaDeclaracion").value = djHoy(); };
+    // RCV y Declarado: solo se marcan las casillas; el nombre lo pone el sistema (quien está usando el panel)
+    const rcvIds = ["dj_rcvIniciado", "dj_rcvConsolidado", "dj_rcvFinalizado"];
+    const ponRcv = () => { const alguno = rcvIds.some(id => $(id).checked); if (alguno && !$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo; if (!alguno) $("dj_rcvPor").value = "";
+      $("dj_rcvPorTxt").textContent = $("dj_rcvPor").value ? "· por " + $("dj_rcvPor").value : ""; };
+    rcvIds.forEach(id => $(id).onchange = ponRcv);
+    const ponDecl = () => { if ($("dj_declarado").checked) { if (!$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo; if (!$("dj_fechaDeclaracion").value) $("dj_fechaDeclaracion").value = djHoy(); } else $("dj_declaradoPor").value = "";
+      $("dj_declPorTxt").textContent = $("dj_declaradoPor").value ? "· por " + $("dj_declaradoPor").value : ""; };
+    $("dj_declarado").onchange = ponDecl;
+    $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declarado").checked) { $("dj_declarado").checked = true; ponDecl(); } };
   }
+  if ($("dj_nitcopy")) $("dj_nitcopy").onclick = () => { try { navigator.clipboard.writeText(String(r.nit || "").trim()); $("dj_nitcopy").textContent = "✓"; } catch (e) {} };
   if (canEdit) (() => {
     const box = $("dj_cred");
     bdEnsureLoaded(ok => {
@@ -4692,10 +4697,34 @@ function openDDJJ(r, alGuardar) {
       const nit = String(r.nit || "").replace(/\D/g, "");
       const c = BD.find(x => String(bdV(x, "nit")).replace(/\D/g, "") === nit && nit);
       if (!c) { box.textContent = "Este NIT no está en la Base de Datos de clientes."; return; }
-      const items = [["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["Contraseña SIAT", bdV(c, "passSiat")], ["Correo", bdV(c, "correo")], ["Celular", bdV(c, "celular")]].filter(x => x[1]);
-      box.innerHTML = items.map(([l, v], i) => `<span style="display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><span style="color:var(--muted)">${l}:</span> <b class="mono">${escape(v)}</b> <button class="mini dj-copy" data-i="${i}" title="Copiar">📋</button></span>`).join("") || "El cliente no tiene accesos guardados.";
-      box.innerHTML = `<b style="color:var(--accent);margin-right:8px">🔑 Accesos SIN</b>` + box.innerHTML;
-      box.querySelectorAll(".dj-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(items[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+      const pintarCred = () => {
+        const items = [["NIT", bdV(c, "nit")], ["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["Contraseña SIAT", bdV(c, "passSiat")], ["Correo", bdV(c, "correo")], ["Celular", bdV(c, "celular")]].filter(x => x[1]);
+        box.innerHTML = `<b style="color:var(--accent);margin-right:8px">🔑 Accesos SIN</b>` + items.map(([l, v], i) => `<span style="display:inline-flex;gap:6px;align-items:center;margin:2px 14px 2px 0"><span style="color:var(--muted)">${l}:</span> <b class="mono">${escape(v)}</b> <button class="mini dj-copy" data-i="${i}" title="Copiar" type="button">📋</button></span>`).join("") +
+          (c._docid ? ` <button class="mini" id="dj_passEd" type="button" title="Cambiar la contraseña en la Base de Datos">✏️ Actualizar contraseña</button>` : "") +
+          `<div id="dj_passBox" style="display:none;margin-top:8px;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="margin:0"><label>Contraseña</label><input id="dj_passN" value="${escape(bdV(c, "password"))}"></div>
+            <div class="field" style="margin:0"><label>Contraseña SIAT</label><input id="dj_passS" value="${escape(bdV(c, "passSiat"))}"></div>
+            <button class="btn" id="dj_passOk" type="button">Guardar en la BD</button><button class="btn ghost" id="dj_passNo" type="button">Cancelar</button><span class="msg" id="dj_passMsg"></span></div>`;
+        box.querySelectorAll(".dj-copy").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(items[Number(b.dataset.i)][1]); b.textContent = "✓"; } catch (e) {} });
+        if (!$("dj_passEd")) return;
+        $("dj_passEd").onclick = () => { $("dj_passBox").style.display = "flex"; $("dj_passN").focus(); };
+        $("dj_passNo").onclick = () => { $("dj_passBox").style.display = "none"; };
+        $("dj_passOk").onclick = async () => {
+          const hP = bdKey2Header.password || BD_KEY2LBL.password, hS = bdKey2Header.passSiat || BD_KEY2LBL.passSiat;
+          const nP = $("dj_passN").value.trim(), nS = $("dj_passS").value.trim(), m = $("dj_passMsg");
+          const d = { _upd: Date.now() }, cambio = [];
+          if (nP !== bdV(c, "password")) { d[hP] = nP; cambio.push("contraseña"); }
+          if (nS !== bdV(c, "passSiat")) { d[hS] = nS; cambio.push("contraseña SIAT"); }
+          if (!cambio.length) { $("dj_passBox").style.display = "none"; return; }
+          m.className = "msg"; m.textContent = "Guardando…"; $("dj_passOk").disabled = true;
+          try {
+            await setDoc(doc(db, BD_COLL, c._docid), d, { merge: true }); Object.assign(c, d); bdcPoner(c._docid, d);
+            try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "cambio_contrasena", nombre: bdV(c, "nombre") || bdV(c, "razon"), detalle: "Actualizó " + cambio.join(" y ") + " desde Declaraciones", porUid: ME && ME.uid, porNombre: (ME && (ME.name || ME.email)) || "" }); } catch (e) {}
+            pintarCred();
+          } catch (e) { $("dj_passOk").disabled = false; m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+        };
+      };
+      pintarCred();
     });
   })();
   // ---- Calculadora tributaria (IVA 13% / IT 3%) ----
@@ -4704,7 +4733,8 @@ function openDDJJ(r, alGuardar) {
     const pk = recPeriodoKey(r), nit = String(r.nit || "").replace(/\D/g, "");
     const prev = (LT_DATA || []).filter(x => x.id !== r.id && String(x.nit || "").replace(/\D/g, "") === nit && nit && recPeriodoKey(x) && recPeriodoKey(x) < pk && x.dj_creditoSigMes)
       .sort((a, b) => recPeriodoKey(b).localeCompare(recPeriodoKey(a)))[0];
-    if (prev) { $("dj_creditoFiscal").value = prev.dj_creditoSigMes; $("dj_creditoFiscal").title = "Tomado de " + recPeriodoTxt(recPeriodoKey(prev)); }
+    if (prev) { $("dj_creditoFiscal").value = prev.dj_creditoSigMes; $("dj_creditoFiscal").title = "Tomado de " + recPeriodoTxt(recPeriodoKey(prev)); $("dj_cfOrigen").textContent = "· automático, de " + recPeriodoTxt(recPeriodoKey(prev)); }
+    else $("dj_cfOrigen").textContent = "· automático si el mes pasado se declaró aquí";
   }
   const pintarCalc = (aplicar) => {
     const c = djCalcular({ ventas: $("dj_totalVentas").value, compras: $("dj_totalCompras").value, cfAnterior: $("dj_creditoFiscal").value, iue: $("dj_compIUE").value });
@@ -4770,6 +4800,7 @@ function openDDJJ(r, alGuardar) {
       poner("dj_totalVentas", fmt2(d.ventasImporteTotal), llenos, "total ventas");
       poner("dj_rcvIniciado", true, [], ""); poner("dj_rcvFinalizado", true, llenos, "RCV finalizado");
       if (!$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo;
+      if ($("dj_rcvPorTxt")) $("dj_rcvPorTxt").textContent = $("dj_rcvPor").value ? "· por " + $("dj_rcvPor").value : "";
       pintarCalc(false);
     } else if (t === "f200") {
       if (!$("dj_totalVentas").value) poner("dj_totalVentas", fmt2(d.ventas), llenos, "total ventas");
@@ -4778,6 +4809,8 @@ function openDDJJ(r, alGuardar) {
       poner("dj_creditoSigMes", fmt2(d.creditoSiguienteMes), llenos, "crédito fiscal siguiente mes");
       poner("dj_fechaDeclaracion", aISO(d.fechaPresentacion), llenos, "fecha de declaración");
       if (!$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo;
+      if ($("dj_declarado") && $("dj_fechaDeclaracion").value) $("dj_declarado").checked = true;
+      if ($("dj_declPorTxt")) $("dj_declPorTxt").textContent = $("dj_declaradoPor").value ? "· por " + $("dj_declaradoPor").value : "";
       pintarCalc(false);
     } else if (t === "f400") {
       poner("dj_itPagar", fmt2(d.saldoFisco), llenos, "IT a pagar");
@@ -4854,7 +4887,7 @@ function openDDJJ(r, alGuardar) {
     // Responsables: si nadie eligió, queda quien está usando el panel (se puede cambiar a mano en la lista)
     const yo = djYo(), hoyISO = djHoy();
     if (!d.dj_rcvPor && yo && (d.dj_rcvIniciado || d.dj_rcvConsolidado || d.dj_rcvFinalizado)) d.dj_rcvPor = yo;
-    if (!d.dj_declaradoPor && yo && d.dj_fechaDeclaracion) d.dj_declaradoPor = yo;
+    if (!d.dj_declaradoPor && yo && (d.dj_fechaDeclaracion || c("dj_declarado"))) d.dj_declaradoPor = yo;
     // Fechas automáticas (como las columnas "Fecha de Inicio" de la hoja); las ISO sirven para las métricas por día
     if (d.dj_rcvIniciado && !r.dj_rcvIniciadoAt) d.dj_rcvIniciadoAt = ahora;
     if (d.dj_rcvConsolidado && !r.dj_rcvConsolidado) { d.dj_rcvConsolidadoAt = ahora; d.dj_rcvConsolidadoISO = hoyISO; }
@@ -5913,6 +5946,7 @@ async function yfConectar() {
   if (!r.ok) throw new Error(r.error || "No se pudo entrar a CONTROL.");
   await signInWithEmailAndPassword(YF.auth, r.correo, r.llave);
 }
+const yfUid = id => String(id == null ? "" : id).trim().replace(/[^a-zA-Z0-9._-]/g, "_");
 const yfNorm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 const yfPal = t => yfNorm(t).split(/[^A-Z]+/).filter(w => w.length >= 3);
 const yfSemN = s => { const m = String(s || "").match(/(\d{1,2})\D*G?\D*(\d{2,4})?/i); return m ? (Number(m[2] ? (m[2].length === 2 ? "20" + m[2] : m[2]) : 0) * 100 + Number(m[1])) : 0; };
@@ -5949,9 +5983,9 @@ async function yfCargar(forzar) {
       filas.push({ id, nombre: nombre || "", celular: cel || "", semana, importe: Number(importe) || 0, tipo, f, cli, contador: cli ? "CONTAX" : "OTRO", estado,
         tiene: estado === "aprobada" || estado === "contax" || estado === "subida", ...(extra || {}) });
     };
-    sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, "pendiente", { rango: x.rango || "" }); });
+    sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, "pendiente", { rango: x.rango || "", uid: x.uid || yfUid(x.id) }); });
     hist.docs.forEach(d => { const x = d.data(); let l = []; try { l = JSON.parse(x.filas || "[]"); } catch (e) {}
-      l.forEach(h => { if (/RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], "retenido", { rango: h[1] || "", fechaPago: x.fecha || "" }); }); });
+      l.forEach(h => { if (/RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], "retenido", { rango: h[1] || "", fechaPago: x.fecha || "", uid: yfUid(h[2]) }); }); });
     filas.sort((a, b) => yfNorm(a.nombre).localeCompare(yfNorm(b.nombre)) || yfSemN(a.semana) - yfSemN(b.semana));
     YF.filas = filas; YF.at = Date.now(); YF.err = "";
     return filas;
@@ -5962,6 +5996,53 @@ const fmtBsY = n => "Bs " + (Number(n) || 0).toLocaleString("es-BO", { minimumFr
 const YF_EST = { falta: ["#B4453C", "Falta factura"], porEmitir: ["#235347", "CONTAX debe emitir"], subida: ["#C77C2E", "Subida · por revisar"],
   observada: ["#B4453C", "Observada"], aprobada: ["#2E7D5B", "Emitida ✅"], contax: ["#2E7D5B", "Emitida por CONTAX ✅"] };
 function yfChip(e) { const x = YF_EST[e] || ["#5E7A70", e]; return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${x[0]}">${escape(x[1])}</span>`; }
+// «Marcar emitida»: CONTAX emitió la factura del repartidor → se crea en el Portal como «Emitida por CONTAX»
+// (origen 'contax', estado 'aprobada', emitidaDesde 'panel'). CONTROL, el Portal y el repartidor la ven al instante.
+function yfMarcarEmitida(clave) {
+  const x0 = (YF.filas || []).find(x => x.id + "|" + x.semana === clave); if (!x0) return;
+  const otras = YF.filas.filter(x => x.id === x0.id && !x.f);
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
+  const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:520px;max-width:96vw;max-height:94vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Marcar factura emitida por CONTAX</h3>
+    <p style="color:var(--muted);margin:0 0 12px">${escape(x0.nombre)} · ID ${escape(x0.id)}</p>
+    <label>Semanas que cubre la factura</label>
+    <div id="ye_sem" style="display:grid;gap:4px;margin:4px 0 12px">${otras.map(x => `<label style="font-weight:400;display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" value="${escape(x.semana)}" data-imp="${x.importe}" ${x === x0 ? "checked" : ""}> ${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? " (pagado con retención)" : ""} · ${fmtBsY(x.importe)}</label>`).join("")}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label>N.º de factura</label><input id="ye_num" inputmode="numeric" maxlength="30"></div>
+      <div><label>Fecha de emisión</label><input id="ye_fecha" type="date" value="${hoy}"></div>
+      <div><label>Importe (Bs)</label><input id="ye_imp" readonly></div>
+      <div><label>Código de autorización (opcional)</label><input id="ye_aut" maxlength="80"></div>
+    </div>
+    <p class="msg" id="ye_msg" style="min-height:18px"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="ye_no">Cancelar</button><button class="btn" id="ye_ok">Marcar emitida</button></div></div>`;
+  document.body.appendChild(bg);
+  const $ = id => bg.querySelector("#" + id), msg = $("ye_msg");
+  const marcadas = () => [...bg.querySelectorAll("#ye_sem input:checked")];
+  const suma = () => { $("ye_imp").value = fmtBsY(marcadas().reduce((t, c) => t + Number(c.dataset.imp), 0)); };
+  bg.querySelectorAll("#ye_sem input").forEach(c => c.onchange = suma); suma();
+  $("ye_no").onclick = () => bg.remove();
+  $("ye_ok").onclick = async () => {
+    const sem = marcadas().map(c => c.value), num = $("ye_num").value.trim(), fecha = $("ye_fecha").value;
+    const imp = Math.round(marcadas().reduce((t, c) => t + Number(c.dataset.imp), 0) * 100) / 100;
+    if (!sem.length) { msg.className = "msg err"; msg.textContent = "Marca al menos una semana."; return; }
+    if (!num) { msg.className = "msg err"; msg.textContent = "Escribe el N.º de factura."; return; }
+    $("ye_ok").disabled = true; msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Guardando…`;
+    try {
+      await yfConectar();
+      const quien = String(auth.currentUser.email || "");
+      const datos = { uid: x0.uid || yfUid(x0.id), id: x0.id, nombre: x0.nombre, semanas: sem, numero: num, importe: imp, fechaEmision: fecha,
+        autorizacion: $("ye_aut").value.trim(), estado: "aprobada", origen: "contax", emitidaDesde: "panel", conPdf: false, nombreArchivo: "",
+        subido: serverTimestamp(), revisado: serverTimestamp(), revisadoPor: quien, registradoPor: quien, motivo: "" };
+      const ref = doc(collection(YF.db, "facturas"));
+      await setDoc(ref, datos);
+      otras.filter(x => sem.includes(x.semana)).forEach(x => { x.f = { _id: ref.id, ...datos, fechaEmision: fecha }; x.estado = "contax"; x.tiene = true; });
+      try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "factura_yango_emitida", nombre: x0.nombre, detalle: "N.º " + num + " · " + sem.join(", ") + " · Bs " + imp, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || quien }); } catch (e) {}
+      bg.remove(); paintFacturacion();
+    } catch (e) { $("ye_ok").disabled = false; msg.className = "msg err"; msg.textContent = /permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso para registrar facturas (pide rol operador o admin)." : (e.message || String(e)); }
+  };
+}
 function yfHTML() {
   if (YF.err) return `<p class="msg err">No se pudo leer la lista de CONTROL: ${escape(YF.err)}</p><button class="btn" id="yf_rec">Reintentar</button>`;
   if (!YF.filas) return `<p class="lead"><span class="cx-spin"></span> Trayendo la lista de facturación de CONTROL…</p>`;
@@ -5979,13 +6060,14 @@ function yfHTML() {
       <button class="btn ghost" id="yf_rec">↻ Actualizar</button>
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
-    <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th><th>Contador</th><th>Factura</th><th>N.º · Fecha · NIT</th></tr></thead><tbody>
+    <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th><th>Contador</th><th>Factura</th><th>N.º · Fecha · NIT</th><th></th></tr></thead><tbody>
     ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b><div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
       <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
       <td>${x.contador === "CONTAX" ? "<b>CONTAX</b>" : "Otro"}</td>
       <td>${yfChip(x.estado)}</td>
-      <td class="mono" style="font-size:12px">${x.f ? escape(String(x.f.numero || "")) + " · " + fmtF(x.f.fechaEmision) + " · " + escape(String(x.f.nitEmisor || "")) : "—"}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
+      <td class="mono" style="font-size:12px">${x.f ? escape(String(x.f.numero || "")) + " · " + fmtF(x.f.fechaEmision) + " · " + escape(String(x.f.nitEmisor || "")) : "—"}</td>
+      <td>${!x.f && x.contador === "CONTAX" && canEditClientes() ? `<button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
     </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}`;
 }
 async function renderFacturacion() {
@@ -6055,6 +6137,7 @@ function paintFacturacion() {
   el("v-facturacion").querySelectorAll("#facfuente .subtab").forEach(b => b.onclick = () => { FAC_UI.fuente = b.dataset.f; paintFacturacion(); });
   if (el("yf_cont")) el("yf_cont").onchange = e => { FAC_UI.ycont = e.target.value; paintFacturacion(); };
   if (el("yf_ver")) el("yf_ver").onchange = e => { FAC_UI.yver = e.target.value; paintFacturacion(); };
+  el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem));
   if (el("yf_rec")) el("yf_rec").onclick = () => { YF.err = ""; YF.filas = null; paintFacturacion(); yfCargar(true).then(() => paintFacturacion(), () => paintFacturacion()); };
   if (el("fac_per")) el("fac_per").onchange = e => { FAC_UI.per = e.target.value; paintFacturacion(); };
   if (el("fac_q")) el("fac_q").oninput = e => { FAC_UI.q = e.target.value; clearTimeout(FAC_UI._t); FAC_UI._t = setTimeout(() => { paintFacturacion(); const x = el("fac_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
