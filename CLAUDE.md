@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v84; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v85; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -60,3 +60,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - Hay varios puntos de seguridad pendientes en las reglas y en el puente: ver aviso de seguridad.
 - **IA de comprobantes (v83):** Google dio de baja gemini-2.0-flash y 2.5-flash-lite. Se usa `gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-flash-latest`, con `thinkingLevel: 'minimal'` (`cxGenConfig`); si el modelo responde 400 se repite sin esa opción. La clave gratuita tiene ~20 lecturas al día por modelo: para uso diario hay que activar la facturación en Google AI Studio.
 - **v84 · Facturación → Repartidores Yango CONTAX:** solo filas CONTAX (sin columna Contador ni externos). Columna «Accesos SIN» (NIT, usuario, contraseña, SIAT con 📋, solo quien edita clientes). Botones «Marcar emitida» y «No se pudo ▾» (motivo de una lista + comentario, en varias semanas a la vez) → `portal-nummeros/emisionContax/{id}_{semana}` (`estado` `noSePudo` o `comentario`, `historial` de los últimos 20); el repartidor ve el motivo y el comentario en «Mis facturas» (Portal v3.26). Columna «Comentarios» y cuadro «📊 Facturas emitidas por día y por persona» (facturas `origen: 'contax'`, por `registradoPor`). Si las reglas del Portal no tienen `emisionContax`, avisa en rojo y sigue sin motivos.
+- **v85 · Recepción:** al registrar sale al centro el aviso «¡Registrado!» (`cxPopupOk`) con el N° y el cliente; se cierra solo (4 s, o 7 s si no se envió la Orden al correo), con clic, Enter o Esc.

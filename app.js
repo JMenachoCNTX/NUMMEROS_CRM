@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "84";
+const APP_VERSION = "85";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3512,7 +3512,24 @@ async function registrarRecepcion1() {
     recLastRec = rec;
     recCli = null; recComprobante = null; recCompData = null;
     paintRecepcion();
+    cxPopupOk("¡Registrado!", `Recepción N° ${nroRec}` + (rec.clienteNombre ? ` · ${rec.clienteNombre}` : ""),
+      rec.clienteCorreo ? (enviado ? "Orden enviada al correo del cliente." : "⚠️ No se pudo enviar la Orden al correo.") : "El cliente no tiene correo: no se envió la Orden.", !rec.clienteCorreo || !enviado);
   } catch (e) { btn.disabled = false; btn.textContent = "Registrar recepción"; msg.className = "msg err"; msg.textContent = "Error: " + (e.code || e.message); }
+}
+// Aviso grande al centro de la pantalla (se cierra solo a los 4 s, con clic o con Esc)
+function cxPopupOk(titulo, linea, nota, alerta) {
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px 34px;min-width:280px;max-width:92vw;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)">
+    <div style="width:68px;height:68px;border-radius:50%;background:#2E7D5B;color:#fff;font-size:40px;line-height:68px;margin:0 auto 12px">✓</div>
+    <div style="font-size:24px;font-weight:700;margin-bottom:6px">${escape(titulo)}</div>
+    <div style="font-size:15px">${escape(linea || "")}</div>
+    ${nota ? `<div style="font-size:13px;margin-top:8px;color:${alerta ? "#C77C2E" : "var(--muted)"}">${escape(nota)}</div>` : ""}
+    <button class="btn" style="margin-top:16px">Aceptar</button></div>`;
+  const cerrar = () => { bg.remove(); document.removeEventListener("keydown", tecla); };
+  const tecla = e => { if (e.key === "Escape" || e.key === "Enter") cerrar(); };
+  bg.onclick = cerrar; document.addEventListener("keydown", tecla);
+  document.body.appendChild(bg); setTimeout(cerrar, alerta ? 7000 : 4000);
 }
 function openRecepDetalle(r) {
   if (!r) return;
