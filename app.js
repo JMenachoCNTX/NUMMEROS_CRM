@@ -228,7 +228,7 @@ function buildNav() {
     b.classList.toggle("hidden", !ok);
     b.classList.remove("active");
     b.onclick = () => switchView(b.dataset.v, b);
-    if (b.dataset.v === "sistemas" && el("tbSistemas")) el("tbSistemas").onclick = () => switchView("sistemas", b);
+    if (b.dataset.v === "sistemas" && el("tbSistemas")) el("tbSistemas").onclick = ev => { ev.preventDefault(); switchView("sistemas", b); };
     if (ok && !first) first = b;
   });
   // Ocultar el encabezado de una sección si no tiene ninguna pestaña visible
