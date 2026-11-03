@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "68";
+const APP_VERSION = "69";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2910,8 +2910,8 @@ function paintRecepcion() {
           <div>
             <div class="fs">📷 Comprobante (opcional) — la IA llena los datos</div>
             <div class="field" style="border:1px dashed var(--line);border-radius:10px;padding:12px">
-              <p class="note" style="margin:0 0 8px">Toma/sube una foto o <b>pega</b> (Ctrl+V) la captura del comprobante. La IA llena Total, Banco, N° de operación y Depositante.</p>
-              <input id="r_compfile" type="file" accept="image/*" capture="environment">
+              <p class="note" style="margin:0 0 8px">Sube la foto, la captura (JPG/PNG) o el <b>PDF</b> del comprobante, o <b>pégala</b> (Ctrl+V). La IA lo lee sola y llena Total, Banco, N° de operación y Depositante; lo demás lo completas tú.</p>
+              <input id="r_compfile" type="file" accept="image/*,application/pdf">
               <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
                 <button type="button" class="btn sec" id="r_compread" style="border:1px solid var(--line)" disabled>🤖 Leer con IA</button>
                 <span class="msg" id="r_compmsg"></span>
@@ -2998,11 +2998,22 @@ function paintRecepcion() {
       if (el("r_total")) el("r_total").addEventListener("input", () => { el("r_total").dataset.auto = ""; if (REC_FASE) recFasePintar(false); });
       if (serv) serv.onchange = refreshServicio;
       // Comprobante con IA (igual que en el CRM)
-      const setCompPrev = (dataUrl) => { recComprobante = dataUrl; recCompData = null; const p = el("r_compprev"); if (p) p.innerHTML = `<img src="${dataUrl}" style="max-height:130px;border-radius:8px;border:1px solid var(--line)">`; if (el("r_compread")) el("r_compread").disabled = false; const m = el("r_compmsg"); if (m) { m.className = "msg"; m.textContent = "Listo. Toca “Leer con IA”."; } };
+      // Al cargar el comprobante (foto o PDF) se lee solo con IA
+      const setCompPrev = (dataUrl, nombre) => {
+        recComprobante = dataUrl; recCompData = null; const p = el("r_compprev");
+        if (p) p.innerHTML = dataUrl.indexOf("data:application/pdf") === 0 ? `<span class="badge ok" style="padding:6px 10px">📄 PDF: ${escape(nombre || "comprobante.pdf")}</span>` : `<img src="${dataUrl}" style="max-height:130px;border-radius:8px;border:1px solid var(--line)">`;
+        if (el("r_compread")) { el("r_compread").disabled = false; el("r_compread").click(); }
+      };
       if (el("r_compfile")) el("r_compfile").onchange = async () => {
         const f = el("r_compfile").files && el("r_compfile").files[0]; if (!f) return;
         const m = el("r_compmsg"); if (m) { m.className = "msg"; m.textContent = "Preparando imagen…"; }
-        try { setCompPrev(await cxCompressImage(f)); } catch (e) { if (m) { m.className = "msg err"; m.textContent = e.message || "No se pudo preparar la imagen."; } }
+        try {
+          if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
+            if (f.size > 4000000) throw new Error("El PDF es muy pesado (máximo 4 MB).");
+            const du = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).replace(/^data:[^;]*;/, "data:application/pdf;")); fr.onerror = () => rej(new Error("No se pudo abrir el PDF.")); fr.readAsDataURL(f); });
+            setCompPrev(du, f.name);
+          } else setCompPrev(await cxCompressImage(f));
+        } catch (e) { if (m) { m.className = "msg err"; m.textContent = e.message || "No se pudo preparar el archivo."; } }
       };
       if (el("r_compread")) el("r_compread").onclick = async () => {
         if (!recComprobante) return;
@@ -3334,7 +3345,7 @@ async function ocrComprobanteGemini(dataUrl) {
   const mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
   const b64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
   if (!b64) return { error: "No hay imagen." };
-  const prompt = "Eres un asistente contable en Bolivia. La imagen es un comprobante de pago/transferencia bancaria o un gasto. " +
+  const prompt = "Eres un asistente contable en Bolivia. El archivo (imagen o PDF) es un comprobante de pago/transferencia bancaria o un gasto. " +
     "Extrae los datos y responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":""}. ' +
     "importe solo el número (ej. 150.00). Si un dato no aparece, déjalo como cadena vacía.";
@@ -4063,6 +4074,8 @@ function openDDJJ(r, alGuardar) {
       ${f("Fecha que pagó impuestos", inp("dj_fechaPagoImp", r.dj_fechaPagoImp, "", "date"))}
       <div class="field"><label>&nbsp;</label>${chk("dj_correoEnviado", r.dj_correoEnviado, "Correo enviado al cliente" + ts([r.dj_correoFecha, r.dj_correoPor].filter(Boolean).join(" · ")))}</div>
     </div>
+    <div class="fs" style="margin-top:6px">4) Entrega al cliente <span class="note" style="font-weight:400">— lo verá en su Portal del Cliente; la IA lee los documentos y llena el formulario</span></div>
+    <div id="dj_arch"><p class="note"><span class="cx-spin"></span> Cargando archivos…</p></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;align-items:center">
       <span class="msg" id="dj_msg" style="margin:0 auto 0 0"></span>
       <button class="btn sec" id="dj_close" style="border:1px solid var(--line)">Cerrar</button>
@@ -4070,7 +4083,26 @@ function openDDJJ(r, alGuardar) {
     </div></div>`;
   document.body.appendChild(bg);
   const $ = id => bg.querySelector("#" + id);
-  const close = () => bg.remove();
+  // Si hay cambios sin guardar, al salir se pregunta (Guardar / Salir sin guardar / Seguir editando)
+  const estadoForm = () => [...bg.querySelectorAll("input:not([type=file]),select,textarea")].map(x => x.id + "=" + (x.type === "checkbox" ? x.checked : x.value)).join("|");
+  let fotoForm = null;
+  const sucio = () => canEdit && fotoForm !== null && estadoForm() !== fotoForm;
+  const quitar = () => { bg.remove(); document.removeEventListener("keydown", tecla); window.removeEventListener("beforeunload", antesDeSalir); };
+  const close = () => {
+    if (!sucio()) { quitar(); return; }
+    if (bg.querySelector("#dj_preg")) return;
+    const pr = document.createElement("div"); pr.id = "dj_preg";
+    pr.style = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:101;display:flex;align-items:center;justify-content:center;padding:20px";
+    pr.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:420px;max-width:94vw">
+      <h3 style="margin:0 0 6px">¿Guardar los cambios?</h3><p class="note" style="margin:0 0 14px">Hiciste cambios en esta declaración que todavía no se guardaron.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn sec" data-p="seguir" style="border:1px solid var(--line)">Seguir editando</button><button class="btn sec" data-p="salir" style="border:1px solid var(--line)">Salir sin guardar</button><button class="btn" data-p="guardar">Guardar</button></div></div>`;
+    bg.appendChild(pr);
+    pr.onclick = e => { const b = e.target.closest("[data-p]"); if (e.target === pr) { pr.remove(); return; } if (!b) return; pr.remove();
+      if (b.dataset.p === "salir") quitar(); else if (b.dataset.p === "guardar" && $("dj_save")) $("dj_save").click(); };
+  };
+  const tecla = e => { if (e.key === "Escape") { const pr = bg.querySelector("#dj_preg"); if (pr) pr.remove(); else close(); } };
+  const antesDeSalir = e => { if (sucio()) { e.preventDefault(); e.returnValue = ""; } };
+  document.addEventListener("keydown", tecla); window.addEventListener("beforeunload", antesDeSalir);
   bg.onclick = e => { if (e.target === bg) close(); };
   $("dj_x").onclick = close; $("dj_close").onclick = close;
   // Atajos: al marcar RCV o poner fecha, se completa el responsable con quien está usando el panel
@@ -4118,6 +4150,111 @@ function openDDJJ(r, alGuardar) {
   };
   ["dj_totalVentas", "dj_totalCompras", "dj_creditoFiscal", "dj_compIUE"].forEach(id => $(id).oninput = () => pintarCalc(true));
   pintarCalc(false);
+  fotoForm = estadoForm();
+  // ---- 4) Entrega al cliente: archivos que verá en su portal; la IA los lee y llena el formulario ----
+  let ARCH = {};
+  const cajaArch = $("dj_arch"), msgArch = () => $("dj_archmsg");
+  const fmt2 = x => { const n = arqNum(x); return isNaN(n) ? "" : n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  const aISO = t => { const m = String(t || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : (/^\d{4}-\d{2}-\d{2}/.test(String(t)) ? String(t).slice(0, 10) : ""); };
+  const pintarArch = () => {
+    cajaArch.innerHTML = DJ_TIPOS.map(([t, lbl, acc]) => {
+      const a = ARCH[t];
+      const info = a ? `<b>${escape(a.nombre)}</b> <span class="note">· ${escape(String(a.kb))} KB · ${escape(new Date(a.subidoISO).toLocaleDateString("es-BO"))}${a.por ? " · " + escape(a.por) : ""}</span>` +
+        (t === "qr" && (a.qrMonto || a.qrVence) ? `<div class="note">💳 ${a.qrMonto ? "Bs " + escape(fmt2(a.qrMonto)) : ""}${a.qrFormulario ? " · F" + escape(a.qrFormulario) : ""}${a.qrVence ? " · vence " + escape(a.qrVence) : ""}</div>` : "") : `<span class="note">Sin archivo</span>`;
+      return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)">
+        <div style="min-width:220px;flex:1"><div style="font-weight:600">${lbl}</div><div>${info}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${a ? `<button class="mini" type="button" data-aver="${t}">👁 Ver</button>` : ""}
+          ${a && canEdit && DJ_PROMPTS[t] && /^image\/|pdf/.test(a.mime) ? `<button class="mini" type="button" data-aleer="${t}">🤖 Leer con IA</button>` : ""}
+          ${canEdit ? `<label class="mini" style="cursor:pointer">${a ? "↻ Reemplazar" : "⬆ Subir"}<input type="file" data-asub="${t}" accept="${acc}" style="display:none"></label>` : ""}
+          ${a && canEdit ? `<button class="mini" type="button" data-aquitar="${t}">✕</button>` : ""}
+        </div></div>`;
+    }).join("") + (canEdit ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir varios a la vez<input type="file" id="dj_amulti" multiple accept="application/pdf,image/*,.xlsx,.xls,.csv" style="display:none"></label>
+        <span class="note">Elige todos juntos: se reconocen por el nombre (RCV, 200, 400, Excel = compras, imagen = QR) y la IA llena el formulario.</span></div>` : "") +
+      `<div class="msg" id="dj_archmsg" style="margin-top:6px"></div>`;
+    enlazarArch();
+  };
+  const aviso = (t, cls) => { const m = msgArch(); if (m) { m.className = "msg " + (cls || ""); m.innerHTML = t; } };
+  const poner = (id, v, llenos, nom) => { if (v === "" || v == null || !$(id)) return; const e = $(id); if (e.type === "checkbox") e.checked = !!v; else e.value = v; e.style.outline = "2px solid var(--accent)"; setTimeout(() => { e.style.outline = ""; }, 4000); llenos.push(nom); };
+  const aplicarIA = async (t, d) => {
+    const llenos = [], alertas = [], yo = djYo();
+    const nitDoc = String(d.nit || "").replace(/\D/g, ""), nitRec = String(r.nit || "").replace(/\D/g, "");
+    if (nitDoc && nitRec && nitDoc !== nitRec) alertas.push("el NIT del documento (" + escape(nitDoc) + ") no es el de este cliente");
+    const pk = recPeriodoKey(r), mes = Number(d.mes), anio = String(d.anio || "");
+    if (mes && anio && pk && pk !== anio + "-" + String(mes).padStart(2, "0")) alertas.push("el período del documento (" + mes + "/" + escape(anio) + ") no es el de esta recepción");
+    if (t === "rcv") {
+      poner("dj_cantFacturas", d.comprasCantidad, llenos, "cant. facturas");
+      poner("dj_totalCompras", fmt2(d.comprasConDerechoCF || d.comprasImporteTotal), llenos, "total compras");
+      poner("dj_totalVentas", fmt2(d.ventasImporteTotal), llenos, "total ventas");
+      poner("dj_rcvIniciado", true, [], ""); poner("dj_rcvFinalizado", true, llenos, "RCV finalizado");
+      if (!$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo;
+      pintarCalc(false);
+    } else if (t === "f200") {
+      if (!$("dj_totalVentas").value) poner("dj_totalVentas", fmt2(d.ventas), llenos, "total ventas");
+      if (!$("dj_totalCompras").value) poner("dj_totalCompras", fmt2(d.compras), llenos, "total compras");
+      poner("dj_ivaPagar", fmt2(d.saldoFisco), llenos, "IVA a pagar");
+      poner("dj_creditoSigMes", fmt2(d.creditoSiguienteMes), llenos, "crédito fiscal siguiente mes");
+      poner("dj_fechaDeclaracion", aISO(d.fechaPresentacion), llenos, "fecha de declaración");
+      if (!$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo;
+      pintarCalc(false);
+    } else if (t === "f400") {
+      poner("dj_itPagar", fmt2(d.saldoFisco), llenos, "IT a pagar");
+      poner("dj_compIUE", fmt2(d.iueCompensado), llenos, "compensación del IUE");
+      if (!$("dj_fechaDeclaracion").value) poner("dj_fechaDeclaracion", aISO(d.fechaPresentacion), llenos, "fecha de declaración");
+      pintarCalc(false);
+    } else if (t === "qr" && ARCH.qr) {
+      const q = { qrMonto: String(d.monto || ""), qrVence: aISO(d.vence) || String(d.vence || ""), qrFormulario: String(d.formulario || "").replace(/\D/g, "") };
+      try { await updateDoc(doc(db, DJ_ARCH, ARCH.qr._id), q); Object.assign(ARCH.qr, q); } catch (e) {}
+      llenos.push("datos del QR");
+    }
+    return { llenos, alertas };
+  };
+  const leer = async (t, dataUrl) => {
+    const lbl = (DJ_TIPOS.find(x => x[0] === t) || [])[1] || t;
+    const res = await djLeerIA(t, dataUrl);
+    if (res.error) return `⚠ ${escape(lbl)}: ${escape(res.error)}`;
+    if (!res.data) return "";
+    const o = await aplicarIA(t, res.data);
+    return (o.llenos.length ? `✓ ${escape(lbl)}: se llenó ${o.llenos.map(escape).join(", ")}.` : `${escape(lbl)}: no encontró datos para llenar.`) + (o.alertas.length ? ` <b style="color:var(--danger)">⚠ Revisa: ${o.alertas.join("; ")}.</b>` : "");
+  };
+  const subir = async (lista) => {
+    const msgs = [];
+    for (const [t, f] of lista) {
+      aviso(`<span class="cx-spin"></span> Subiendo ${escape(f.name)}…`);
+      try {
+        const a = await djArchSubir(r, t, f); const du = a.dataUrl; delete a.dataUrl; ARCH[t] = a;
+        if (DJ_PROMPTS[t]) { aviso(`<span class="cx-spin"></span> La IA está leyendo ${escape(f.name)}…`); const m = await leer(t, du); if (m) msgs.push(m); }
+        else msgs.push("✓ " + escape(f.name) + " guardado.");
+      } catch (e) { msgs.push(`⚠ ${escape(f.name)}: ${escape(e.code === "permission-denied" ? "sin permiso para guardar archivos (faltan las reglas nuevas)" : (e.message || e.code))}`); }
+    }
+    pintarArch(); aviso(msgs.join("<br>") + (msgs.length ? "<br><span class=\"note\">Revisa los datos marcados y toca <b>Guardar</b>.</span>" : ""));
+  };
+  const enlazarArch = () => {
+    cajaArch.querySelectorAll("[data-asub]").forEach(i => i.onchange = () => { const f = i.files && i.files[0]; if (f) subir([[i.dataset.asub, f]]); });
+    const mu = cajaArch.querySelector("#dj_amulti");
+    if (mu) mu.onchange = () => {
+      const fs = [...(mu.files || [])], lista = [], sin = [];
+      fs.forEach(f => { const t = djTipoDe(f); if (t && !lista.some(x => x[0] === t)) lista.push([t, f]); else sin.push(f.name); });
+      subir(lista).then(() => { if (sin.length) aviso((msgArch().innerHTML ? msgArch().innerHTML + "<br>" : "") + "⚠ No reconocí: " + sin.map(escape).join(", ") + ". Súbelos en su fila."); });
+    };
+    cajaArch.querySelectorAll("[data-aver]").forEach(b => b.onclick = async () => {
+      const a = ARCH[b.dataset.aver]; const w = window.open("", "_blank"); b.disabled = true;
+      try { const blob = await (await fetch(await djArchBajar(a))).blob(); const u = URL.createObjectURL(blob); if (w) w.location.href = u; else location.href = u; }
+      catch (e) { if (w) w.close(); aviso("No se pudo abrir el archivo.", "err"); }
+      b.disabled = false;
+    });
+    cajaArch.querySelectorAll("[data-aleer]").forEach(b => b.onclick = async () => {
+      const t = b.dataset.aleer; b.disabled = true; aviso(`<span class="cx-spin"></span> La IA está leyendo…`);
+      try { aviso((await leer(t, await djArchBajar(ARCH[t]))) + "<br><span class=\"note\">Revisa los datos marcados y toca <b>Guardar</b>.</span>"); } catch (e) { aviso("No se pudo leer: " + escape(e.message || e.code), "err"); }
+      pintarArch();
+    });
+    cajaArch.querySelectorAll("[data-aquitar]").forEach(b => b.onclick = async () => {
+      const t = b.dataset.aquitar; if (!confirm("¿Quitar " + ARCH[t].nombre + "? El cliente ya no lo verá en su portal.")) return;
+      try { await djArchBorrar(ARCH[t]._id); delete ARCH[t]; pintarArch(); } catch (e) { aviso("No se pudo quitar: " + escape(e.code || e.message), "err"); }
+    });
+  };
+  djArchListar(r.id).then(o => { ARCH = o; pintarArch(); }, e => { cajaArch.innerHTML = `<p class="note">${e.code === "permission-denied" ? "Falta publicar las reglas nuevas de Firebase para guardar archivos." : "No se pudieron traer los archivos."}</p>`; });
   if ($("dj_save")) $("dj_save").onclick = async () => {
     const v = id => $(id).value.trim(), c = id => !!$(id).checked;
     const ahora = new Date().toLocaleString("es-BO");
@@ -4139,9 +4276,113 @@ function openDDJJ(r, alGuardar) {
       d._upd = Date.now();
       await setDoc(doc(db, "recepciones", r.id), d, { merge: true });
       Object.assign(r, d, { dj_editadoAt: Date.now() }); rcPoner(r.id, Object.assign({}, d, { dj_editadoAt: Date.now() }));
-      close(); (alGuardar || paintDDJJ)();
+      quitar(); (alGuardar || paintDDJJ)();
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
+}
+
+// ---------- ARCHIVOS DE LA DECLARACIÓN (entrega al cliente) ----------
+// Se guardan en Firestore (colección djArchivos, el contenido en trozos en djArchivos/{id}/p/{n}) y el cliente
+// los ve en su Portal. Para no llenar la base (1 GB gratis), solo se guardan los archivos de los últimos 3 meses.
+const DJ_ARCH = "djArchivos", DJ_MAX = 2500000, DJ_TROZO = 900000, DJ_MESES_GUARDA = 3;
+const DJ_TIPOS = [
+  ["rcv", "RCV (Constancia de Registro de Compras y Ventas)", "application/pdf,image/*"],
+  ["compras", "Excel de compras registradas", ".xlsx,.xls,.csv,application/pdf"],
+  ["f200", "Formulario 200 (IVA)", "application/pdf,image/*"],
+  ["f400", "Formulario 400 (IT)", "application/pdf,image/*"],
+  ["qr", "QR para el pago de impuestos", "image/*,application/pdf"]
+];
+async function djArchListar(recId) {
+  const q = await getDocs(query(collection(db, DJ_ARCH), where("recId", "==", recId)));
+  const o = {}; q.docs.forEach(d => { const x = d.data(); x._id = d.id; o[x.tipo] = x; }); return o;
+}
+function djLeerArchivo(f) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(new Error("No se pudo abrir " + f.name)); fr.readAsDataURL(f); });
+}
+function djMime(f) {
+  if (f.type) return f.type;
+  const n = f.name.toLowerCase();
+  return /\.pdf$/.test(n) ? "application/pdf" : /\.xlsx$/.test(n) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.xls$/.test(n) ? "application/vnd.ms-excel" : /\.csv$/.test(n) ? "text/csv" : /\.png$/.test(n) ? "image/png" : "image/jpeg";
+}
+// Adivina qué documento es por el nombre o el tipo de archivo
+function djTipoDe(f) {
+  const n = f.name.toLowerCase(), m = djMime(f);
+  if (/sheet|excel|csv/.test(m) || /\.(xlsx|xls|csv)$/.test(n)) return "compras";
+  if (/^image\//.test(m) || /\bqr\b/.test(n)) return "qr";
+  if (/rcv|registro de compras|constancia/.test(n)) return "rcv";
+  if (/\b(f|form|formulario)?\s*-?200\b/.test(n) || /iva/.test(n)) return "f200";
+  if (/\b(f|form|formulario)?\s*-?400\b/.test(n) || /\bit\b/.test(n)) return "f400";
+  if (/compra/.test(n)) return "compras";
+  return "";
+}
+async function djArchBorrar(id) {
+  const s = await getDoc(doc(db, DJ_ARCH, id)); if (!s.exists()) return;
+  const n = Number(s.data().partes) || 1;
+  for (let i = 0; i < n; i++) await deleteDoc(doc(db, DJ_ARCH, id, "p", String(i)));
+  await deleteDoc(doc(db, DJ_ARCH, id));
+}
+async function djArchSubir(r, tipo, f) {
+  if (f.size > DJ_MAX) throw new Error(f.name + " pesa más de 2,5 MB.");
+  const mime = djMime(f), du = await djLeerArchivo(f), b64 = du.replace(/^data:[^;]*;base64,/, "");
+  const id = r.id + "_" + tipo, partes = Math.max(1, Math.ceil(b64.length / DJ_TROZO));
+  await djArchBorrar(id); // reemplaza el anterior (por ejemplo, un QR vencido)
+  for (let i = 0; i < partes; i++) await setDoc(doc(db, DJ_ARCH, id, "p", String(i)), { d: b64.slice(i * DJ_TROZO, (i + 1) * DJ_TROZO) });
+  const meta = { recId: r.id, nit: String(r.nit || "").replace(/\D/g, ""), periodo: recPeriodoKey(r) || "", tipo, nombre: f.name.slice(-120), mime, kb: Math.round(f.size / 1024), partes,
+    subidoISO: new Date().toISOString(), por: djYo() || (ME && ME.email) || "", _upd: Date.now() };
+  await setDoc(doc(db, DJ_ARCH, id), meta);
+  djArchLimpiar();
+  return Object.assign({ _id: id, dataUrl: "data:" + mime + ";base64," + b64 }, meta);
+}
+async function djArchBajar(a) {
+  let b64 = "";
+  for (let i = 0; i < (Number(a.partes) || 1); i++) { const s = await getDoc(doc(db, DJ_ARCH, a._id, "p", String(i))); b64 += s.exists() ? s.data().d : ""; }
+  return "data:" + a.mime + ";base64," + b64;
+}
+// Borra los archivos de declaraciones de más de 3 meses (una vez por sesión)
+let djLimpiado = false;
+async function djArchLimpiar() {
+  if (djLimpiado) return; djLimpiado = true;
+  try {
+    const h = new Date(); h.setMonth(h.getMonth() - DJ_MESES_GUARDA);
+    const corte = h.getFullYear() + "-" + String(h.getMonth() + 1).padStart(2, "0");
+    const q = await getDocs(query(collection(db, DJ_ARCH), where("periodo", "<", corte), limit(40)));
+    for (const d of q.docs) { if (d.data().periodo) await djArchBorrar(d.id); }
+  } catch (e) { console.warn("Limpieza de archivos de declaraciones:", e); }
+}
+// La IA lee un documento (RCV, F200, F400 o QR) y devuelve sus datos
+const DJ_PROMPTS = {
+  rcv: 'Es la "Constancia de Registro de Compras y Ventas" (RCV) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","ventasCantidad":"","ventasImporteTotal":"","comprasCantidad":"","comprasImporteTotal":"","comprasConDerechoCF":""}',
+  f200: 'Es el Formulario 200 (IVA) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ventas":"casilla 13","compras":"casilla 11","creditoSiguienteMes":"casilla 592: saldo de crédito fiscal a favor del contribuyente para el período siguiente","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
+  f400: 'Es el Formulario 400 (IT) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ingresos":"casilla 13","iueCompensado":"casilla 664","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
+  qr: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}'
+};
+async function djLeerIA(tipo, dataUrl) {
+  if (!DJ_PROMPTS[tipo]) return { error: "" };
+  const mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "";
+  if (!/^image\/|application\/pdf/.test(mime)) return { error: "" };
+  const cfg = await loadConfigDoc();
+  const key = (cfg.visionKey || cfg.aiKey || cfg.geminiKey || "").trim();
+  if (!key) return { error: "Falta la clave de Gemini (Configuración → IA)." };
+  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: DJ_PROMPTS[tipo] + ". Los importes solo con números y punto decimal (ej. 118582.28). Si un dato no aparece, cadena vacía. Sin texto extra." }, { inline_data: { mime_type: mime, data: dataUrl.replace(/^data:[^;]+;base64,/, "") } }] }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 500, responseMimeType: "application/json" } });
+  const base = /latest/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-flash-lite-latest";
+  let err = "";
+  for (const model of [base, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i)) {
+    for (let k = 0; k < 2; k++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (res.ok) {
+          const j = await res.json();
+          const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || "").join("").replace(/```json|```/g, "").trim();
+          try { return { data: JSON.parse(t) }; } catch (e) { const m = t.match(/\{[\s\S]*\}/); if (m) try { return { data: JSON.parse(m[0]) }; } catch (_) {} }
+          return { error: "La IA no pudo leer el documento." };
+        }
+        err = "(" + res.status + ")"; if (res.status !== 503 && res.status !== 429 && res.status !== 500) break;
+      } catch (e) { err = String(e.message || e); }
+      await new Promise(z => setTimeout(z, 700));
+    }
+  }
+  return { error: "La IA está ocupada " + err + ". Toca «Leer con IA» de nuevo en unos segundos." };
 }
 
 // ---------- FICHA DEL CLIENTE (antes "HistorialClientes" en Sheets) ----------

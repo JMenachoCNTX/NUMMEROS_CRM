@@ -142,6 +142,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Archivos de cada declaración (RCV, compras, F200, F400, QR) que se entregan al
+    // cliente en su Portal. El contenido va en trozos en /p/{n}. Se guardan 3 meses.
+    match /djArchivos/{id} {
+      allow read: if portalView();
+      allow create, update, delete: if portalEdit();
+      match /p/{n} {
+        allow read: if portalView();
+        allow create, update, delete: if portalEdit();
+      }
+    }
+
     // ----- Eventos del calendario (pestaña Calendario · v5) -----
     // Agenda compartida del equipo. La ve todo el portal; crean/editan/borran
     // los roles de edición (el rol 'lector' solo puede ver).

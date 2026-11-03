@@ -27,7 +27,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 ## Dónde se guardan los datos
 - **Firebase `crm-contax`** (Auth + Firestore): `users`, `userPins`, `config` (incluye `config/app` con claves de IA y del Sistema Contable),
   `clientes`, `bdclientes`, `bdlog`, `recepciones`, `tarifas`, `eventos`, `egresos`, `noclientes`, `quickReplies`, `waChats`,
-  `contacts`, `reminders`, `activity`, `ctrlLlaves` (solo la usa el script).
+  `contacts`, `reminders`, `activity`, `ctrlLlaves` (solo la usa el script), `djArchivos` (archivos de cada declaración para el cliente: RCV, Excel de compras, F200, F400 y QR; id `{recId}_{tipo}`, contenido en trozos en `djArchivos/{id}/p/{n}`, máx. 2,5 MB; **solo se guardan 3 meses** para no llenar el 1 GB gratis; cuando haya plan Blaze se pasarán a Firebase Storage).
 - **Google Drive** (cuenta del script): carpetas "NUMMEROS Pasarela - Comprobantes", "NUMMEROS · Balance Independiente" y "NUMMEROS · Portal de clientes".
 - **Gmail** de CONTAX para enviar recibos. Algunas funciones viejas usan Google Sheets (BDCONTAX) por puente.
 - El script escribe también cuentas en los proyectos `control--nummeros` y `portal-nummeros`.
@@ -37,10 +37,11 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v68). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v69). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
+- **Declaraciones → 4) Entrega al cliente:** se suben los documentos y la IA (Gemini, misma clave de comprobantes) lee RCV, F200, F400 y QR y llena el formulario; avisa si el NIT o el período no coinciden. El formulario pregunta antes de cerrarse con cambios sin guardar. **Recepción:** el comprobante puede ser foto, captura o PDF y se lee solo al cargarlo.
 - **El repositorio es PÚBLICO.** Nunca escribir claves de IA, contraseñas ni datos de clientes en los archivos; las claves van en el Panel (Configuración), que las guarda en Firestore.
 - Cualquier cambio a `users` o a las reglas afecta también a CONTROL y al Portal de repartidores.
 - No pegar `firestore-rules.txt` (el viejo) en la consola: dejaría sin acceso a casi todo el panel.
