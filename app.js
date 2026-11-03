@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "75";
+const APP_VERSION = "76";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1344,7 +1344,8 @@ const BD_FIELDS = [
   ["estado", "Estado Usuario", "Adicionales", "estado"],
   ["costo", "Costo Servicio Mensual", "Adicionales", "text"],
   ["fechaInact", "Fecha Inactivación", "Adicionales", "text"],
-  ["comentarios", "Comentarios", "Adicionales", "textarea"]
+  ["comentarios", "Comentarios", "Adicionales", "textarea"],
+  ["suscriptor", "Tipo de Suscriptor", "Adicionales", "text"]
 ];
 const BD_GROUPS = ["Cliente", "Actividad", "Accesos", "SEPREC", "Adicionales"];
 const BD_LBL2KEY = {}; BD_FIELDS.forEach(f =>BD_LBL2KEY[f[1]] = f[0]);
@@ -1352,7 +1353,7 @@ const BD_KEY2LBL = {}; BD_FIELDS.forEach(f =>BD_KEY2LBL[f[0]] = f[1]);
 const BD_SECRET_LBL = BD_FIELDS.filter(f =>f[3] === "secret").map(f =>f[1]);
 // Las filas se guardan TAL CUAL vienen del Sheet: claves = etiquetas (títulos).
 let BD = [], bdHeader = [], bdFilter = "", bdEstado = "", bdTipo = "", bdLoaded = false, bdUrlCache = "";
-let bdSubtab = "resumen", bdSort = "", bdEnFirebaseFlag = false;
+let bdSubtab = "resumen", bdSort = "", bdEnFirebaseFlag = false, bdSusc = "";
 let bdKey2Header = {};
 // Mapea un encabezado del Sheet (aunque tenga "20." adelante) a la clave interna de BD_FIELDS
 function bdHeaderToKey(h) {
@@ -1360,6 +1361,7 @@ function bdHeaderToKey(h) {
   const n = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
   if (n.includes("estado") && n.includes("usuario")) return "estado";
   if (n.includes("costo")) return "costo";
+  if (n.includes("suscriptor")) return "suscriptor";
   if (n.includes("matricula")) return "estMat";
   if (n.includes("apertura") && n.includes("nit")) return "fechaNit";
   if (n.replace(/[^a-z]/g, "") === "ci" || n.includes("carnet") || n.includes("cedula")) return "ci";
@@ -1419,6 +1421,9 @@ async function bdLoadFirebase(cb, forzarTodo) {
     const rows = (await bdSync(forzarTodo)).map(r => Object.assign({}, r));
     if (!bdHeader.length && rows.length) { bdHeader = Object.keys(rows[0]).filter(k => k.charAt(0) !== "_"); bdBuildKeyMap(); }
     BD = rows.filter(r => (bdV(r, "nombre") || bdV(r, "razon") || bdV(r, "codigoId") || bdV(r, "nit")));
+    // Tipo de suscriptor: columna nueva; si el cliente aún no lo tiene guardado, se calcula con el costo mensual
+    if (!bdKey2Header.suscriptor) { bdHeader.push(SUSC_LBL); bdBuildKeyMap(); }
+    BD.forEach(r => { const h = bdKey2Header.suscriptor; r._suscGuardado = !!String(r[h] || "").trim(); if (!r._suscGuardado) r[h] = bdSuscDe(r); });
     bdEnFirebaseFlag = true; bdLoaded = true; cb(true);
   } catch (e) { cb(false, e.message || e); }
 }
@@ -1492,6 +1497,28 @@ function bdEstadoInfo(r) {
   return { raw: raw, grupo: g, cls: cls, activo: g === "activo" };
 }
 function bdIsActivo(r) { return bdEstadoInfo(r).activo; }
+// Tipo de suscriptor (20 Bs = facturación; 30, 50, 60, 95… = declaración). Cambia solo cuando el cliente paga el otro servicio.
+const SUSC_DECL = "SUSCRIPTOR DE DECLARACIÓN", SUSC_FACT = "SUSCRIPTOR DE FACTURACIÓN", SUSC_LBL = "22. Tipo de Suscriptor";
+function bdSuscDe(r) {
+  const g = (bdV(r, "suscriptor") || "").toUpperCase();
+  if (/FACTURAC/.test(g)) return SUSC_FACT;
+  if (/DECLARAC/.test(g)) return SUSC_DECL;
+  const c = bdMoney(bdV(r, "costo"));
+  return c === 20 ? SUSC_FACT : c >= 30 ? SUSC_DECL : "";
+}
+// Al registrar o aprobar un pago de declaración o facturación, el cliente pasa a ese tipo de suscriptor
+async function bdSuscActualizar(rec) {
+  try {
+    const cat = recCatDe(rec), nuevo = cat === "declaracion" ? SUSC_DECL : (cat === "facturacion" && Number(rec.importe) <= 20) ? SUSC_FACT : "";
+    const nit = String(rec.nit || "").replace(/\D/g, ""); if (!nuevo || !nit) return;
+    const c = BD.find(x => String(bdV(x, "nit")).replace(/\D/g, "") === nit && x._docid); if (!c) return;
+    const h = bdKey2Header.suscriptor || SUSC_LBL, antes = String(c[h] || "");
+    if (antes === nuevo && c._suscGuardado) return;
+    const d = { [h]: nuevo, _upd: Date.now() };
+    await setDoc(doc(db, BD_COLL, c._docid), d, { merge: true }); c[h] = nuevo; c._suscGuardado = true; bdcPoner(c._docid, d);
+    if (antes && antes !== nuevo) await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "cambio_suscriptor", nombre: bdV(c, "nombre") || bdV(c, "razon"), estadoAnterior: antes, estadoNuevo: nuevo, detalle: "Pagó " + (rec.servicio || "") + " " + (rec.detalleServicio || "") + " (Bs " + (rec.importe || "") + ")", porUid: (ME && ME.uid) || "", porNombre: (ME && (ME.name || ME.email)) || "" });
+  } catch (e) { console.warn("Tipo de suscriptor:", e); }
+}
 function bdMoney(v) { let s = String(v == null ? "" : v).replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".").replace(/[^\d.]/g, ""); const n = parseFloat(s); return isNaN(n) ? 0 : n; }
 function fmtBs2(n) { return "Bs " + (Number(n) || 0).toLocaleString("es-BO", { maximumFractionDigits: 2 }); }
 // Descarga una copia de respaldo en CSV (se abre en Excel / Google Sheets)
@@ -1580,6 +1607,7 @@ function paintBaseDatos() {
       else if (bdV(r, "estado") !== bdEstado) return false;
     }
     if (bdTipo && bdV(r, "tipo") !== bdTipo) return false;
+    if (bdSusc && bdSuscDe(r) !== bdSusc) return false;
     if (term) {
       let hay = false;
       for (const lbl of bdHeader) { if (String(r[lbl] == null ? "" : r[lbl]).toLowerCase().includes(term)) { hay = true; break; } }
@@ -1597,6 +1625,7 @@ function paintBaseDatos() {
   BD.forEach(r => { counts[bdEstadoInfo(r).grupo] = (counts[bdEstadoInfo(r).grupo] || 0) + 1; });
   const total = BD.length, activos = counts.activo;
   const ingreso = BD.filter(bdIsActivo).reduce((s, r) =>s + bdMoney(bdV(r, "costo")), 0);
+  const nSusc = t => BD.filter(r => bdIsActivo(r) && bdSuscDe(r) === t).length;
   // Cabecera: solo las columnas visibles del Sheet + una fija al final para "Editar/Ver"
   const { ordered: visHeader, pin: pinCols } = bdOrderedHeader();
   const thead = `<tr>${visHeader.map(h => `<th style="${bdPinStyle(h, pinCols, true)}">${pinCols.indexOf(h) >= 0 ? "📌 " : ""}${escape(h)}</th>`).join("")}<th class="bd-actioncol"></th></tr>`;
@@ -1625,12 +1654,15 @@ function paintBaseDatos() {
       <div class="kpi bd-kpi" data-gfilter="susc_inact" title="Ver en la lista"><div class="n">${counts.susc_inact}</div><div class="l">Suscripción inactiva</div></div>
       <div class="kpi bd-kpi" data-gfilter="lista_negra" title="Ver en la lista"><div class="n" style="color:var(--danger)">${counts.lista_negra}</div><div class="l">Lista negra</div></div>
       <div class="kpi"><div class="n">${fmtBs2(ingreso)}</div><div class="l">Ingreso mensual (activos)</div></div>
+      <div class="kpi bd-skpi" data-susc="${SUSC_DECL}" title="Ver en la lista"><div class="n">${nSusc(SUSC_DECL)}</div><div class="l">Activos · suscriptores de declaración</div></div>
+      <div class="kpi bd-skpi" data-susc="${SUSC_FACT}" title="Ver en la lista"><div class="n">${nSusc(SUSC_FACT)}</div><div class="l">Activos · suscriptores de facturación</div></div>
     </div>`;
   const listaHTML = `
     <div class="toolbar">
       <input id="bd_search" class="mini" style="padding:9px;min-width:240px" placeholder="Buscar en toda la base…" value="${escape(bdFilter)}">
       <select id="bd_estado" class="mini" style="padding:9px"><option value="">Todos los estados</option><optgroup label="Por categoría">${BD_ESTADO_DEFS.map(d => `<option value="g:${d[0]}">${escape(d[1])} (${counts[d[0]] || 0})</option>`).join("")}</optgroup><optgroup label="Texto exacto del Sheet">${estados.map(e => `<option value="${escape(e)}">${escape(e)}</option>`).join("")}</optgroup></select>
       <select id="bd_tipo" class="mini" style="padding:9px"><option value="">Todos los tipos</option>${tipos.map(t => `<option value="${escape(t)}">${escape(t)}</option>`).join("")}</select>
+      <select id="bd_susc" class="mini" style="padding:9px"><option value="">Todos los suscriptores</option><option value="${SUSC_DECL}">Suscriptor de declaración (${nSusc(SUSC_DECL)})</option><option value="${SUSC_FACT}">Suscriptor de facturación (${nSusc(SUSC_FACT)})</option></select>
       <select id="bd_sort" class="mini" style="padding:9px"><option value="">Más recientes</option><option value="antiguo">Más antiguos</option><option value="nombre">Nombre (A-Z)</option><option value="estado">Estado</option><option value="costo">Costo (mayor)</option></select>
       ${canEdit ? '<button class="btn" id="bd_new">＋ Nuevo</button>' : ""}
       <button class="btn sec" id="bd_cols" style="border:1px solid var(--line)">Columnas${bdHidden.length ? ` (${visHeader.length}/${bdHeader.length})` : ""}</button>
@@ -1638,8 +1670,6 @@ function paintBaseDatos() {
       ${isAdmin() ? '<button class="btn sec" id="bd_mail_act" style="border:1px solid var(--line)" title="Enviar un aviso por correo a todos los clientes activos">✉ Correo a activos</button><button class="btn sec" id="bd_mail_norec" style="border:1px solid var(--line)" title="Recordar a los activos que aún no recepcionaron su declaración">✉ Recordar a no recepcionados</button>' : ""}
       <button class="btn sec" id="bd_reload" style="border:1px solid var(--line)">Actualizar</button>
       ${(isAdmin() && !bdEnFirebaseFlag) ? '<button class="btn" id="bd_migrar" style="background:var(--green);border-color:var(--green)" title="Copiar todo a Firebase y dejar de usar Google Sheets">⬆ Migrar a Firebase</button>' : ''}
-      ${(isAdmin() && bdEnFirebaseFlag) ? '<label class="btn sec" id="bd_xls" style="border:1px solid var(--line);cursor:pointer" title="Sube el Excel actualizado: solo se guarda lo nuevo y lo que cambió">Importar Excel<input type="file" id="bd_xls_in" accept=".xlsx,.xls" style="display:none"></label>' : ''}
-      ${(isAdmin() && bdEnFirebaseFlag) ? '<button class="btn sec" id="bd_sync" style="border:1px solid var(--line)" title="Trae del Google Sheet solo los clientes nuevos y los cambios">Sincronizar con Sheets</button>' : ''}
       ${bdEnFirebaseFlag ? '<span class="badge ok" style="align-self:center;padding:4px 10px">⚡ En Firebase</span>' : ''}
       <span class="msg" id="bd_msg" style="align-self:center"></span>
     </div>
@@ -1665,6 +1695,8 @@ function paintBaseDatos() {
   if (el("bd_sort")) { el("bd_sort").value = bdSort; el("bd_sort").onchange = () => { bdSort = el("bd_sort").value; paintBaseDatos(); }; }
   if (el("bd_search")) el("bd_search").oninput = () => { bdFilter = el("bd_search").value; paintBaseDatos(); const nb = el("bd_search"); if (nb) { nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); } };
   if (el("bd_estado")) { el("bd_estado").value = bdEstado; el("bd_estado").onchange = () => { bdEstado = el("bd_estado").value; paintBaseDatos(); }; }
+  if (el("bd_susc")) { el("bd_susc").value = bdSusc; el("bd_susc").onchange = () => { bdSusc = el("bd_susc").value; paintBaseDatos(); }; }
+  el("v-basedatos").querySelectorAll(".bd-skpi").forEach(k => { k.style.cursor = "pointer"; k.onclick = () => { bdSusc = bdSusc === k.dataset.susc ? "" : k.dataset.susc; bdEstado = "g:activo"; bdSubtab = "general"; paintBaseDatos(); }; });
   if (el("bd_tipo")) { el("bd_tipo").value = bdTipo; el("bd_tipo").onchange = () => { bdTipo = el("bd_tipo").value; paintBaseDatos(); }; }
   if (el("bd_new")) el("bd_new").onclick = () =>openBDModal(null);
   if (el("bd_cols")) el("bd_cols").onclick = () => openBDColsModal();
@@ -3032,7 +3064,7 @@ function paintRecepcion() {
        <td class="mono">${escape(r.fecha || fmtFecha(r.fechaISO))}${r.hora ? `<div style="color:var(--muted);font-size:11px">${escape(r.hora)}</div>` : ''}</td>
        <td class="mono">${escape(String(r.nroRecepcion || "—"))}</td>
        <td class="mono">${escape(String(r.nroComprobante || "—"))}</td>
-       <td><b>${escape(r.clienteNombre || "—")}</b>${r.nit ? `<div style="color:var(--muted);font-size:11px">NIT ${escape(r.nit)}</div>` : ''}</td>
+       <td><b>${escape(r.clienteNombre || "—")}</b>${recCatDe(r) === "declaracion" ? iueBadge(r.nit) : ""}${r.nit ? `<div style="color:var(--muted);font-size:11px">NIT ${escape(r.nit)}</div>` : ''}</td>
        <td>${escape(r.servicio || r.servicioNombre || "—")}${r.detalleServicio ? `<div style="color:var(--muted);font-size:11px">${escape(r.detalleServicio)}</div>` : ''}</td>
        <td>${escape(r.mesRecepcion || "—")}</td>
        <td>${escape(r.fechaPago || "—")}</td>
@@ -3465,6 +3497,7 @@ async function registrarRecepcion1() {
     rec._upd = Date.now();
     const ref = doc(collection(db, "recepciones")); await setDoc(ref, rec); rec.id = ref.id; rcPoner(ref.id, rec); LT_DATA = null;
     eeffContar(rec, 1);
+    bdSuscActualizar(rec);
     let enviado = false;
     if (rec.clienteCorreo) {
       enviado = await postRecibo(rec);
@@ -4315,7 +4348,7 @@ function verTutorial(url, titulo) {
 }
 async function renderDDJJ() {
   el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
-  await ltLoad();
+  await Promise.all([ltLoad(), new Promise(res => bdEnsureLoaded(() => res()))]);
   paintDDJJ();
 }
 function paintDDJJ() {
@@ -4332,7 +4365,7 @@ function paintDDJJ() {
   const rows = list.map((r, i) => `<tr class="dj-row" data-id="${r.id}" style="cursor:pointer">
       <td class="mono">${i + 1}</td>
       <td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
-      <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
+      <td><b>${escape(r.clienteNombre || "—")}</b>${iueBadge(r.nit)}<div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
       <td style="font-size:12px">${escape(r.detalleServicio || "—")}<div style="color:var(--muted);font-size:11px">${escape(r.fecha || djFechaTxt(r.fechaISO))}</div></td>
       <td>${escape(r.dj_rcvPor || "—")}</td>
       <td style="text-align:center">${ck(r.dj_rcvIniciado)} ${ck(r.dj_rcvFinalizado)}${r.dj_rcvConsolidado ? `<div style="font-size:10.5px;color:var(--ok);font-weight:700" title="Consolidado sin multa">CONSOL.</div>` : ""}</td>
@@ -4342,8 +4375,13 @@ function paintDDJJ() {
       <td class="mono" style="text-align:right">${escape(r.dj_itPagar || "")}</td>
       <td>${djEstadoBadge(djEstado(r))}</td>
       <td style="font-size:12px">${escape(r.dj_pagoImpuestos || "")} ${r.dj_correoEnviado ? "✉️" : ""}</td></tr>`).join("");
-  const tabs = `<div class="subtabs" id="djtabs"><button class="subtab ${DJ_UI.tab === "lista" ? "on" : ""}" data-tab="lista">Lista de trabajo</button><button class="subtab ${DJ_UI.tab === "resumen" ? "on" : ""}" data-tab="resumen">Resumen</button></div>`;
+  const tabs = `<div class="subtabs" id="djtabs"><button class="subtab ${DJ_UI.tab === "lista" ? "on" : ""}" data-tab="lista">Lista de trabajo</button><button class="subtab ${DJ_UI.tab === "resumen" ? "on" : ""}" data-tab="resumen">Resumen</button><button class="subtab ${DJ_UI.tab === "iue" ? "on" : ""}" data-tab="iue">IUE a compensar</button></div>`;
   const bindTabs = () => { el("v-declaraciones").querySelectorAll("#djtabs .subtab").forEach(b => b.onclick = () => { DJ_UI.tab = b.dataset.tab; paintDDJJ(); }); el("dj_tuto").onclick = () => verTutorial(DJ_TUTORIAL, "Tutorial · pestaña Declaraciones"); };
+  if (DJ_UI.tab === "iue") {
+    el("v-declaraciones").innerHTML = `${djCabecera()}${tabs}${iueHTML()}`;
+    bindTabs(); iueEnlazar();
+    return;
+  }
   if (DJ_UI.tab === "resumen") {
     el("v-declaraciones").innerHTML = `${djCabecera()}${tabs}${djResumenHTML(base)}`;
     bindTabs();
@@ -4376,6 +4414,179 @@ function paintDDJJ() {
   el("dj_q").oninput = e => { DJ_UI.q = e.target.value; clearTimeout(DJ_UI._t); DJ_UI._t = setTimeout(() => { re(); const q = el("dj_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
   el("v-declaraciones").querySelectorAll(".dj-kpi").forEach(k => k.onclick = () => { DJ_UI.est = DJ_UI.est === k.dataset.k ? "" : k.dataset.k; re(); });
   el("v-declaraciones").querySelectorAll(".dj-row").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id)));
+}
+// ---------- IUE A COMPENSAR (Ley 843, art. 77) ----------
+// El IUE pagado (F500) es pago a cuenta del IT de los meses siguientes, hasta agotarlo o hasta el vencimiento del IUE
+// de la gestión siguiente; lo que sobra se pierde (queda a favor del fisco). Para cierre al 31 de diciembre: el IUE de
+// la gestión G se paga hasta abril de G+1, se usa desde el IT del mes siguiente al pago y vence el 30/04 de G+2.
+// Se guarda en la ficha del cliente (bdclientes → _iue: { gestión: { pagado, fechaPago, desde, hasta, vence, usos: { recId: { monto, periodo } } } }).
+function iuePer(iso) { return String(iso || "").slice(0, 7); }
+function iueMasMes(per, n) { const [a, m] = per.split("-").map(Number); const d = new Date(a, m - 1 + n, 1); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+function iueDefaults(gestion, fechaPago) {
+  const g = Number(gestion) || (new Date().getFullYear() - 1);
+  const vence = (g + 2) + "-04-30";
+  return { desde: fechaPago ? iueMasMes(iuePer(fechaPago), 1) : (g + 1) + "-05", hasta: iueMasMes(iuePer(vence), -1), vence };
+}
+function iueFmt(x) { const n = Number(x); return isNaN(n) ? "" : n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function iueNum(x) { const n = arqNum(x); return isNaN(n) ? 0 : Math.round(n * 100) / 100; }
+// Todas las entradas de IUE de los clientes, con lo usado y el saldo
+let IUE_CACHE = null;
+function iueEntradas() {
+  if (IUE_CACHE && IUE_CACHE.bd === BD && Date.now() - IUE_CACHE.t < 1500) return IUE_CACHE.l.map(e => Object.assign({}, e));
+  const hoy = djHoy(), out = [];
+  BD.forEach(c => {
+    const m = c._iue; if (!m || typeof m !== "object") return;
+    Object.keys(m).forEach(g => {
+      const e = m[g] || {}; if (!e.pagado) return;
+      const usos = Object.entries(e.usos || {}).map(([id, u]) => Object.assign({ recId: id }, u)).filter(u => Number(u.monto) > 0).sort((a, b) => String(a.periodo || "").localeCompare(String(b.periodo || "")));
+      const usado = Math.round(usos.reduce((t, u) => t + Number(u.monto || 0), 0) * 100) / 100;
+      const saldo = Math.max(0, Math.round((Number(e.pagado) - usado) * 100) / 100);
+      out.push(Object.assign({}, e, { gestion: g, usos, usado, saldo, vencido: !!e.vence && e.vence < hoy, docid: c._docid, nit: String(bdV(c, "nit")).replace(/\D/g, ""), nombre: bdV(c, "nombre") || bdV(c, "razon"), cli: c }));
+    });
+  });
+  out.sort((a, b) => String(a.vence || "").localeCompare(String(b.vence || "")) || a.nombre.localeCompare(b.nombre));
+  IUE_CACHE = { bd: BD, t: Date.now(), l: out };
+  return out.map(e => Object.assign({}, e));
+}
+// Saldo que el cliente puede usar en el IT de un período (sin contar lo ya usado en esa misma declaración)
+function iueDisponible(nit, periodo, recId) {
+  nit = String(nit || "").replace(/\D/g, "");
+  return iueEntradas().filter(e => e.nit === nit && !e.vencido && (!periodo || ((!e.desde || periodo >= e.desde) && (!e.hasta || periodo <= e.hasta))))
+    .map(e => { const mio = (e.usos.find(u => u.recId === recId) || {}).monto || 0; return Object.assign(e, { libre: Math.round((e.saldo + Number(mio)) * 100) / 100 }); })
+    .filter(e => e.libre > 0);
+}
+function iueBadge(nit) {
+  const l = iueDisponible(nit); if (!l.length) return "";
+  const s = l.reduce((t, e) => t + e.saldo, 0);
+  return ` <span class="badge ok" title="Saldo de IUE a compensar con el IT (vence ${escape(djFechaTxt(l[0].vence))})" style="font-size:10.5px">IUE Bs ${escape(iueFmt(s))}</span>`;
+}
+// Guarda cuánto IUE se usó en una declaración (lo toma de la entrada más antigua con saldo)
+async function iueRegistrarUso(r, monto) {
+  const nit = String(r.nit || "").replace(/\D/g, ""), per = recPeriodoKey(r);
+  monto = iueNum(monto);
+  const todas = iueEntradas().filter(e => e.nit === nit), ya = todas.filter(e => e.usos.some(u => u.recId === r.id));
+  // Si cambió el monto, primero se libera lo usado antes en esta declaración
+  for (const e of ya) await setDoc(doc(db, BD_COLL, e.docid), { _iue: { [e.gestion]: { usos: { [r.id]: { monto: 0, periodo: per, at: Date.now() } } } }, _upd: Date.now() }, { merge: true });
+  ya.forEach(e => { const u = (e.cli._iue[e.gestion].usos || {})[r.id]; if (u) u.monto = 0; }); IUE_CACHE = null;
+  if (!monto) return 0;
+  let falta = monto;
+  for (const e of iueDisponible(nit, per, r.id)) {
+    if (falta <= 0) break;
+    const usa = Math.min(falta, e.libre);
+    const d = { _iue: { [e.gestion]: { usos: { [r.id]: { monto: usa, periodo: per, at: Date.now(), por: djYo() } } } }, _upd: Date.now() };
+    await setDoc(doc(db, BD_COLL, e.docid), d, { merge: true }); IUE_CACHE = null;
+    const m = e.cli._iue[e.gestion]; m.usos = m.usos || {}; m.usos[r.id] = d._iue[e.gestion].usos[r.id];
+    falta = Math.round((falta - usa) * 100) / 100;
+  }
+  return falta; // > 0: se puso más de lo que había de saldo
+}
+function iueHTML() {
+  const L = iueEntradas(), q = (DJ_UI.iq || "").toLowerCase();
+  const vis = L.filter(e => (DJ_UI.iver === "todos" || (e.saldo > 0 && !e.vencido)) && (!q || (e.nombre + " " + e.nit).toLowerCase().includes(q)));
+  const hoy = djHoy(), pronto = iueMasMes(iuePer(hoy), 2) + "-31";
+  const tot = vis.reduce((t, e) => t + e.saldo, 0);
+  const rows = vis.map(e => `<tr>
+      <td><b>${escape(e.nombre || "—")}</b><div style="color:var(--muted);font-size:11.5px">NIT ${escape(e.nit)}</div></td>
+      <td>${escape(e.gestion)}</td>
+      <td class="mono" style="text-align:right">${iueFmt(e.pagado)}<div style="color:var(--muted);font-size:11px">${escape(djFechaTxt(e.fechaPago))}${e.nroOrden ? " · N° " + escape(e.nroOrden) : ""}</div></td>
+      <td class="mono" style="text-align:right">${iueFmt(e.usado)}${e.usos.length ? `<div style="color:var(--muted);font-size:11px">${e.usos.map(u => escape(recPeriodoTxt(u.periodo)) + ": " + iueFmt(u.monto)).join("<br>")}</div>` : ""}</td>
+      <td class="mono" style="text-align:right;font-weight:700;${e.saldo > 0 ? "color:var(--ok)" : ""}">${iueFmt(e.saldo)}</td>
+      <td style="font-size:12px">IT de ${escape(recPeriodoTxt(e.desde))} a ${escape(recPeriodoTxt(e.hasta))}<div style="font-size:11px;${e.vencido ? "color:var(--danger);font-weight:700" : e.vence <= pronto && e.saldo > 0 ? "color:var(--danger)" : "color:var(--muted)"}">${e.vencido ? "Venció el " : "Vence el "}${escape(djFechaTxt(e.vence))}${e.vencido && e.saldo > 0 ? " · saldo perdido" : ""}</div></td>
+      <td style="text-align:right;white-space:nowrap">${e.archivo ? `<button class="mini" data-iver="${e.docid}|${e.gestion}">Comprobante</button> ` : ""}<button class="mini" data-ied="${e.docid}|${e.gestion}">Editar</button></td></tr>`).join("");
+  return `<p class="lead">Clientes que pagaron el <b>IUE (Formulario 500)</b> y nos pasaron su comprobante. Ese pago se usa para <b>no pagar el IT</b> de los meses siguientes hasta agotarlo: en cada declaración ponlo a mano en el <b>Formulario 400</b> (casilla de compensación del IUE) y en el Panel, en «Compensación del IUE». El saldo que no se use hasta el <b>vencimiento del IUE de la gestión siguiente</b> (30 de abril para cierre a diciembre) <b>se pierde</b>.</p>
+    <div class="kpis"><div class="kpi"><div class="n">${vis.length}</div><div class="l">Clientes con IUE</div></div><div class="kpi"><div class="n" style="color:var(--ok)">${iueFmt(tot)}</div><div class="l">Saldo total por usar (Bs)</div></div>
+      <div class="kpi"><div class="n" style="color:var(--danger)">${L.filter(e => !e.vencido && e.saldo > 0 && e.vence <= pronto).length}</div><div class="l">Vencen en 2 meses</div></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px">
+      <button class="btn" id="iue_new">＋ Registrar IUE pagado</button>
+      <select id="iue_ver"><option value="">Con saldo por usar</option><option value="todos" ${DJ_UI.iver === "todos" ? "selected" : ""}>Todos (también agotados y vencidos)</option></select>
+      <input id="iue_q" placeholder="Buscar cliente o NIT…" value="${escape(DJ_UI.iq || "")}" style="flex:1;min-width:200px">
+    </div>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Cliente</th><th>Gestión</th><th style="text-align:right">IUE pagado</th><th style="text-align:right">Usado en el IT</th><th style="text-align:right">Saldo</th><th>Se puede usar</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Todavía no hay clientes con IUE a compensar. Regístralo con «＋ Registrar IUE pagado».</td></tr>`}</tbody></table></div>`;
+}
+function iueEnlazar() {
+  const v = el("v-declaraciones");
+  el("iue_new").onclick = () => openIUE(null);
+  el("iue_ver").onchange = e => { DJ_UI.iver = e.target.value; paintDDJJ(); };
+  el("iue_q").oninput = e => { DJ_UI.iq = e.target.value; clearTimeout(DJ_UI._t); DJ_UI._t = setTimeout(() => { paintDDJJ(); const q = el("iue_q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 250); };
+  const buscar = s => { const [id, g] = s.split("|"); return iueEntradas().find(e => e.docid === id && e.gestion === g); };
+  v.querySelectorAll("[data-ied]").forEach(b => b.onclick = () => openIUE(buscar(b.dataset.ied)));
+  v.querySelectorAll("[data-iver]").forEach(b => b.onclick = async () => {
+    const e = buscar(b.dataset.iver); if (!e || !e.archivo) return;
+    b.disabled = true; try { const du = await djArchBajar(e.archivo); const w = window.open(); if (w) w.document.write(`<title>${escape(e.archivo.nombre || "Comprobante IUE")}</title><iframe src="${du}" style="border:0;width:100%;height:100vh"></iframe>`); } catch (x) { alert("No se pudo abrir: " + (x.code || x.message)); } b.disabled = false;
+  });
+}
+function openIUE(e) {
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
+  const act = BD.filter(c => c._docid && bdV(c, "nit"));
+  const g0 = e ? e.gestion : String(new Date().getFullYear() - 1);
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:560px;max-width:96vw;max-height:94vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;gap:10px"><h3 style="margin:0 0 12px">${e ? "Editar" : "Registrar"} IUE pagado</h3><button class="mini" id="iu_x">✕</button></div>
+    <div class="field"><label>Comprobante de pago del F500 (foto o PDF · la IA lo lee)</label><input type="file" id="iu_file" accept="image/*,application/pdf"><div class="msg" id="iu_fmsg"></div></div>
+    <div class="field"><label>Cliente (escribe para buscar)</label><input id="iu_cli" list="iu_dl" ${e ? "disabled" : ""} value="${e ? escape(e.nombre + " · NIT " + e.nit) : ""}" placeholder="Nombre o NIT"><datalist id="iu_dl">${act.map(c => `<option value="${escape((bdV(c, "nombre") || bdV(c, "razon")) + " · NIT " + bdV(c, "nit"))}">`).join("")}</datalist></div>
+    <div class="grid2">
+      <div class="field"><label>Gestión del IUE</label><input id="iu_g" inputmode="numeric" value="${escape(g0)}" ${e ? "disabled" : ""}></div>
+      <div class="field"><label>Importe pagado (Bs)</label><input id="iu_monto" inputmode="decimal" value="${e ? escape(String(e.pagado)) : ""}"></div>
+      <div class="field"><label>Fecha de pago</label><input id="iu_fecha" type="date" value="${e ? escape(e.fechaPago || "") : ""}"></div>
+      <div class="field"><label>N° de orden / transacción</label><input id="iu_orden" value="${e ? escape(e.nroOrden || "") : ""}"></div>
+      <div class="field"><label>Se usa desde el IT de (mes siguiente al pago)</label><input id="iu_desde" type="month" value="${e ? escape(e.desde || "") : ""}"></div>
+      <div class="field"><label>Vence (se pierde el saldo)</label><input id="iu_vence" type="date" value="${e ? escape(e.vence || "") : ""}"></div>
+    </div>
+    <div class="field"><label>Nota</label><input id="iu_nota" value="${e ? escape(e.nota || "") : ""}" placeholder="Opcional"></div>
+    ${e && e.usos.length ? `<div class="note">Ya se usó en: ${e.usos.map(u => escape(recPeriodoTxt(u.periodo)) + " Bs " + iueFmt(u.monto)).join(", ")}. Para cambiarlo, corrige «Compensación del IUE» en esa declaración.</div>` : ""}
+    <div class="note" id="iu_info" style="margin-top:6px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;align-items:center"><span class="msg" id="iu_msg" style="margin-right:auto"></span>${e && !e.usos.length ? '<button class="btn sec" id="iu_del" style="border:1px solid var(--line);color:var(--danger)">Quitar</button>' : ""}<button class="btn" id="iu_save">Guardar</button></div></div>`;
+  document.body.appendChild(bg);
+  const $ = id => bg.querySelector("#" + id), msg = $("iu_msg");
+  let archivo = null;
+  const info = () => {
+    const d = iueDefaults($("iu_g").value, $("iu_fecha").value);
+    if (!$("iu_desde").dataset.mano) $("iu_desde").value = d.desde;
+    if (!$("iu_vence").dataset.mano) $("iu_vence").value = d.vence;
+    $("iu_info").innerHTML = `Se podrá usar en el IT de <b>${escape(recPeriodoTxt($("iu_desde").value))}</b> hasta <b>${escape(recPeriodoTxt(iueMasMes(iuePer($("iu_vence").value || d.vence), -1)))}</b>. Si la empresa no cierra a diciembre, corrige la fecha de vencimiento.`;
+  };
+  ["iu_g", "iu_fecha"].forEach(id => $(id).addEventListener("input", info));
+  ["iu_desde", "iu_vence"].forEach(id => $(id).addEventListener("input", () => { $(id).dataset.mano = "1"; info(); }));
+  if (e) { $("iu_desde").dataset.mano = "1"; $("iu_vence").dataset.mano = "1"; }
+  info();
+  $("iu_x").onclick = () => bg.remove();
+  $("iu_file").onchange = async () => {
+    const f = $("iu_file").files[0]; if (!f) return; archivo = f;
+    const fm = $("iu_fmsg"); fm.className = "msg"; fm.innerHTML = '<span class="cx-spin"></span> Leyendo con IA…';
+    try {
+      const r = await djLeerIA("iue", await djLeerArchivo(f));
+      if (r.error || !r.data) { fm.className = "msg err"; fm.textContent = r.error || "No pude leerlo: llena los datos a mano."; return; }
+      const d = r.data, nit = String(d.nit || "").replace(/\D/g, "");
+      if (!e && nit && !$("iu_cli").value) { const c = act.find(x => String(bdV(x, "nit")).replace(/\D/g, "") === nit); if (c) $("iu_cli").value = (bdV(c, "nombre") || bdV(c, "razon")) + " · NIT " + bdV(c, "nit"); }
+      if (!e && /^\d{4}$/.test(String(d.gestion || ""))) $("iu_g").value = d.gestion;
+      if (d.importePagado && !$("iu_monto").value) $("iu_monto").value = iueNum(d.importePagado);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(d.fechaPago || ""))) $("iu_fecha").value = d.fechaPago;
+      if (d.nroOrden && !$("iu_orden").value) $("iu_orden").value = d.nroOrden;
+      info(); fm.className = "msg ok"; fm.textContent = "✓ Datos leídos. Revísalos antes de guardar." + (nit && !act.some(x => String(bdV(x, "nit")).replace(/\D/g, "") === nit) ? " ⚠ El NIT " + nit + " no está en la Base de Datos." : "");
+    } catch (x) { fm.className = "msg err"; fm.textContent = x.message || "No se pudo leer."; }
+  };
+  if ($("iu_del")) $("iu_del").onclick = async () => {
+    if (!confirm("¿Quitar este IUE de " + e.nombre + " (gestión " + e.gestion + ")?")) return;
+    try { await setDoc(doc(db, BD_COLL, e.docid), { _iue: { [e.gestion]: { pagado: 0 } }, _upd: Date.now() }, { merge: true }); e.cli._iue[e.gestion].pagado = 0; IUE_CACHE = null; bg.remove(); paintDDJJ(); }
+    catch (x) { msg.className = "msg err"; msg.textContent = "No se pudo: " + (x.code || x.message); }
+  };
+  $("iu_save").onclick = async () => {
+    const c = e ? e.cli : act.find(x => $("iu_cli").value.trim() === (bdV(x, "nombre") || bdV(x, "razon")) + " · NIT " + bdV(x, "nit"));
+    const g = $("iu_g").value.trim(), pagado = iueNum($("iu_monto").value);
+    if (!c) { msg.className = "msg err"; msg.textContent = "Elige el cliente de la lista."; return; }
+    if (!/^\d{4}$/.test(g)) { msg.className = "msg err"; msg.textContent = "Escribe la gestión (ej. 2025)."; return; }
+    if (!(pagado > 0)) { msg.className = "msg err"; msg.textContent = "Escribe el importe pagado."; return; }
+    const b = $("iu_save"); b.disabled = true; msg.className = "msg"; msg.textContent = "Guardando…";
+    try {
+      const ent = { pagado, fechaPago: $("iu_fecha").value, nroOrden: $("iu_orden").value.trim(), desde: $("iu_desde").value, vence: $("iu_vence").value,
+        hasta: iueMasMes(iuePer($("iu_vence").value), -1), nota: $("iu_nota").value.trim(), por: djYo(), at: Date.now() };
+      if (archivo) { const a = await djArchSubir({ id: "iue_" + c._docid + "_" + g, nit: bdV(c, "nit") }, "iue", archivo); ent.archivo = { _id: a._id, mime: a.mime, partes: a.partes, nombre: a.nombre }; }
+      await setDoc(doc(db, BD_COLL, c._docid), { _iue: { [g]: ent }, _upd: Date.now() }, { merge: true });
+      c._iue = c._iue || {}; c._iue[g] = Object.assign(c._iue[g] || {}, ent); bdcPoner(c._docid, { _iue: c._iue }); IUE_CACHE = null;
+      bg.remove(); paintDDJJ();
+    } catch (x) { b.disabled = false; msg.className = "msg err"; msg.textContent = "No se pudo guardar: " + (x.code || x.message); }
+  };
 }
 function openDDJJ(r, alGuardar) {
   if (!r) return;
@@ -4428,7 +4639,7 @@ function openDDJJ(r, alGuardar) {
         ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
         ${f("IT a pagar", inp("dj_itPagar", r.dj_itPagar, "0,00"))}
         ${f("Compensación del IUE", inp("dj_compIUE", r.dj_compIUE, "0,00"))}
-      </div></div>
+      </div><div id="dj_iue"></div></div>
     </div>
     <div class="fs" style="margin-top:6px">3) Seguimiento</div>
     <div class="grid3">
@@ -4509,6 +4720,13 @@ function openDDJJ(r, alGuardar) {
     const aplicar1 = () => { $("dj_ivaPagar").value = fx(c.ivaPagar); $("dj_itPagar").value = fx(c.itPagar); $("dj_creditoSigMes").value = fx(c.cfSiguiente); };
     if ($("dj_aplicar")) $("dj_aplicar").onclick = () => { aplicar1(); $("dj_aplicar").textContent = "✓ Pasado"; };
     if (aplicar && c.hayDatos && canEdit) aplicar1();
+    // IUE a compensar del cliente (lista «IUE a compensar»): saldo disponible para el IT de este período
+    const box = $("dj_iue"), disp = iueDisponible(r.nit, recPeriodoKey(r), r.id);
+    if (box) {
+      const libre = Math.round(disp.reduce((t, e) => t + e.libre, 0) * 100) / 100, sug = Math.min(libre, c.itBruto || 0);
+      box.innerHTML = !disp.length ? "" : `<div class="note" style="margin-top:8px;padding:8px 10px;border:1px solid var(--ok);border-radius:8px">💰 <b>IUE a compensar:</b> saldo Bs ${iueFmt(libre)} (gestión ${disp.map(e => escape(e.gestion) + ", vence " + escape(djFechaTxt(e.vence))).join("; ")}). Ponlo a mano en el <b>Formulario 400</b> (compensación del IUE).${canEdit && sug > 0 ? ` <button class="mini" type="button" id="dj_iueusar">Usar Bs ${iueFmt(sug)}</button>` : ""}</div>`;
+      if ($("dj_iueusar")) $("dj_iueusar").onclick = () => { $("dj_compIUE").value = fx(sug); pintarCalc(true); };
+    }
   };
   ["dj_totalVentas", "dj_totalCompras", "dj_creditoFiscal", "dj_compIUE"].forEach(id => $(id).oninput = () => pintarCalc(true));
   pintarCalc(false);
@@ -4643,13 +4861,17 @@ function openDDJJ(r, alGuardar) {
     if (d.dj_rcvConsolidado) d.dj_rcvConsolidadoPor = d.dj_rcvPor || yo;
     if (d.dj_rcvFinalizado && !r.dj_rcvFinalizadoAt) { d.dj_rcvFinalizadoAt = ahora; d.dj_rcvFinalizadoISO = hoyISO; }
     // Documentos para el cliente: avisa si falta alguno obligatorio al dar la declaración por terminada
-    const faltan = djArchFaltan(r, ARCH);
+    const faltan = djArchFaltan(Object.assign({}, r, d), ARCH);
     if (d.dj_fechaDeclaracion && faltan.length && !confirm("Todavía falta subir para el cliente: " + faltan.join(", ") + ".\n\n¿Guardar igual?")) return;
     if (d.dj_correoEnviado && !r.dj_correoEnviado) { d.dj_correoFecha = ahora; d.dj_correoPor = djYo(); }
     const m = $("dj_msg"); m.className = "msg"; m.textContent = "Guardando…";
     try {
       d._upd = Date.now();
       await setDoc(doc(db, "recepciones", r.id), d, { merge: true });
+      // IUE a compensar: lo puesto en «Compensación del IUE» se descuenta del saldo del cliente
+      if (bdLoaded && BD.length) if (iueNum(d.dj_compIUE) !== iueNum(r.dj_compIUE) || (iueNum(d.dj_compIUE) && !iueEntradas().some(e => e.usos.some(u => u.recId === r.id)))) {
+        try { const falta = await iueRegistrarUso(r, d.dj_compIUE); if (falta > 0) alert("Ojo: pusiste Bs " + iueFmt(iueNum(d.dj_compIUE)) + " de IUE, pero el cliente solo tenía saldo para Bs " + iueFmt(iueNum(d.dj_compIUE) - falta) + " en la lista «IUE a compensar»."); } catch (e) { console.warn("IUE:", e); }
+      }
       Object.assign(r, d, { dj_editadoAt: Date.now() }); rcPoner(r.id, Object.assign({}, d, { dj_editadoAt: Date.now() }));
       quitar(); (alGuardar || paintDDJJ)();
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
@@ -4737,6 +4959,7 @@ const DJ_PROMPTS = {
   rcv: 'Es la "Constancia de Registro de Compras y Ventas" (RCV) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","ventasCantidad":"","ventasImporteTotal":"","comprasCantidad":"","comprasImporteTotal":"","comprasConDerechoCF":""}',
   f200: 'Es el Formulario 200 (IVA) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ventas":"casilla 13","compras":"casilla 11","creditoSiguienteMes":"casilla 592: saldo de crédito fiscal a favor del contribuyente para el período siguiente","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
   f400: 'Es el Formulario 400 (IT) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ingresos":"casilla 13","iueCompensado":"casilla 664","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
+  iue: 'Es el comprobante de pago del Formulario 500 (IUE) de Impuestos Nacionales de Bolivia (puede ser el formulario 500, la boleta o constancia de pago, o el comprobante del banco o del QR). Responde SOLO un JSON: {"nit":"","gestion":"aaaa (gestión fiscal que se declara, no la fecha de pago)","importePagado":"importe efectivamente pagado","fechaPago":"aaaa-mm-dd","nroOrden":"número de orden o transacción"}',
   qr: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}',
   qr2: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}'
 };
@@ -5621,7 +5844,7 @@ async function paResolver(id, aprobar) {
   const datos = { pasarela: pas, comentarios: aprobar ? "Pago por pasarela (aprobado manualmente)" : ("Pasarela rechazada: " + motivo), _upd: Date.now() };
   try {
     await setDoc(doc(db, "recepciones", id), datos, { merge: true });
-    if (aprobar && r.pasarela && r.pasarela.estado !== "aprobado") eeffContar(r, 1);
+    if (aprobar && r.pasarela && r.pasarela.estado !== "aprobado") { eeffContar(r, 1); bdEnsureLoaded(() => bdSuscActualizar(r)); }
     rcPoner(id, datos); LT_DATA = null; recepLoaded = false;
     if (aprobar && r.clienteCorreo) {
       const ok = await postRecibo(Object.assign({}, r, datos));

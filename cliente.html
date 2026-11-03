@@ -304,8 +304,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ["euclides-laptop.jpg", "Facturación automática para repartidores", "Tu factura lista cada semana antes del jueves, con tu historial siempre a mano.", "Suscribirme", "pagos"],
     ["arquimedes-pensando.jpg", "¿Tienes dudas de tus impuestos?", "Pregúntale a nuestro asistente o escríbenos por WhatsApp. Te respondemos con tu información.", "Preguntar", "chat"]
   ];
+  // Tipo de suscriptor: el de declaración ya tiene la facturación incluida; al de facturación se le ofrece la declaración
+  function esSuscDecl(d) { return /DECLARAC/i.test((d.cliente && d.cliente.suscriptor) || ""); }
+  function esSuscFact(d) { return /FACTURAC/i.test((d.cliente && d.cliente.suscriptor) || ""); }
+  function promos(d) {
+    if (esSuscDecl(d)) return PROMOS.filter(function (p) { return !/Facturación automática/.test(p[1]); });
+    if (esSuscFact(d)) return [["euclides-laptop.jpg", "Pásate a la suscripción de declaración", "Nosotros hacemos tu declaración mensual de IVA e IT a tiempo, y la facturación ya va incluida. Desde Bs 50 al mes.", "Quiero declarar", "pagos"]].concat(PROMOS.filter(function (p) { return !/Facturación automática/.test(p[1]); }));
+    return PROMOS;
+  }
   function tabInicio(d) {
-    var c = d.cliente, nitQ = "?portal=1&nit=" + encodeURIComponent(c.nit);
+    var c = d.cliente, nitQ = "?portal=1&nit=" + encodeURIComponent(c.nit), PROMOS = promos(d);
     var ult = d.declaraciones[0], bal = d.eeff.find ? d.eeff.find(function (x) { return x.gestion === String(cfg().eeffGestion); }) : null;
     var activo = c.grupo === "activo" || /ACTIV/i.test(c.estado || "");
     var p = PROMOS[S.promo % PROMOS.length];
@@ -314,7 +322,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<div class="grid">' +
       kpi("yo", "Estado como cliente", activo ? "Activo" : (c.estado || "—"), activo ? "Tus servicios están al día con CONTAX." : "Escríbenos para reactivar tus servicios.", activo ? "var(--ok)" : "var(--error)") +
       kpi("decl", "Última declaración", ult ? ult.periodo || "—" : "Sin registros", ult ? (EST[ult.estado] || [ult.estado])[0] : "Aún no recepcionamos declaraciones.", "") +
-      kpi("fact", "Suscripción de facturación", d.suscripcion.activa ? "Activa" : "No activa", d.suscripcion.mes + (d.suscripcion.activa ? " pagado" : " sin pagar"), d.suscripcion.activa ? "var(--ok)" : "var(--aviso)") +
+      (c.suscriptor ? kpi("yo", "Tipo de suscriptor", esSuscDecl(d) ? "Declaración" : "Facturación", esSuscDecl(d) ? "Incluye tu declaración mensual y la facturación." : "Solo facturación. Pásate a declaración y te la incluimos.", "") : "") +
+      (esSuscDecl(d) ? "" : kpi("fact", "Suscripción de facturación", d.suscripcion.activa ? "Activa" : "No activa", d.suscripcion.mes + (d.suscripcion.activa ? " pagado" : " sin pagar"), d.suscripcion.activa ? "var(--ok)" : "var(--aviso)")) +
       kpi("bal", "Balance gestión " + esc(cfg().eeffGestion), bal ? (EST[bal.estado] || [bal.estado])[0] : "Sin reservar", bal ? (bal.balance || "Recepcionado") : "Reserva tu cupo antes de que suba el precio.", "") +
       kpi("reloj", "Tu vencimiento mensual", "Día " + c.diaVence, "Según el último dígito de tu NIT.", "") +
       "</div>" +
@@ -399,9 +408,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<div class="card"><h3 style="margin-bottom:6px">Estados financieros (balances)</h3>' + lista(d.eeff, "bal", "Todavía no tienes balances recepcionados.", function (x) { return "Gestión " + (x.gestion || "") + (x.balance ? " · " + x.balance : ""); }) +
       '<a class="btn2" href="pagos.html' + nitQ + '" style="margin-top:12px;text-decoration:none">' + ic("pago", 16) + "Reservar o pagar mi balance</a></div>" +
       '<div class="card"><h3 style="margin-bottom:6px">Trámites</h3>' + lista(d.tramites, "tram", "No tienes trámites registrados.", function (x) { return x.servicio || "Trámite"; }) + "</div>" +
-      '<div class="card"><h3 style="margin-bottom:6px">Suscripción de facturación</h3><p class="c13" style="margin-bottom:8px">' + (d.suscripcion.activa ? '<span class="badge b-ok">Activa</span> ' + esc(d.suscripcion.mes) + " pagado." : '<span class="badge b-proc">No activa</span> ' + esc(d.suscripcion.mes) + " sin pagar.") + "</p>" +
-      lista(d.facturacion.slice(0, 12), "fact", "Aún no tienes meses de facturación pagados.", function (x) { return x.periodo || x.key || "Facturación"; }) +
-      (d.suscripcion.activa ? "" : '<a class="btn2" href="pagos.html' + nitQ + '" style="margin-top:12px;text-decoration:none">' + ic("pago", 16) + "Pagar mi suscripción</a>") + "</div>" +
+      (esSuscDecl(d)
+        ? '<div class="card"><h3 style="margin-bottom:6px">Facturación</h3><p class="c13"><span class="badge b-ok">Incluida</span> Eres suscriptor de declaración: la emisión de tus facturas ya va incluida en tu declaración mensual. No necesitas pagar la suscripción de facturación.</p></div>'
+        : '<div class="card"><h3 style="margin-bottom:6px">Suscripción de facturación</h3><p class="c13" style="margin-bottom:8px">' + (d.suscripcion.activa ? '<span class="badge b-ok">Activa</span> ' + esc(d.suscripcion.mes) + " pagado." : '<span class="badge b-proc">No activa</span> ' + esc(d.suscripcion.mes) + " sin pagar.") + "</p>" +
+          lista(d.facturacion.slice(0, 12), "fact", "Aún no tienes meses de facturación pagados.", function (x) { return x.periodo || x.key || "Facturación"; }) +
+          (d.suscripcion.activa ? "" : '<a class="btn2" href="pagos.html' + nitQ + '" style="margin-top:12px;text-decoration:none">' + ic("pago", 16) + "Pagar mi suscripción</a>") + "</div>" +
+          (esSuscFact(d) ? '<div class="card"><h3 style="margin-bottom:6px">Suscripción de declaración</h3><p class="c13" style="margin-bottom:8px">Hoy eres suscriptor de facturación. Con la suscripción de declaración hacemos tu declaración mensual de IVA e IT a tiempo, tienes tus reportes en este portal y <b>la facturación ya va incluida</b>.</p><a class="btn2" href="pagos.html' + nitQ + '" style="text-decoration:none">' + ic("pago", 16) + "Suscribirme a la declaración</a></div>" : "")) +
       (d.otros.length ? '<div class="card"><h3 style="margin-bottom:6px">Otros servicios</h3>' + lista(d.otros, "doc", "", function (x) { return x.servicio || "Servicio"; }) + "</div>" : "") + "</div>";
   }
 

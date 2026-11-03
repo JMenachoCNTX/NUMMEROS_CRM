@@ -305,7 +305,27 @@ function pasClave_(h) {
   if (n === "nit") return "nit";
   if (n.replace(/[^a-z]/g, "") === "ci" || n.indexOf("carnet") >= 0 || n.indexOf("cedula") >= 0) return "ci";
   if (n.indexOf("costo") >= 0) return "costo";
+  if (n.indexOf("suscriptor") >= 0) return "suscriptor";
   return "";
+}
+// Tipo de suscriptor: el guardado en la BD, o según el costo mensual (20 = facturación; 30 o más = declaración)
+var SUSC_DECL = "SUSCRIPTOR DE DECLARACIÓN", SUSC_FACT = "SUSCRIPTOR DE FACTURACIÓN", SUSC_CAMPO = "22. Tipo de Suscriptor";
+function pasSuscDe_(guardado, costo) {
+  var g = String(guardado || "").toUpperCase();
+  if (/FACTURAC/.test(g)) return SUSC_FACT;
+  if (/DECLARAC/.test(g)) return SUSC_DECL;
+  var c = Number(String(costo || "").replace(",", ".").replace(/[^\d.]/g, "")) || 0;
+  return c === 20 ? SUSC_FACT : c >= 30 ? SUSC_DECL : "";
+}
+// Al aprobarse un pago: declaración (30, 50, 60, 95…) → suscriptor de declaración; facturación (20) → de facturación
+function pasSuscActualizar_(cli, cot) {
+  var nuevo = cot.tipo === "declaracion" ? SUSC_DECL : cot.tipo === "facturacion" ? SUSC_FACT : "";
+  if (!nuevo || !cli || !cli.docId || cli.suscGuardado === nuevo) return;
+  var campo = cli.campoSusc || SUSC_CAMPO, f = {}; f[campo] = { stringValue: nuevo }; f._upd = { integerValue: String(Date.now()) };
+  fsReq_(fsBase_() + "/bdclientes/" + cli.docId + "?updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(campo)) + "&updateMask.fieldPaths=_upd", "patch", { fields: f });
+  if (cli.suscGuardado || cli.suscriptor) try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "cambio_suscriptor", nombre: cli.nombre, estadoAnterior: cli.suscriptor || "", estadoNuevo: nuevo,
+    porUid: "pasarela", porNombre: "Pasarela de pagos", detalle: "Pagó " + (cot.resumen || cot.servicio || "") }); } catch (e) {}
+  CacheService.getScriptCache().remove("cli_" + String(cli.nitBuscado || ""));
 }
 function pasCamposBD_() {
   var app = pasCfgApp(), campos = {};
@@ -337,7 +357,8 @@ function pasClientePorNit_(nit) {
     nombre: v("nombre") || v("razon"),
     codigoId: v("codigoId"), celular: v("celular"), correo: /@/.test(v("correo")) ? v("correo") : "",
     tipo: v("tipo"), brinda: v("brinda"), actP: v("actP"), fechaNit: v("fechaNit"), estMat: v("estMat"), estado: v("estado"),
-    ci: v("ci"), costo: v("costo")
+    ci: v("ci"), costo: v("costo"),
+    campoSusc: campos.suscriptor || SUSC_CAMPO, suscGuardado: v("suscriptor"), suscriptor: pasSuscDe_(v("suscriptor"), v("costo"))
   };
 }
 // Estado del cliente: quiénes pueden pagar por la pasarela
@@ -788,7 +809,7 @@ function pasConfirmar(token) {
       try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
       if (v.aprobado && !cot.sinContador) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
     }
-    if (v.aprobado && !cot.sinContador) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } }
+    if (v.aprobado && !cot.sinContador) { try { pasReactivar_(cli, cot); } catch (e) { console.error(e); } try { pasSuscActualizar_(cli, cot); } catch (e) { console.error(e); } }
     if (cli.externo || cot.sinContador) { try { fsUpsert_("noclientes/" + v.nit, { estado: v.aprobado ? "pagado" : "pago_en_revision", nroRecepcion: nroRec, importe: cot.monto, pagoISO: new Date().toISOString(), _upd: Date.now() }); } catch (e) { console.error(e); } }
     var enviado = false;
     if (v.aprobado && cli.correo) {
@@ -1194,7 +1215,7 @@ function portalDatos_(nit) {
   var c = pasCfg();
   return {
     ok: true,
-    cliente: { nombre: cli.nombre, nit: nit, id: cli.codigoId, celular: cli.celular, correo: cli.correo, tipo: cli.tipo, actividad: cli.actP, brinda: cli.brinda,
+    cliente: { suscriptor: cli.suscriptor || "", nombre: cli.nombre, nit: nit, id: cli.codigoId, celular: cli.celular, correo: cli.correo, tipo: cli.tipo, actividad: cli.actP, brinda: cli.brinda,
                aperturaNit: pasFechaISO_(cli.fechaNit), matricula: cli.estMat, estado: cli.estado, grupo: pasGrupoEstado_(cli.estado), repartidor: pasEsRepartidor_(cli),
                diaVence: 13 + Number(nit.slice(-1)) },
     declaraciones: decl, tramites: tram, eeff: eeff, facturacion: fact, otros: otros,
