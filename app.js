@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "80";
+const APP_VERSION = "81";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4780,7 +4780,7 @@ function openDDJJ(r, alGuardar) {
           ${a && canEdit ? `<button class="mini" type="button" data-aquitar="${t}">✕</button>` : ""}
         </div></div>`;
     }).join("") + (canEdit ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-        <label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir varios a la vez<input type="file" id="dj_amulti" multiple accept="application/pdf,image/*,.xlsx,.xls,.csv" style="display:none"></label>
+        <label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir varios a la vez<input type="file" id="dj_amulti" multiple accept="application/pdf,image/*,.xlsx,.xls,.csv,.zip,application/zip" style="display:none"></label>
         <span class="note">Elige todos juntos: se reconocen por el nombre (RCV, 200, 400, Excel = compras, imagen = QR) y la IA llena el formulario.</span></div>` : "") +
       `<div class="note" style="margin-top:8px">${djArchFaltan(r, ARCH).length ? "📌 Falta subir para el cliente: <b>" + djArchFaltan(r, ARCH).map(escape).join(", ") + "</b>" : "✅ El cliente ya tiene todos los documentos obligatorios."}${djSinMov(r) ? " · Declaración <b>sin movimiento</b>: no paga impuestos, el Excel de compras y los QR son opcionales." : " · El QR del <b>IT</b> es obligatorio si hubo ventas; el del <b>IVA</b> es opcional (se puede compensar con compras)."}</div>` +
       `<div class="msg" id="dj_archmsg" style="margin-top:6px"></div>`;
@@ -4836,7 +4836,12 @@ function openDDJJ(r, alGuardar) {
   };
   const subir = async (lista) => {
     const msgs = [];
-    for (const [t, f] of lista) {
+    for (let [t, f] of lista) {
+      if (djEsZip(f)) {
+        aviso(`<span class="cx-spin"></span> Descomprimiendo ${escape(f.name)}…`);
+        try { const zf = f.name; f = await djDescomprimir(f); msgs.push("📦 " + escape(zf) + " → se sacó " + escape(f.name) + "."); }
+        catch (e) { msgs.push(`⚠ ${escape(f.name)}: ${escape(e.message || "no se pudo descomprimir")}`); continue; }
+      }
       aviso(`<span class="cx-spin"></span> Subiendo ${escape(f.name)}…`);
       try {
         const a = await djArchSubir(r, t, f); const du = a.dataUrl; delete a.dataUrl; ARCH[t] = a;
@@ -4917,7 +4922,7 @@ function openDDJJ(r, alGuardar) {
 const DJ_ARCH = "djArchivos", DJ_MAX = 2500000, DJ_TROZO = 900000, DJ_MESES_GUARDA = 3;
 const DJ_TIPOS = [
   ["rcv", "RCV (Constancia de Registro de Compras y Ventas)", "application/pdf,image/*"],
-  ["compras", "Excel de compras registradas", ".xlsx,.xls,.csv,application/pdf"],
+  ["compras", "Excel de compras registradas", ".xlsx,.xls,.csv,.zip,application/zip,application/pdf"],
   ["f200", "Formulario 200 (IVA)", "application/pdf,image/*"],
   ["f400", "Formulario 400 (IT)", "application/pdf,image/*"],
   ["qr", "QR de pago del IT (F400)", "image/*,application/pdf"],
@@ -4942,10 +4947,27 @@ function djMime(f) {
   const n = f.name.toLowerCase();
   return /\.pdf$/.test(n) ? "application/pdf" : /\.xlsx$/.test(n) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.xls$/.test(n) ? "application/vnd.ms-excel" : /\.csv$/.test(n) ? "text/csv" : /\.png$/.test(n) ? "image/png" : "image/jpeg";
 }
+// Excel comprimido (.zip, como lo baja Impuestos): se saca el Excel de adentro y se guarda solo ese,
+// así el cliente lo abre directo en su Portal (JSZip desde cdnjs, se carga solo cuando hace falta)
+let JSZIP_P = null;
+function djCargarZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (!JSZIP_P) JSZIP_P = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; sc.onload = () => res(window.JSZip); sc.onerror = () => { JSZIP_P = null; rej(new Error("No se pudo cargar el descompresor.")); }; document.head.appendChild(sc); });
+  return JSZIP_P;
+}
+function djEsZip(f) { return /zip/.test(f.type || "") || /\.zip$/i.test(f.name || ""); }
+async function djDescomprimir(f) {
+  const Z = await djCargarZip(), z = await Z.loadAsync(f);
+  const ent = Object.values(z.files).filter(e => !e.dir && !/(^|\/)(__MACOSX|\.)/.test(e.name));
+  const e = ent.find(x => /\.xlsx$/i.test(x.name)) || ent.find(x => /\.(xls|csv)$/i.test(x.name)) || ent.find(x => /\.pdf$/i.test(x.name));
+  if (!e) throw new Error("El .zip no tiene un Excel adentro.");
+  const nom = e.name.split("/").pop(), blob = await e.async("blob");
+  return new File([blob], nom, { type: djMime({ name: nom, type: "" }) });
+}
 // Adivina qué documento es por el nombre o el tipo de archivo
 function djTipoDe(f) {
   const n = f.name.toLowerCase(), m = djMime(f);
-  if (/sheet|excel|csv/.test(m) || /\.(xlsx|xls|csv)$/.test(n)) return "compras";
+  if (/sheet|excel|csv|zip/.test(m) || /\.(xlsx|xls|csv|zip)$/.test(n)) return "compras";
   if (/^image\//.test(m) || /\bqr\b/.test(n)) return "qr";
   if (/rcv|registro de compras|constancia/.test(n)) return "rcv";
   if (/\b(f|form|formulario)?\s*-?200\b/.test(n) || /iva/.test(n)) return "f200";
