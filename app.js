@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "81";
+const APP_VERSION = "82";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6007,7 +6007,8 @@ async function yfCargar(forzar) {
     };
     sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, "pendiente", { rango: x.rango || "", uid: x.uid || yfUid(x.id) }); });
     hist.docs.forEach(d => { const x = d.data(); let l = []; try { l = JSON.parse(x.filas || "[]"); } catch (e) {}
-      l.forEach(h => { if (/RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], "retenido", { rango: h[1] || "", fechaPago: x.fecha || "", uid: yfUid(h[2]) }); }); });
+      const deHoja = x.origen === "hojaControl";   // semanas que deben factura según la hoja CONTROL, sin pago registrado
+      l.forEach(h => { if (deHoja || /RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], deHoja ? "hoja" : "retenido", { rango: h[1] || "", fechaPago: deHoja ? "" : (x.fecha || ""), uid: yfUid(h[2]) }); }); });
     filas.sort((a, b) => yfNorm(a.nombre).localeCompare(yfNorm(b.nombre)) || yfSemN(a.semana) - yfSemN(b.semana));
     YF.filas = filas; YF.at = Date.now(); YF.err = "";
     return filas;
@@ -6030,7 +6031,7 @@ function yfMarcarEmitida(clave) {
     <h3 style="margin:0 0 4px">Marcar factura emitida por CONTAX</h3>
     <p style="color:var(--muted);margin:0 0 12px">${escape(x0.nombre)} · ID ${escape(x0.id)}</p>
     <label>Semanas que cubre la factura</label>
-    <div id="ye_sem" style="display:grid;gap:4px;margin:4px 0 12px">${otras.map(x => `<label style="font-weight:400;display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" value="${escape(x.semana)}" data-imp="${x.importe}" ${x === x0 ? "checked" : ""}> ${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? " (pagado con retención)" : ""} · ${fmtBsY(x.importe)}</label>`).join("")}</div>
+    <div id="ye_sem" style="display:grid;gap:4px;margin:4px 0 12px">${otras.map(x => `<label style="font-weight:400;display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" value="${escape(x.semana)}" data-imp="${x.importe}" ${x === x0 ? "checked" : ""}> ${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? " (pagado con retención)" : x.tipo === "hoja" ? " (de la hoja CONTROL)" : ""} · ${fmtBsY(x.importe)}</label>`).join("")}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label>N.º de factura</label><input id="ye_num" inputmode="numeric" maxlength="30"></div>
       <div><label>Fecha de emisión</label><input id="ye_fecha" type="date" value="${hoy}"></div>
@@ -6084,7 +6085,7 @@ function yfHTML() {
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
     <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th><th>Contador</th><th>Factura</th><th>N.º · Fecha · NIT</th><th></th></tr></thead><tbody>
     ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b><div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
-      <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : ""}</td>
+      <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
       <td>${x.contador === "CONTAX" ? "<b>CONTAX</b>" : "Otro"}</td>
       <td>${yfChip(x.estado)}</td>
