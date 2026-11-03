@@ -366,14 +366,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
 
   // Documentos de la declaración que sube CONTAX (RCV, formularios, libro de compras y QR de pago)
-  var NOM_DJ = { rcv: "RCV", f200: "Formulario 200 (IVA)", f400: "Formulario 400 (IT)", compras: "Libro de compras", qr: "QR de pago" };
+  var NOM_DJ = { rcv: "RCV", f200: "Formulario 200 (IVA)", f400: "Formulario 400 (IT)", compras: "Libro de compras", qr: "QR de pago", qr2: "QR de pago 2" };
   function docsDecl(r) {
     var l = r.archivos || []; if (!l.length) return "";
     var hoy = new Date().toISOString().slice(0, 10);
     return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + l.map(function (a) {
-      var vencido = a.tipo === "qr" && a.qrVence && a.qrVence < hoy;
-      return '<button class="mini" data-djarch="' + esc(a.id) + '" title="' + esc(a.nombre) + '">' + ic(a.tipo === "qr" ? "qr" : "doc", 14) + esc(NOM_DJ[a.tipo] || a.tipo) + "</button>" +
-        (a.tipo === "qr" ? '<div class="chico ' + (vencido ? "" : "suave") + '" style="flex-basis:100%' + (vencido ? ";color:var(--err,#B42318)" : "") + '">' +
+      var vencido = /^qr/.test(a.tipo) && a.qrVence && a.qrVence < hoy;
+      return '<button class="mini" data-djarch="' + esc(a.id) + '" title="' + esc(a.nombre) + '">' + ic(/^qr/.test(a.tipo) ? "qr" : "doc", 14) + esc(NOM_DJ[a.tipo] || a.tipo) + "</button>" +
+        (/^qr/.test(a.tipo) ? '<div class="chico ' + (vencido ? "" : "suave") + '" style="flex-basis:100%' + (vencido ? ";color:var(--err,#B42318)" : "") + '">' +
           (a.qrMonto ? "Bs " + esc(a.qrMonto) + " · " : "") + (vencido ? "QR vencido: pide uno nuevo por WhatsApp." : (a.qrVence ? "Vale hasta el " + esc(a.qrVence.split("-").reverse().join("/")) + " a las 00:00." : "Válido solo hasta las 00:00 del día de vencimiento.")) + "</div>" : "");
     }).join("") + "</div>";
   }

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "69";
+const APP_VERSION = "70";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2466,26 +2466,44 @@ async function renderAsistente() {
   const cfg = await loadConfigDoc();
   const hasKey = !!(cfg.aiKey || cfg.geminiKey);
   el("v-asistente").innerHTML = `<h1>Asistente IA</h1>
-    <p class="lead">Pregúntale lo que necesites. Conoce el conocimiento de la empresa y las tarifas. ${hasKey ? '' : '<b style="color:var(--danger)">Falta configurar la clave de IA</b> en ⚙️ Configuración.'}</p>
+    <p class="lead">Pregúntale lo que necesites. Conoce el conocimiento de la empresa y las tarifas. También agenda en el Calendario: <i>“agenda una reunión con Ana el viernes a las 10”</i> o <i>“recuérdame cada mes el día 5 revisar las planillas”</i>. Puedes hablarle con 🎤. ${hasKey ? '' : '<b style="color:var(--danger)">Falta configurar la clave de IA</b> en ⚙️ Configuración.'}</p>
     <div id="as_chat" style="border:1px solid var(--line);border-radius:14px;background:var(--panel);min-height:320px;max-height:58vh;overflow:auto;padding:16px;margin-bottom:12px"></div>
     <textarea id="as_in" style="width:100%;min-height:58px;padding:11px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);font-size:14px;font-family:inherit" placeholder="Escribe tu pregunta…  (Ctrl/Cmd + Enter para enviar)"></textarea>
     <div class="toolbar" style="margin-top:10px">
       <button class="btn" id="as_send">Enviar</button>
+      <button class="btn sec" id="as_mic" title="Dictar por voz">🎤 Dictar</button>
       <button class="btn sec" id="as_clear">Limpiar conversación</button>
     </div>`;
   paintAsis();
   el("as_send").onclick = asisSend;
   el("as_clear").onclick = () => { asisMsgs = []; paintAsis(); };
   el("as_in").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); asisSend(); } });
+  asisMic();
+}
+// Dictado por voz (Chrome y Edge): lo dicho se escribe en el cuadro; se envía con «Enviar»
+let asisRec = null;
+function asisMic() {
+  const b = el("as_mic"), SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { b.disabled = true; b.title = "Este navegador no permite dictar. Usa Chrome o Edge."; return; }
+  b.onclick = () => {
+    if (asisRec) { asisRec.stop(); return; }
+    const inp = el("as_in"), base = inp.value ? inp.value.replace(/\s*$/, " ") : "";
+    const r = new SR(); r.lang = "es-BO"; r.interimResults = true; r.continuous = true;
+    r.onresult = ev => { let t = ""; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; inp.value = base + t; };
+    r.onerror = ev => { if (ev.error === "not-allowed") alert("Permite el micrófono para este sitio (ícono del candado junto a la dirección)."); };
+    r.onend = () => { asisRec = null; b.textContent = "🎤 Dictar"; b.classList.remove("danger"); };
+    asisRec = r; r.start(); b.textContent = "⏹ Detener"; b.classList.add("danger");
+  };
 }
 function paintAsis() {
   const c = el("as_chat"); if (!c) return;
   if (!asisMsgs.length) { c.innerHTML = `<div style="color:var(--muted);text-align:center;padding:40px 10px">Escribe tu primera pregunta. Por ejemplo:<br>“¿Cuánto cuesta la actualización de matrícula y qué incluye?”</div>`; return; }
-  c.innerHTML = asisMsgs.map(m => {
+  c.innerHTML = asisMsgs.map((m, i) => {
     const me = m.role === "user";
     return `<div style="display:flex;justify-content:${me ? 'flex-end' : 'flex-start'};margin-bottom:10px">
-      <div style="max-width:82%;padding:10px 13px;border-radius:12px;white-space:pre-wrap;font-size:13.5px;line-height:1.5;${me ? 'background:var(--accent);color:var(--accent-ink)' : 'background:var(--panel2);border:1px solid var(--line);color:var(--txt)'}">${escape(m.text)}</div></div>`;
+      <div style="max-width:82%;padding:10px 13px;border-radius:12px;white-space:pre-wrap;font-size:13.5px;line-height:1.5;${me ? 'background:var(--accent);color:var(--accent-ink)' : 'background:var(--panel2);border:1px solid var(--line);color:var(--txt)'}">${escape(m.text)}${m.eventos ? asisEventosHTML(m, i) : ""}</div></div>`;
   }).join("");
+  c.querySelectorAll("[data-asag]").forEach(b => b.onclick = () => asisAgendar(Number(b.dataset.asag), b.dataset.ok === "1"));
   c.scrollTop = c.scrollHeight;
 }
 async function asisSend() {
@@ -2496,12 +2514,67 @@ async function asisSend() {
   let sys = "Eres el asistente interno de CONTAX (consultora de contabilidad e impuestos en Santa Cruz, Bolivia). Responde de forma clara, útil y bien organizada, con tono cordial y profesional. Si la pregunta es sobre precios o servicios, usa EXACTAMENTE las tarifas provistas. No inventes datos; si no lo sabes, dilo con honestidad.";
   if (cfg.aiContext) sys += "\n\nCONOCIMIENTO DE LA EMPRESA:\n" + String(cfg.aiContext).slice(0, 6000);
   if (cfg.tarifasText) sys += "\n\n" + String(cfg.tarifasText).slice(0, 6000);
+  if (!USERS.length) { try { (await getDocs(collection(db, "users"))).forEach(d => USERS.push({ ...d.data(), uid: d.id })); } catch (e) {} }
+  sys += "\n\n" + asisAgendaInstr();
   try {
-    const r = await panelAI(cfg, sys, q);
-    asisMsgs[asisMsgs.length - 1] = { role: "assistant", text: r || "(sin respuesta)" };
+    const r = await panelAI(cfg, sys, asisHistorial(q));
+    const ag = asisLeerAgenda(r);
+    asisMsgs[asisMsgs.length - 1] = ag ? { role: "assistant", text: ag.mensaje || "¿Agendo esto en el Calendario?", eventos: ag.eventos } : { role: "assistant", text: r || "(sin respuesta)" };
   } catch (e) {
     asisMsgs[asisMsgs.length - 1] = { role: "assistant", text: "⚠️ " + (e.message || "No se pudo contactar a la IA.") };
   }
+  paintAsis();
+}
+// ---- El asistente agenda en el Calendario: la IA responde un JSON y el equipo confirma antes de guardar ----
+function asisAgendaInstr() {
+  const d = new Date(), dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const equipo = evAsignables().map(u => u.name || u.email).join(", ");
+  return "AGENDA: Hoy es " + dias[d.getDay()] + " " + todayISO() + " (Bolivia). Quien te escribe es " + ((ME && (ME.name || ME.email)) || "") + ". Equipo: " + equipo + ".\n" +
+    "Si te piden agendar, recordar o crear una tarea, reunión, vencimiento, turno o clase, responde SOLO con este JSON (sin texto antes ni después):\n" +
+    '{"accion":"agendar","mensaje":"frase corta confirmando qué vas a agendar","eventos":[{"titulo":"","fechaISO":"aaaa-mm-dd","hora":"hh:mm o vacío","tipo":"tarea|reunion|vencimiento|turno|clase|otro","nota":"","repite":"|diario|laboral|semanal|mensual|anual","repiteHasta":"aaaa-mm-dd o vacío","asignadoA":"nombre de alguien del equipo o vacío"}]}\n' +
+    "Calcula las fechas desde hoy (\"mañana\", \"el viernes\", \"cada mes el 5\"). Si falta la fecha, pregunta en texto normal. Para todo lo demás responde normal.";
+}
+function asisHistorial(q) {
+  const prev = asisMsgs.slice(0, -2).slice(-6).map(m => (m.role === "user" ? "Usuario: " : "Asistente: ") + m.text).join("\n");
+  return prev ? "Conversación anterior:\n" + prev + "\n\nNuevo mensaje del usuario: " + q : q;
+}
+function asisLeerAgenda(t) {
+  const m = String(t || "").match(/\{[\s\S]*\}/); if (!m || !/"accion"\s*:\s*"agendar"/.test(m[0])) return null;
+  try {
+    const o = JSON.parse(m[0]);
+    const ev = (o.eventos || []).filter(x => x && x.titulo && /^\d{4}-\d{2}-\d{2}$/.test(String(x.fechaISO || ""))).map(x => ({
+      titulo: String(x.titulo).slice(0, 140), fechaISO: x.fechaISO, hora: /^\d{1,2}:\d{2}$/.test(String(x.hora || "")) ? String(x.hora).padStart(5, "0") : "",
+      tipo: EV_TIPOS.some(t => t[0] === x.tipo) ? x.tipo : "tarea", nota: String(x.nota || "").slice(0, 500),
+      repite: EV_REPITE.some(r => r[0] === x.repite) ? x.repite : "", repiteHasta: /^\d{4}-\d{2}-\d{2}$/.test(String(x.repiteHasta || "")) ? x.repiteHasta : "",
+      asignadoA: String(x.asignadoA || "") }));
+    return ev.length ? { mensaje: o.mensaje, eventos: ev } : null;
+  } catch (e) { return null; }
+}
+function asisUsuario(nombre) { const n = String(nombre || "").trim().toLowerCase(); if (!n) return null; return evAsignables().find(u => String(u.name || u.email).toLowerCase().includes(n) || n.includes(String(u.name || "").toLowerCase().split(" ")[0] || "@@")) || null; }
+function asisEventosHTML(m, i) {
+  const fila = e => { const u = asisUsuario(e.asignadoA);
+    return `<div style="border-left:3px solid ${evColor(e.tipo)};background:var(--panel);border-radius:8px;padding:7px 10px;margin-top:8px;white-space:normal">
+      <b>${escape(e.titulo)}</b><div style="font-size:12px;color:var(--muted)">${escape(evTipoLbl(e.tipo))} · ${escape(e.fechaISO.split("-").reverse().join("/"))}${e.hora ? " · " + escape(e.hora) : ""}${e.repite ? " · " + escape(evRepiteTxt(e)) : ""}${u ? " · Asignada a " + escape(u.name || u.email) : e.asignadoA ? " · ⚠ No encontré a «" + escape(e.asignadoA) + "» en el equipo" : ""}</div>${e.nota ? `<div style="font-size:12px">${escape(e.nota)}</div>` : ""}</div>`; };
+  const pie = m.agendado ? `<div style="margin-top:8px;color:var(--ok);font-weight:600">✓ ${escape(m.agendado)}</div>`
+    : `<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" data-asag="${i}" data-ok="1" style="padding:6px 12px">📅 Agendar</button><button class="btn sec" data-asag="${i}" data-ok="0" style="padding:6px 12px">Cancelar</button></div>`;
+  return m.eventos.map(fila).join("") + pie;
+}
+async function asisAgendar(i, ok) {
+  const m = asisMsgs[i]; if (!m || !m.eventos || m.agendado) return;
+  if (!ok) { m.agendado = "No se agendó."; paintAsis(); return; }
+  try {
+    for (const e of m.eventos) {
+      const u = asisUsuario(e.asignadoA);
+      await setDoc(doc(collection(db, "eventos")), {
+        titulo: e.titulo, fechaISO: e.fechaISO, hora: e.hora, tipo: e.tipo, nota: e.nota, repite: e.repite, repiteHasta: e.repiteHasta,
+        cliente: "", clienteNit: "", clienteBdId: "", asignadoUid: u ? u.uid : "", asignadoNombre: u ? (u.name || u.email || "") : "", asignadoEmail: u ? (u.email || "") : "",
+        ...(u ? { asignadoPor: (ME && (ME.name || ME.email)) || "", asignadoPorUid: (ME && ME.uid) || "", asignadoAt: Date.now() } : {}),
+        done: false, origen: "asistente", createdByUid: ME.uid, createdByNombre: ME.name || ME.email, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      });
+    }
+    m.agendado = (m.eventos.length > 1 ? m.eventos.length + " eventos agendados" : "Agendado") + " en el Calendario.";
+    evLoaded = false;
+  } catch (e) { m.agendado = ""; alert("No se pudo agendar: " + (e.code || e.message)); }
   paintAsis();
 }
 async function panelAI(cfg, system, user) {
@@ -3905,7 +3978,7 @@ function djEstado(r) {
   if (r.dj_estado && DJ_ESTADOS.some(e => e[0] === r.dj_estado)) return r.dj_estado;
   if (r.dj_fechaDeclaracion || r.dj_declaradoPor) return "terminado";
   if (r.dj_rcvFinalizado) return "falta_declarar";
-  if (r.dj_rcvIniciado || r.dj_rcvPor) return "rcv";
+  if (r.dj_rcvIniciado || r.dj_rcvConsolidado || r.dj_rcvPor) return "rcv";
   return "pendiente";
 }
 // Calculadora tributaria (régimen general): IVA 13% (F200) e IT 3% (F400) compensable con IUE
@@ -3982,7 +4055,7 @@ function paintDDJJ() {
       <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
       <td style="font-size:12px">${escape(r.detalleServicio || "—")}<div style="color:var(--muted);font-size:11px">${escape(r.fecha || djFechaTxt(r.fechaISO))}</div></td>
       <td>${escape(r.dj_rcvPor || "—")}</td>
-      <td style="text-align:center">${ck(r.dj_rcvIniciado)} ${ck(r.dj_rcvFinalizado)}</td>
+      <td style="text-align:center">${ck(r.dj_rcvIniciado)} ${ck(r.dj_rcvFinalizado)}${r.dj_rcvConsolidado ? `<div style="font-size:10.5px;color:var(--ok);font-weight:700" title="Consolidado sin multa">CONSOL.</div>` : ""}</td>
       <td style="font-size:12px">${escape(r.dj_estadoRcv || "")}${r.dj_respuestaCliente ? `<div style="color:var(--muted);font-size:11px">${escape(r.dj_respuestaCliente)}</div>` : ""}</td>
       <td>${escape(r.dj_declaradoPor || "—")}<div style="color:var(--muted);font-size:11px">${escape(djFechaTxt(r.dj_fechaDeclaracion))}</div></td>
       <td class="mono" style="text-align:right">${escape(r.dj_ivaPagar || "")}</td>
@@ -4042,31 +4115,40 @@ function openDDJJ(r, alGuardar) {
         <div class="note" style="margin:2px 0 0">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
       <button class="mini" id="dj_x">✕</button></div>
     <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? "🔑 Cargando accesos del cliente…" : "🔑 Accesos visibles solo para quienes pueden editar."}</div>
+    <style>.dj-dos{display:grid;grid-template-columns:3fr 2fr;gap:12px;align-items:start;margin-bottom:10px}.dj-eq,.dj-ia{border-radius:10px;padding:10px 12px}.dj-eq{border:1px solid var(--line)}
+      .dj-ia{border:1.5px dashed var(--accent);background:var(--panel2)}.dj-tit{font-size:12px;font-weight:700;letter-spacing:.03em;margin:0 0 8px;color:var(--muted)}.dj-ia .dj-tit{color:var(--accent)}
+      .dj-dos .grid2{gap:0 12px}@media(max-width:760px){.dj-dos{grid-template-columns:1fr}}</style>
     <div class="fs">1) RCV</div>
-    <div class="grid3">
-      ${f("RCV realizado por", sel("dj_rcvPor", [""].concat(eq), r.dj_rcvPor))}
-      <div class="field"><label>&nbsp;</label>${chk("dj_rcvIniciado", r.dj_rcvIniciado, "RCV iniciado" + ts(r.dj_rcvIniciadoAt))}${chk("dj_rcvFinalizado", r.dj_rcvFinalizado, "RCV finalizado" + ts(r.dj_rcvFinalizadoAt))}</div>
-      <div class="field"><label>&nbsp;</label>${chk("dj_rcvMulta", r.dj_rcvMulta, "Multa fuera de plazo RCV")}</div>
-      ${f("Cant. facturas", inp("dj_cantFacturas", r.dj_cantFacturas, "Ej. 12"))}
-      ${f("Total compras netas", inp("dj_totalCompras", r.dj_totalCompras, "0,00"))}
-      ${f("Total ventas", inp("dj_totalVentas", r.dj_totalVentas, "0,00"))}
-      ${f("¿Cuánto le falta?", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
-      ${f("Crédito fiscal (mes anterior)", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
-      ${f("Estado RCV", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
-      ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
+    <div class="dj-dos">
+      <div class="dj-eq"><div class="dj-tit">✍️ LO LLENA EL EQUIPO</div><div class="grid2">
+        ${f("RCV realizado por", sel("dj_rcvPor", [""].concat(eq), r.dj_rcvPor))}
+        <div class="field"><label>&nbsp;</label>${chk("dj_rcvIniciado", r.dj_rcvIniciado, "RCV iniciado" + ts(r.dj_rcvIniciadoAt))}${chk("dj_rcvConsolidado", r.dj_rcvConsolidado, "🛡 Consolidado sin multa (falta terminar)" + ts(r.dj_rcvConsolidadoAt))}${chk("dj_rcvFinalizado", r.dj_rcvFinalizado, "RCV finalizado" + ts(r.dj_rcvFinalizadoAt))}${chk("dj_rcvMulta", r.dj_rcvMulta, "Multa fuera de plazo RCV")}</div>
+        ${f("¿Cuánto le falta?", inp("dj_cuantoFalta", r.dj_cuantoFalta, "Ej. Falta 948,59bs"))}
+        ${f("Crédito fiscal (mes anterior)", inp("dj_creditoFiscal", r.dj_creditoFiscal, "0,00"))}
+        ${f("Estado RCV", sel("dj_estadoRcv", DJ_ESTADO_RCV, r.dj_estadoRcv))}
+        ${f("Respuesta del cliente", sel("dj_respuestaCliente", DJ_RESP_CLIENTE, r.dj_respuestaCliente))}
+      </div>${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}</div>
+      <div class="dj-ia"><div class="dj-tit">🤖 LO LLENA LA IA AL SUBIR EL RCV <span style="font-weight:400">(puedes corregir)</span></div>
+        ${f("Cant. facturas", inp("dj_cantFacturas", r.dj_cantFacturas, "Ej. 12"))}
+        ${f("Total compras netas", inp("dj_totalCompras", r.dj_totalCompras, "0,00"))}
+        ${f("Total ventas", inp("dj_totalVentas", r.dj_totalVentas, "0,00"))}
+      </div>
     </div>
-    ${f("Comentario adicional", inp("dj_comentario", r.dj_comentario, "Ej. Facturas con nombre mal escrito"))}
     <div class="fs" style="margin-top:6px">2) Declaración</div>
     <div id="dj_calc" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:13px"></div>
-    <div class="grid3">
-      ${f("Declarado por", sel("dj_declaradoPor", [""].concat(eq), r.dj_declaradoPor))}
-      ${f("Fecha de declaración", inp("dj_fechaDeclaracion", r.dj_fechaDeclaracion, "", "date"))}
-      ${f("Compensación del IUE", inp("dj_compIUE", r.dj_compIUE, "0,00"))}
-      ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
-      ${f("IVA a pagar", inp("dj_ivaPagar", r.dj_ivaPagar, "0,00"))}
-      ${f("IT a pagar", inp("dj_itPagar", r.dj_itPagar, "0,00"))}
-      <div class="field"><label>&nbsp;</label>${chk("dj_multaIVA", r.dj_multaIVA, "Multa fuera de plazo IVA")}${chk("dj_multaIT", r.dj_multaIT, "Multa fuera de plazo IT")}</div>
-      ${f("ESTADO", `<select id="dj_estado" ${dis}><option value="">Automático (${escape((DJ_ESTADOS.find(e => e[0] === djEstado(Object.assign({}, r, { dj_estado: "" }))) || [])[1] || "")})</option>${DJ_ESTADOS.map(([k, l]) => `<option value="${k}" ${r.dj_estado === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+    <div class="dj-dos">
+      <div class="dj-eq"><div class="dj-tit">✍️ LO LLENA EL EQUIPO</div><div class="grid2">
+        ${f("Declarado por", sel("dj_declaradoPor", [""].concat(eq), r.dj_declaradoPor))}
+        <div class="field"><label>&nbsp;</label>${chk("dj_multaIVA", r.dj_multaIVA, "Multa fuera de plazo IVA")}${chk("dj_multaIT", r.dj_multaIT, "Multa fuera de plazo IT")}</div>
+        ${f("ESTADO", `<select id="dj_estado" ${dis}><option value="">Automático (${escape((DJ_ESTADOS.find(e => e[0] === djEstado(Object.assign({}, r, { dj_estado: "" }))) || [])[1] || "")})</option>${DJ_ESTADOS.map(([k, l]) => `<option value="${k}" ${r.dj_estado === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+      </div></div>
+      <div class="dj-ia"><div class="dj-tit">🤖 LO LLENA LA IA CON EL F200 Y F400 <span style="font-weight:400">(puedes corregir)</span></div><div class="grid2">
+        ${f("Fecha de declaración", inp("dj_fechaDeclaracion", r.dj_fechaDeclaracion, "", "date"))}
+        ${f("IVA a pagar", inp("dj_ivaPagar", r.dj_ivaPagar, "0,00"))}
+        ${f("Crédito fiscal siguiente mes", inp("dj_creditoSigMes", r.dj_creditoSigMes, "0,00"))}
+        ${f("IT a pagar", inp("dj_itPagar", r.dj_itPagar, "0,00"))}
+        ${f("Compensación del IUE", inp("dj_compIUE", r.dj_compIUE, "0,00"))}
+      </div></div>
     </div>
     <div class="fs" style="margin-top:6px">3) Seguimiento</div>
     <div class="grid3">
@@ -4108,7 +4190,7 @@ function openDDJJ(r, alGuardar) {
   // Atajos: al marcar RCV o poner fecha, se completa el responsable con quien está usando el panel
   if (canEdit) {
     const yo = djYo();
-    ["dj_rcvIniciado", "dj_rcvFinalizado"].forEach(id => $(id).onchange = () => { if ($(id).checked && !$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo; });
+    ["dj_rcvIniciado", "dj_rcvConsolidado", "dj_rcvFinalizado"].forEach(id => $(id).onchange = () => { if ($(id).checked && !$("dj_rcvPor").value && yo) $("dj_rcvPor").value = yo; });
     $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declaradoPor").value && yo) $("dj_declaradoPor").value = yo; };
     $("dj_declaradoPor").onchange = () => { if ($("dj_declaradoPor").value && !$("dj_fechaDeclaracion").value) $("dj_fechaDeclaracion").value = djHoy(); };
   }
@@ -4160,9 +4242,9 @@ function openDDJJ(r, alGuardar) {
     cajaArch.innerHTML = DJ_TIPOS.map(([t, lbl, acc]) => {
       const a = ARCH[t];
       const info = a ? `<b>${escape(a.nombre)}</b> <span class="note">· ${escape(String(a.kb))} KB · ${escape(new Date(a.subidoISO).toLocaleDateString("es-BO"))}${a.por ? " · " + escape(a.por) : ""}</span>` +
-        (t === "qr" && (a.qrMonto || a.qrVence) ? `<div class="note">💳 ${a.qrMonto ? "Bs " + escape(fmt2(a.qrMonto)) : ""}${a.qrFormulario ? " · F" + escape(a.qrFormulario) : ""}${a.qrVence ? " · vence " + escape(a.qrVence) : ""}</div>` : "") : `<span class="note">Sin archivo</span>`;
+        (/^qr/.test(t) && (a.qrMonto || a.qrVence) ? `<div class="note">💳 ${a.qrMonto ? "Bs " + escape(fmt2(a.qrMonto)) : ""}${a.qrFormulario ? " · F" + escape(a.qrFormulario) : ""}${a.qrVence ? " · vence " + escape(a.qrVence) : ""}</div>` : "") : `<span class="note">Sin archivo</span>`;
       return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line)">
-        <div style="min-width:220px;flex:1"><div style="font-weight:600">${lbl}</div><div>${info}</div></div>
+        <div style="min-width:220px;flex:1"><div style="font-weight:600">${lbl} ${djArchOpcional(r, t) ? '<span class="badge mut">Opcional</span>' : a ? '<span class="badge ok">Listo</span>' : '<span class="badge danger">Falta</span>'}</div><div>${info}</div></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${a ? `<button class="mini" type="button" data-aver="${t}">👁 Ver</button>` : ""}
           ${a && canEdit && DJ_PROMPTS[t] && /^image\/|pdf/.test(a.mime) ? `<button class="mini" type="button" data-aleer="${t}">🤖 Leer con IA</button>` : ""}
@@ -4172,6 +4254,7 @@ function openDDJJ(r, alGuardar) {
     }).join("") + (canEdit ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
         <label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir varios a la vez<input type="file" id="dj_amulti" multiple accept="application/pdf,image/*,.xlsx,.xls,.csv" style="display:none"></label>
         <span class="note">Elige todos juntos: se reconocen por el nombre (RCV, 200, 400, Excel = compras, imagen = QR) y la IA llena el formulario.</span></div>` : "") +
+      `<div class="note" style="margin-top:8px">${djArchFaltan(r, ARCH).length ? "📌 Falta subir para el cliente: <b>" + djArchFaltan(r, ARCH).map(escape).join(", ") + "</b>" : "✅ El cliente ya tiene todos los documentos obligatorios."}${djSinMov(r) ? " · Declaración <b>sin movimiento</b>: el Excel de compras y el QR son opcionales." : ""}</div>` +
       `<div class="msg" id="dj_archmsg" style="margin-top:6px"></div>`;
     enlazarArch();
   };
@@ -4203,9 +4286,9 @@ function openDDJJ(r, alGuardar) {
       poner("dj_compIUE", fmt2(d.iueCompensado), llenos, "compensación del IUE");
       if (!$("dj_fechaDeclaracion").value) poner("dj_fechaDeclaracion", aISO(d.fechaPresentacion), llenos, "fecha de declaración");
       pintarCalc(false);
-    } else if (t === "qr" && ARCH.qr) {
+    } else if (/^qr/.test(t) && ARCH[t]) {
       const q = { qrMonto: String(d.monto || ""), qrVence: aISO(d.vence) || String(d.vence || ""), qrFormulario: String(d.formulario || "").replace(/\D/g, "") };
-      try { await updateDoc(doc(db, DJ_ARCH, ARCH.qr._id), q); Object.assign(ARCH.qr, q); } catch (e) {}
+      try { await updateDoc(doc(db, DJ_ARCH, ARCH[t]._id), q); Object.assign(ARCH[t], q); } catch (e) {}
       llenos.push("datos del QR");
     }
     return { llenos, alertas };
@@ -4235,7 +4318,8 @@ function openDDJJ(r, alGuardar) {
     const mu = cajaArch.querySelector("#dj_amulti");
     if (mu) mu.onchange = () => {
       const fs = [...(mu.files || [])], lista = [], sin = [];
-      fs.forEach(f => { const t = djTipoDe(f); if (t && !lista.some(x => x[0] === t)) lista.push([t, f]); else sin.push(f.name); });
+      // Dos imágenes de QR: la primera va a «QR 1» y la segunda a «QR 2»
+      fs.forEach(f => { let t = djTipoDe(f); if (t === "qr" && lista.some(x => x[0] === "qr")) t = "qr2"; if (t && !lista.some(x => x[0] === t)) lista.push([t, f]); else sin.push(f.name); });
       subir(lista).then(() => { if (sin.length) aviso((msgArch().innerHTML ? msgArch().innerHTML + "<br>" : "") + "⚠ No reconocí: " + sin.map(escape).join(", ") + ". Súbelos en su fila."); });
     };
     cajaArch.querySelectorAll("[data-aver]").forEach(b => b.onclick = async () => {
@@ -4259,7 +4343,7 @@ function openDDJJ(r, alGuardar) {
     const v = id => $(id).value.trim(), c = id => !!$(id).checked;
     const ahora = new Date().toLocaleString("es-BO");
     const d = {
-      dj_rcvPor: v("dj_rcvPor"), dj_rcvIniciado: c("dj_rcvIniciado"), dj_rcvFinalizado: c("dj_rcvFinalizado"), dj_rcvMulta: c("dj_rcvMulta"),
+      dj_rcvPor: v("dj_rcvPor"), dj_rcvIniciado: c("dj_rcvIniciado"), dj_rcvConsolidado: c("dj_rcvConsolidado"), dj_rcvFinalizado: c("dj_rcvFinalizado"), dj_rcvMulta: c("dj_rcvMulta"),
       dj_cantFacturas: v("dj_cantFacturas"), dj_totalCompras: v("dj_totalCompras"), dj_totalVentas: v("dj_totalVentas"), dj_cuantoFalta: v("dj_cuantoFalta"),
       dj_creditoFiscal: v("dj_creditoFiscal"), dj_estadoRcv: v("dj_estadoRcv"), dj_respuestaCliente: v("dj_respuestaCliente"), dj_comentario: v("dj_comentario"),
       dj_declaradoPor: v("dj_declaradoPor"), dj_fechaDeclaracion: v("dj_fechaDeclaracion"), dj_compIUE: v("dj_compIUE"), dj_creditoSigMes: v("dj_creditoSigMes"),
@@ -4267,9 +4351,18 @@ function openDDJJ(r, alGuardar) {
       dj_pagoImpuestos: v("dj_pagoImpuestos"), dj_fechaPagoImp: v("dj_fechaPagoImp"), dj_correoEnviado: c("dj_correoEnviado"),
       dj_editadoPor: (ME && (ME.name || ME.email)) || "", dj_editadoAt: serverTimestamp()
     };
-    // Fechas automáticas (como las columnas "Fecha de Inicio" de la hoja)
+    // Responsables: si nadie eligió, queda quien está usando el panel (se puede cambiar a mano en la lista)
+    const yo = djYo(), hoyISO = djHoy();
+    if (!d.dj_rcvPor && yo && (d.dj_rcvIniciado || d.dj_rcvConsolidado || d.dj_rcvFinalizado)) d.dj_rcvPor = yo;
+    if (!d.dj_declaradoPor && yo && d.dj_fechaDeclaracion) d.dj_declaradoPor = yo;
+    // Fechas automáticas (como las columnas "Fecha de Inicio" de la hoja); las ISO sirven para las métricas por día
     if (d.dj_rcvIniciado && !r.dj_rcvIniciadoAt) d.dj_rcvIniciadoAt = ahora;
-    if (d.dj_rcvFinalizado && !r.dj_rcvFinalizadoAt) d.dj_rcvFinalizadoAt = ahora;
+    if (d.dj_rcvConsolidado && !r.dj_rcvConsolidado) { d.dj_rcvConsolidadoAt = ahora; d.dj_rcvConsolidadoISO = hoyISO; }
+    if (d.dj_rcvConsolidado) d.dj_rcvConsolidadoPor = d.dj_rcvPor || yo;
+    if (d.dj_rcvFinalizado && !r.dj_rcvFinalizadoAt) { d.dj_rcvFinalizadoAt = ahora; d.dj_rcvFinalizadoISO = hoyISO; }
+    // Documentos para el cliente: avisa si falta alguno obligatorio al dar la declaración por terminada
+    const faltan = djArchFaltan(r, ARCH);
+    if (d.dj_fechaDeclaracion && faltan.length && !confirm("Todavía falta subir para el cliente: " + faltan.join(", ") + ".\n\n¿Guardar igual?")) return;
     if (d.dj_correoEnviado && !r.dj_correoEnviado) { d.dj_correoFecha = ahora; d.dj_correoPor = djYo(); }
     const m = $("dj_msg"); m.className = "msg"; m.textContent = "Guardando…";
     try {
@@ -4290,8 +4383,13 @@ const DJ_TIPOS = [
   ["compras", "Excel de compras registradas", ".xlsx,.xls,.csv,application/pdf"],
   ["f200", "Formulario 200 (IVA)", "application/pdf,image/*"],
   ["f400", "Formulario 400 (IT)", "application/pdf,image/*"],
-  ["qr", "QR para el pago de impuestos", "image/*,application/pdf"]
+  ["qr", "QR de pago 1 (por ejemplo IVA)", "image/*,application/pdf"],
+  ["qr2", "QR de pago 2 (por ejemplo IT) — opcional", "image/*,application/pdf"]
 ];
+// Documentos obligatorios para entregar al cliente. Sin movimiento: el Excel de compras y el QR son opcionales; el 2.º QR siempre lo es.
+function djSinMov(r) { return /sin movimiento/i.test(String(r.detalleServicio || "")); }
+function djArchOpcional(r, t) { return t === "qr2" || (djSinMov(r) && (t === "compras" || t === "qr")); }
+function djArchFaltan(r, arch) { return DJ_TIPOS.filter(([t]) => !djArchOpcional(r, t) && !(arch && arch[t])).map(([t, l]) => l.replace(/ \(.*$/, "").replace(/ —.*$/, "")); }
 async function djArchListar(recId) {
   const q = await getDocs(query(collection(db, DJ_ARCH), where("recId", "==", recId)));
   const o = {}; q.docs.forEach(d => { const x = d.data(); x._id = d.id; o[x.tipo] = x; }); return o;
@@ -4354,7 +4452,8 @@ const DJ_PROMPTS = {
   rcv: 'Es la "Constancia de Registro de Compras y Ventas" (RCV) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","ventasCantidad":"","ventasImporteTotal":"","comprasCantidad":"","comprasImporteTotal":"","comprasConDerechoCF":""}',
   f200: 'Es el Formulario 200 (IVA) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ventas":"casilla 13","compras":"casilla 11","creditoSiguienteMes":"casilla 592: saldo de crédito fiscal a favor del contribuyente para el período siguiente","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
   f400: 'Es el Formulario 400 (IT) de Impuestos Nacionales de Bolivia. Responde SOLO un JSON: {"nit":"","mes":"","anio":"","fechaPresentacion":"dd/mm/aaaa","ingresos":"casilla 13","iueCompensado":"casilla 664","saldoFisco":"casilla 996: saldo a favor del fisco (impuesto a pagar)"}',
-  qr: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}'
+  qr: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}',
+  qr2: 'Es un código QR para pagar impuestos en Bolivia (puede decir el monto, la fecha de vencimiento y el formulario). Responde SOLO un JSON: {"monto":"","vence":"aaaa-mm-dd","formulario":"200 o 400","periodo":"mm/aaaa"}'
 };
 async function djLeerIA(tipo, dataUrl) {
   if (!DJ_PROMPTS[tipo]) return { error: "" };
@@ -4575,6 +4674,28 @@ async function renderControl() {
   await ltLoad();
   bdEnsureLoaded(ok => { if (!ok) { el("v-control").innerHTML = `<h1>Control del mes</h1><p class="lead">No se pudo abrir la Base de Datos de clientes.</p>`; return; } paintControl(); });
 }
+// Métricas por día (de todos los períodos): consolidaciones de RCV, RCV terminados y declaraciones, con quién las hizo
+function djAtISO(t) { const m = String(t || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : ""; }
+function cmActividadDias(decl) {
+  const N = 14, dias = [], act = {};
+  for (let i = 0; i < N; i++) { const d = new Date(); d.setDate(d.getDate() - i); dias.push(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0")); }
+  const sumar = (iso, tipo, quien) => { if (!iso || dias.indexOf(iso) < 0) return; const q = String(quien || "SIN NOMBRE").trim().toUpperCase(); const x = (act[iso] = act[iso] || { cons: {}, fin: {}, decl: {} }); x[tipo][q] = (x[tipo][q] || 0) + 1; };
+  decl.forEach(r => {
+    if (r.dj_rcvConsolidado) sumar(r.dj_rcvConsolidadoISO || djAtISO(r.dj_rcvConsolidadoAt), "cons", r.dj_rcvConsolidadoPor || r.dj_rcvPor);
+    if (r.dj_rcvFinalizado) sumar(r.dj_rcvFinalizadoISO || djAtISO(r.dj_rcvFinalizadoAt), "fin", r.dj_rcvPor);
+    if (r.dj_fechaDeclaracion) sumar(String(r.dj_fechaDeclaracion).slice(0, 10), "decl", r.dj_declaradoPor);
+  });
+  const tot = { cons: {}, fin: {}, decl: {} };
+  const celda = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1]), n = e.reduce((t, x) => t + x[1], 0);
+    return n ? `<b class="mono">${n}</b><div style="font-size:11px;color:var(--muted)">${e.map(([k, v]) => escape(k) + " " + v).join(" · ")}</div>` : `<span style="color:var(--muted)">·</span>`; };
+  const filas = dias.map(iso => { const x = act[iso] || { cons: {}, fin: {}, decl: {} };
+    ["cons", "fin", "decl"].forEach(t => Object.entries(x[t]).forEach(([k, v]) => { tot[t][k] = (tot[t][k] || 0) + v; }));
+    return `<tr><td class="mono">${djFechaTxt(iso)}</td><td>${celda(x.cons)}</td><td>${celda(x.fin)}</td><td>${celda(x.decl)}</td></tr>`; }).join("");
+  return `<h3 style="margin:18px 0 8px">Actividad por día (últimos ${N} días)</h3>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Día</th><th>Consolidaciones RCV (sin multa)</th><th>RCV terminados</th><th>Declaraciones presentadas</th></tr></thead>
+    <tbody>${filas}</tbody><tfoot><tr><td><b>Total</b></td><td>${celda(tot.cons)}</td><td>${celda(tot.fin)}</td><td>${celda(tot.decl)}</td></tr></tfoot></table></div>
+    <p class="note">Cuenta todos los períodos. La persona sale de «RCV realizado por» y «Declarado por» de cada declaración (si nadie la elige, se pone sola quien usa el panel).</p>`;
+}
 function paintControl() {
   const decl = LT_DATA.filter(r => recCatDe(r) === "declaracion");
   const periodos = [...new Set(decl.map(recPeriodoKey).filter(Boolean))].sort().reverse();
@@ -4639,7 +4760,7 @@ function paintControl() {
     }
   } else if (CM_UI.tab === "persona") {
     const tabla = (tit, arr) => `<div class="formcard" style="max-width:none;margin:0"><h3 style="margin:0 0 8px">${tit}</h3><table><tbody>${arr.map(([k, n]) => `<tr><td><b>${escape(k)}</b></td><td class="mono" style="text-align:right">${n}</td></tr>`).join("") || `<tr><td class="note">Sin datos</td></tr>`}</tbody></table></div>`;
-    body = `<div class="grid3" style="gap:14px;align-items:start">${tabla("Recepción (atención)", cuenta("atencion"))}${tabla("RCV realizado por", cuenta("dj_rcvPor"))}${tabla("Declarado por", cuenta("dj_declaradoPor"))}</div>`;
+    body = `<div class="grid3" style="gap:14px;align-items:start">${tabla("Recepción (atención)", cuenta("atencion"))}${tabla("RCV realizado por", cuenta("dj_rcvPor"))}${tabla("Declarado por", cuenta("dj_declaradoPor"))}</div>` + cmActividadDias(decl);
   } else {
     const list = delPer.filter(r => !q || [r.clienteNombre, r.nit, r.atencion, r.detalleServicio].join(" ").toLowerCase().includes(q)).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
     body = `<div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="Buscar por cliente, NIT o persona…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
@@ -5354,6 +5475,54 @@ async function evLoad() {
     evLoaded = true;
   } catch (e) { EVENTOS = []; }
 }
+// Eventos que se repiten (como Google Calendar): diario, semanal, mensual o anual, desde su fecha y hasta «repiteHasta» (opcional).
+// Cada vez que se termina una repetición se guarda en «hechas» { "aaaa-mm-dd": { por, at } }.
+const EV_REPITE = [["", "No se repite"], ["diario", "Todos los días"], ["laboral", "De lunes a viernes"], ["semanal", "Cada semana (mismo día)"], ["mensual", "Cada mes (mismo día)"], ["anual", "Cada año"]];
+function evDiaDe(iso) { const [y, m, d] = String(iso).split("-").map(Number); return new Date(y, m - 1, d); }
+function evOcurre(e, iso) {
+  if (!e.repite) return e.fechaISO === iso;
+  if (!e.fechaISO || iso < e.fechaISO || (e.repiteHasta && iso > e.repiteHasta)) return false;
+  const a = evDiaDe(e.fechaISO), b = evDiaDe(iso);
+  if (e.repite === "diario") return true;
+  if (e.repite === "laboral") return b.getDay() > 0 && b.getDay() < 6;
+  if (e.repite === "semanal") return Math.round((b - a) / 86400000) % 7 === 0;
+  // Mensual: el mismo día; si el mes es más corto (ej. 31), el último día del mes
+  const ultimo = new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate(), dia = Math.min(a.getDate(), ultimo);
+  if (e.repite === "mensual") return b.getDate() === dia;
+  if (e.repite === "anual") return b.getMonth() === a.getMonth() && b.getDate() === dia;
+  return false;
+}
+function evHecha(e, iso) { return e.repite ? !!(e.hechas && e.hechas[iso]) : !!e.done; }
+// Copias de cada repetición entre dos fechas (para el calendario y los próximos eventos)
+function evEntre(desde, hasta) {
+  const out = [];
+  EVENTOS.forEach(e => {
+    if (!e.repite) { if (e.fechaISO >= desde && e.fechaISO <= hasta) out.push(e); return; }
+    for (let d = evDiaDe(desde > e.fechaISO ? desde : e.fechaISO), fin = evDiaDe(hasta); d <= fin; d.setDate(d.getDate() + 1)) {
+      const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      if (evOcurre(e, iso)) { const h = (e.hechas || {})[iso]; out.push(Object.assign({}, e, { fechaISO: iso, _occ: iso, done: !!h, terminadoPor: h ? h.por : "", terminadoAt: h ? h.at : 0 })); }
+    }
+  });
+  return out.sort((a, b) => (a.fechaISO + (a.hora || "")).localeCompare(b.fechaISO + (b.hora || "")));
+}
+// Tarea que se repite: la repetición pendiente más antigua (desde hace 60 días) o la próxima
+function evPendiente(e) {
+  const d = new Date(); d.setDate(d.getDate() - 60); const desde = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const h = new Date(); h.setDate(h.getDate() + 400); const hasta = h.getFullYear() + "-" + String(h.getMonth() + 1).padStart(2, "0") + "-" + String(h.getDate()).padStart(2, "0");
+  return evEntre(desde, hasta).find(x => x.id === e.id && !x.done) || null;
+}
+function evRepiteTxt(e) { const r = EV_REPITE.find(x => x[0] === e.repite); return e.repite && r ? "🔁 " + r[1] + (e.repiteHasta ? " hasta el " + e.repiteHasta.split("-").reverse().join("/") : "") : ""; }
+// Enlace para copiarlo al Google Calendar propio (así avisa en el celular)
+function evGoogleUrl(e) {
+  const f = String(e.fechaISO).replace(/-/g, ""), sig = evDiaDe(e.fechaISO); sig.setDate(sig.getDate() + 1);
+  const f2 = sig.getFullYear() + String(sig.getMonth() + 1).padStart(2, "0") + String(sig.getDate()).padStart(2, "0");
+  let fechas = f + "/" + f2;
+  if (e.hora) { const [h, m] = e.hora.split(":").map(Number), fin = h * 60 + m + 60; fechas = f + "T" + String(h).padStart(2, "0") + String(m).padStart(2, "0") + "00/" + f + "T" + String(Math.min(23, Math.floor(fin / 60))).padStart(2, "0") + String(fin >= 1440 ? 59 : fin % 60).padStart(2, "0") + "00"; }
+  const regla = { diario: "FREQ=DAILY", laboral: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", semanal: "FREQ=WEEKLY", mensual: "FREQ=MONTHLY", anual: "FREQ=YEARLY" }[e.repite];
+  const p = new URLSearchParams({ action: "TEMPLATE", text: e.titulo || "", dates: fechas, ctz: "America/La_Paz", details: [e.cliente ? "Cliente: " + e.cliente : "", e.nota || "", "Panel NUMMEROS"].filter(Boolean).join("\n") });
+  if (regla) p.set("recur", "RRULE:" + regla + (e.repiteHasta ? ";UNTIL=" + e.repiteHasta.replace(/-/g, "") : ""));
+  return "https://calendar.google.com/calendar/render?" + p.toString();
+}
 function todayISO() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function isoOf(y, m, d) { return y + "-" + String(m + 1).padStart(2, "0") + "-" + String(d).padStart(2, "0"); }
 
@@ -5367,8 +5536,15 @@ async function renderCalendario() {
 function evFechaTs(t) { if (!t) return ""; try { const d = t.toDate ? t.toDate() : new Date(t.seconds ? t.seconds * 1000 : t); return isNaN(d) ? "" : d.toLocaleString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
 const EV_ICO_OK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
 const EV_ICO_RE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
-async function evTerminar(id, terminar) {
+async function evTerminar(id, terminar, occ) {
   const e = EVENTOS.find(x => x.id === id); if (!e) return;
+  if (e.repite) {
+    occ = occ || (evPendiente(e) || {}).fechaISO; if (!occ) return;
+    const h = Object.assign({}, e.hechas || {});
+    if (terminar) h[occ] = { por: (ME && (ME.name || ME.email)) || "", at: Date.now() }; else delete h[occ];
+    try { await updateDoc(doc(db, "eventos", id), { hechas: h }); e.hechas = h; if (el("v-ficha") && el("v-ficha").offsetParent !== null) paintFicha(); else paintCalendario(); } catch (err) { alert("No se pudo actualizar: " + (err.code || err.message)); }
+    return;
+  }
   const datos = terminar
     ? { done: true, terminadoPor: (ME && (ME.name || ME.email)) || "", terminadoPorUid: (ME && ME.uid) || "", terminadoAt: Date.now() }
     : { done: false, terminadoPor: "", terminadoPorUid: "", terminadoAt: 0, reabiertoPor: (ME && (ME.name || ME.email)) || "", reabiertoAt: Date.now() };
@@ -5385,19 +5561,24 @@ function calTareaFila(e, hechas, hoy) {
         ${e.asignadoUid ? `<div style="margin:3px 0"><span class="badge ${paraMi ? "danger" : "mut"}" style="display:inline-flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Asignada a ${paraMi ? "ti" : escape(e.asignadoNombre || "—")}</span>${e.asignadoPor ? ` <span style="font-size:11.5px;color:var(--muted)">por ${escape(e.asignadoPor)}</span>` : ""}</div>` : ""}
         ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">Cliente: ${escape(e.cliente)}${e.clienteNit ? " · NIT " + escape(e.clienteNit) : ""}</div>` : ""}
         ${e.nota ? `<div style="font-size:12.5px;margin-top:3px">${escape(e.nota)}</div>` : ""}
-        <div style="font-size:12px;color:var(--muted);margin-top:5px">Para el ${escape(e.fechaISO ? e.fechaISO.split("-").reverse().join("/") : "—")}${vencida ? ' · <b style="color:#B4453C">Atrasada</b>' : ""}
+        <div style="font-size:12px;color:var(--muted);margin-top:5px">Para el ${escape(e.fechaISO ? e.fechaISO.split("-").reverse().join("/") : "—")}${vencida ? ' · <b style="color:#B4453C">Atrasada</b>' : ""}${e.repite ? " · " + escape(evRepiteTxt(e)) : ""}
           · Creada por <b>${escape(e.createdByNombre || "—")}</b>${evFechaTs(e.createdAt) ? " el " + escape(evFechaTs(e.createdAt)) : ""}${e.origen === "recepcion" ? " · desde Recepción" : ""}</div>
         ${hechas ? `<div style="font-size:12px;color:#2E7D5B;margin-top:2px">Terminada por <b>${escape(e.terminadoPor || "—")}</b>${e.terminadoAt ? " el " + escape(evFechaTs(e.terminadoAt)) : ""}</div>` : ""}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
         ${hechas
-          ? `<button class="mini ev-reab" data-id="${e.id}" style="display:inline-flex;align-items:center;gap:5px">${EV_ICO_RE}Reabrir</button>`
-          : `<button class="btn ev-term" data-id="${e.id}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#2E7D5B;border-color:#2E7D5B;color:#fff">${EV_ICO_OK}Terminar</button>
+          ? `<button class="mini ev-reab" data-id="${e.id}" data-occ="${e._occ || ""}" style="display:inline-flex;align-items:center;gap:5px">${EV_ICO_RE}Reabrir</button>`
+          : `<button class="btn ev-term" data-id="${e.id}" data-occ="${e._occ || ""}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#2E7D5B;border-color:#2E7D5B;color:#fff">${EV_ICO_OK}Terminar</button>
              <button class="mini ev-edit" data-id="${e.id}">Editar</button>`}
       </div></div>`;
 }
 function calTareasHTML(hechas) {
-  let L = EVENTOS.filter(e => e.tipo === "tarea" && !!e.done === hechas);
+  let L = EVENTOS.filter(e => e.tipo === "tarea" && !e.repite && !!e.done === hechas);
+  // Tareas que se repiten: pendientes = su próxima repetición; terminadas = cada repetición hecha
+  EVENTOS.filter(e => e.tipo === "tarea" && e.repite).forEach(e => {
+    if (hechas) Object.keys(e.hechas || {}).forEach(iso => { const h = e.hechas[iso]; L.push(Object.assign({}, e, { fechaISO: iso, _occ: iso, done: true, terminadoPor: h.por, terminadoAt: h.at })); });
+    else { const p = evPendiente(e); if (p) L.push(p); }
+  });
   const uid = ME && ME.uid;
   const nMias = L.filter(e => e.asignadoUid === uid).length, nYo = L.filter(e => e.createdByUid === uid).length, nSin = L.filter(e => !e.asignadoUid).length;
   if (calTarFiltro === "mias") L = L.filter(e => e.asignadoUid === uid);
@@ -5425,6 +5606,7 @@ function paintCalendario() {
   let startDow = (first.getDay() + 6) % 7; // lunes = 0
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const today = todayISO();
+  const delMes = evEntre(isoOf(calYear, calMonth, 1), isoOf(calYear, calMonth, daysInMonth));
 
   const leyenda = EV_TIPOS.map(([k, l, c]) => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:12px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:3px;background:${c};display:inline-block"></span>${l}</span>`).join("");
 
@@ -5432,7 +5614,7 @@ function paintCalendario() {
   for (let i = 0; i < startDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = isoOf(calYear, calMonth, d);
-    const evs = EVENTOS.filter(e => e.fechaISO === iso);
+    const evs = delMes.filter(e => e.fechaISO === iso);
     const isToday = iso === today;
     const chips = evs.slice(0, 3).map(e => `<div class="cal-chip" title="${escape((e.hora ? e.hora + ' · ' : '') + (e.titulo || ''))}" style="border-left:3px solid ${evColor(e.tipo)};${e.done ? 'opacity:.5;text-decoration:line-through' : ''}">${e.hora ? `<b>${escape(e.hora)}</b> ` : ''}${escape(e.titulo || '')}</div>`).join("");
     const more = evs.length > 3 ? `<div class="cal-more">+${evs.length - 3} más</div>` : "";
@@ -5442,17 +5624,19 @@ function paintCalendario() {
 
   // Próximos eventos (desde hoy, 40 días)
   const limit = new Date(); limit.setDate(limit.getDate() + 40); const limitISO = limit.getFullYear() + "-" + String(limit.getMonth() + 1).padStart(2, "0") + "-" + String(limit.getDate()).padStart(2, "0");
-  const prox = EVENTOS.filter(e => e.fechaISO >= today && e.fechaISO <= limitISO).slice(0, 25);
+  const prox = evEntre(today, limitISO).slice(0, 25);
   const proxRows = prox.map(e => `<div class="ev-row" style="border-left:3px solid ${evColor(e.tipo)}">
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;color:var(--muted)">${escape(fmtFecha(e.fechaISO))}${e.hora ? ' · ' + escape(e.hora) : ''} · ${escape(evTipoLbl(e.tipo))}</div>
         <div style="font-weight:600;${e.done ? 'opacity:.5;text-decoration:line-through' : ''}">${escape(e.titulo || '')}</div>
         ${e.cliente ? `<div style="font-size:12px;color:var(--muted)">${escape(e.cliente)}</div>` : ''}
         ${e.nota ? `<div style="font-size:12px;color:var(--muted)">${escape(e.nota)}</div>` : ''}
+        ${e.repite ? `<div style="font-size:11.5px;color:var(--muted)">${escape(evRepiteTxt(e))}</div>` : ""}
         ${e.createdByNombre ? `<div style="font-size:11.5px;color:var(--muted)">Creado por ${escape(e.createdByNombre)}${e.done && e.terminadoPor ? " · Terminado por " + escape(e.terminadoPor) : ""}</div>` : ''}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0">
-        <button class="mini ev-done" data-id="${e.id}" title="Marcar hecho/pendiente">${e.done ? '↺' : '✓'}</button>
+        <button class="mini ev-done" data-id="${e.id}" data-occ="${e._occ || ""}" title="Marcar hecho/pendiente">${e.done ? '↺' : '✓'}</button>
+        <a class="mini" href="${escape(evGoogleUrl(e))}" target="_blank" rel="noopener" title="Copiar a mi Google Calendar (avisa en el celular)" style="text-decoration:none">📅 Google</a>
         <button class="mini ev-edit" data-id="${e.id}">Editar</button>
         <button class="mini ev-del" data-id="${e.id}" title="Eliminar">✕</button>
       </div>
@@ -5499,8 +5683,8 @@ function paintCalendario() {
   `;
   el("v-calendario").querySelectorAll("#caltabs .subtab").forEach(b => b.onclick = () => { calSubtab = b.dataset.ct; paintCalendario(); });
   el("v-calendario").querySelectorAll("#tarfil .subtab").forEach(b => b.onclick = () => { calTarFiltro = b.dataset.tf; paintCalendario(); });
-  el("v-calendario").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true));
-  el("v-calendario").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false));
+  el("v-calendario").querySelectorAll(".ev-term").forEach(b => b.onclick = () => evTerminar(b.dataset.id, true, b.dataset.occ));
+  el("v-calendario").querySelectorAll(".ev-reab").forEach(b => b.onclick = () => evTerminar(b.dataset.id, false, b.dataset.occ));
   if (el("ev_newt")) el("ev_newt").onclick = () => openEventoModal(null, todayISO());
   el("v-calendario").querySelectorAll(".ev-edit").forEach(b => b.onclick = () => { const e = EVENTOS.find(x => x.id === b.dataset.id); if (e) openEventoModal(e); });
   el("ev_new").onclick = () => openEventoModal(null, today);
@@ -5515,7 +5699,7 @@ function paintCalendario() {
   el("v-calendario").querySelectorAll(".ev-del").forEach(b => b.onclick = () => delEvento(b.dataset.id));
   el("v-calendario").querySelectorAll(".ev-done").forEach(b => b.onclick = async () => {
     const e = EVENTOS.find(x => x.id === b.dataset.id); if (!e) return;
-    evTerminar(e.id, !e.done);
+    const occ = b.dataset.occ; evTerminar(e.id, !evHecha(e, occ || e.fechaISO), occ);
   });
 }
 
@@ -5542,6 +5726,10 @@ function openEventoModal(e, fechaDefault) {
       <div class="field"><label>Hora (opcional)</label><input id="ev_hora" type="time" value="${e ? escape(e.hora || '') : ''}"></div>
     </div>
     <div class="field"><label>Tipo</label><select id="ev_tipo">${EV_TIPOS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+    <div class="grid2">
+      <div class="field"><label>¿Se repite?</label><select id="ev_repite">${EV_REPITE.map(([k, l]) => `<option value="${k}" ${e && (e.repite || "") === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="field" id="ev_hasta_box" style="${e && e.repite ? "" : "display:none"}"><label>Hasta (opcional)</label><input id="ev_hasta" type="date" value="${e ? escape(e.repiteHasta || "") : ""}"></div>
+    </div>
     <div class="field"><label>Cliente (opcional)</label><input id="ev_cliente" list="ev_clist" value="${escape(cliVal)}" placeholder="Escribe o elige de la lista de la Base de Datos" autocomplete="off"><datalist id="ev_clist">${clientesList}</datalist>
       <div class="note" id="ev_clinote" style="margin:4px 0 0">Toca el campo o escribe para ver los clientes. Si eliges uno, la tarea aparece también en su Ficha del cliente.</div></div>
     <div class="field" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px">
@@ -5556,6 +5744,7 @@ function openEventoModal(e, fechaDefault) {
     </div><div class="msg" id="ev_mmsg"></div></div>`;
   document.body.appendChild(bg);
   bg.querySelector("#ev_tipo").value = e ? (e.tipo || "tarea") : "tarea";
+  bg.querySelector("#ev_repite").onchange = function () { bg.querySelector("#ev_hasta_box").style.display = this.value ? "" : "none"; };
   bg.querySelector("#ev_asig_chk").onchange = function () { bg.querySelector("#ev_asig").style.display = this.checked ? "" : "none"; };
   // La lista de usuarios se carga si todavía no se abrió la pestaña Usuarios
   const pintarAsig = () => { const sel = bg.querySelector("#ev_asig"); if (!sel) return; const cur = sel.value || (e && e.asignadoUid) || "";
@@ -5580,6 +5769,7 @@ function openEventoModal(e, fechaDefault) {
       titulo, fechaISO: fecha, hora: bg.querySelector("#ev_hora").value || "",
       tipo: bg.querySelector("#ev_tipo").value, cliente: cli.nombre, clienteNit: cli.nit, clienteBdId: cli.bdId,
       nota: bg.querySelector("#ev_nota").value.trim(), updatedAt: serverTimestamp(),
+      repite: bg.querySelector("#ev_repite").value, repiteHasta: bg.querySelector("#ev_repite").value ? bg.querySelector("#ev_hasta").value : "",
       asignadoUid: asigUid, asignadoNombre: au ? (au.name || au.email || "") : "", asignadoEmail: au ? (au.email || "") : ""
     };
     if (asigUid && (!e || e.asignadoUid !== asigUid)) { item.asignadoPor = (ME && (ME.name || ME.email)) || ""; item.asignadoPorUid = (ME && ME.uid) || ""; item.asignadoAt = Date.now(); }
