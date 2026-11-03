@@ -980,6 +980,7 @@ function adminHandle(d) {
   try {
     if (d.action === "admin_reservas") { admVerificar_(d.idToken, true); return admReservas_(); }
     if (d.action === "admin_docs_cliente") { admVerificar_(d.idToken, true); return admDocsCliente_(d.nit); }
+    if (d.action === "admin_correo_masivo") return admCorreoMasivo_(admVerificar_(d.idToken, true), d);
     if (d.action === "admin_portal_token") {
       var yoP = admVerificar_(d.idToken, true), nitP = String(d.nit || "").replace(/\D/g, "");
       if (!pasClienteCache_(nitP)) return { ok: false, error: "No encontramos ese NIT en la Base de Datos." };
@@ -995,6 +996,45 @@ function adminHandle(d) {
     if (d.action === "admin_ctrl_sync") return ctrlSync_(d.uid);
     return { ok: false, error: "accion_desconocida" };
   } catch (e) { console.error(e); return { ok: false, error: String(e && e.message || e) }; }
+}
+// Correo masivo desde Panel → Clientes: avisos a los activos o recordatorio a quienes no recepcionaron.
+// Solo admin y supervisor. El panel manda los correos en grupos (máx. 40 por llamada) ya con el texto de cada cliente.
+function admCorreoMasivo_(yo, d) {
+  var perfil = fsGet_("users/" + yo.uid) || {};
+  if (["admin", "supervisor"].indexOf(perfil.role) < 0) return { ok: false, error: "Solo un administrador o supervisor puede enviar correos masivos." };
+  var lista = (d.lista || []).slice(0, 40), enviados = 0, fallidos = [];
+  var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
+  if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
+  for (var i = 0; i < lista.length; i++) {
+    var x = lista[i] || {}, para = String(x.correo || "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(para)) { fallidos.push({ correo: para, error: "correo no válido" }); continue; }
+    try {
+      GmailApp.sendEmail(para, String(x.asunto || "Aviso de CONTAX").slice(0, 200), String(x.texto || ""),
+        { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_(x, !!bC, !!bN), inlineImages: inl });
+      enviados++;
+    } catch (e) {
+      var msg = String(e && e.message || e); fallidos.push({ correo: para, error: msg });
+      if (/limit|límite|cuota|quota|too many|demasiad/i.test(msg)) return correoMasivoFin_(yo, d, enviados, fallidos, true);
+    }
+  }
+  return correoMasivoFin_(yo, d, enviados, fallidos, false);
+}
+function correoMasivoFin_(yo, d, enviados, fallidos, limite) {
+  if (!d.prueba) try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "correo_masivo", nombre: String(d.grupo || ""), detalle: yo.nombre + " envió «" + String(((d.lista || [])[0] || {}).asunto || "").slice(0, 120) + "» a " + enviados + " clientes", porUid: yo.uid, porNombre: yo.nombre }); } catch (e) {}
+  return { ok: true, enviados: enviados, fallidos: fallidos, limite: limite };
+}
+function correoAvisoHTML_(x, logoC, logoN) {
+  var cuerpo = esc(String(x.texto || "")).replace(/\n/g, "<br>");
+  return '<!doctype html><html><body style="margin:0;padding:0;background:#eef1f5">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f5;padding:24px 10px"><tr><td align="center">' +
+  '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:\'Century Gothic\',Helvetica,Arial,sans-serif">' +
+    '<tr><td align="center" style="padding:28px 24px 18px"><img src="' + (logoC ? "cid:logoContax" : LOGOS.contax) + '" width="210" alt="CONTAX" style="display:block;width:210px;max-width:70%;height:auto;border:0"></td></tr>' +
+    '<tr><td style="background:' + EMPRESA.navy + ';padding:16px 24px;text-align:center"><div style="color:#ffffff;font-size:19px;font-weight:700">' + esc(String(x.asunto || "Aviso de CONTAX")) + '</div></td></tr>' +
+    '<tr><td style="padding:24px 28px;color:#1f2a3a;font-size:15px;line-height:1.6">' + cuerpo + '</td></tr>' +
+    '<tr><td style="padding:16px 28px 24px;border-top:1px solid #e4e7ee;color:#55617a;font-size:12px;line-height:1.5;text-align:center">' +
+      '<img src="' + (logoN ? "cid:logoNummeros" : LOGOS.nummeros) + '" width="120" alt="NUMMEROS by CONTAX" style="display:block;margin:0 auto 8px;width:120px;height:auto;border:0">' +
+      esc(EMPRESA.nombre) + ' · Contabilidad e Impuestos · ' + esc(EMPRESA.direccion) + '<br>WhatsApp ' + esc(EMPRESA.contacto) + ' · ' + esc(EMPRESA.correo) + '</td></tr>' +
+  '</table></td></tr></table></body></html>';
 }
 // Reservas de cupo de balance vigentes y recientes (para ver en el panel quién reservó)
 function admReservas_() {

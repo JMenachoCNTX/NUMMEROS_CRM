@@ -37,11 +37,13 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v70). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v71). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
 - **Declaraciones → 4) Entrega al cliente:** se suben los documentos y la IA (Gemini, misma clave de comprobantes) lee RCV, F200, F400 y QR y llena el formulario; avisa si el NIT o el período no coinciden. El formulario pregunta antes de cerrarse con cambios sin guardar. **Recepción:** el comprobante puede ser foto, captura o PDF y se lee solo al cargarlo. En Declaraciones, las casillas que llena la IA están en un bloque aparte (borde punteado); hay casilla «Consolidado sin multa» (`dj_rcvConsolidado`, con fecha ISO y persona para las métricas de Control del mes → Por persona → Actividad por día); si nadie elige el responsable se pone quien usa el panel; se pueden subir 2 QR (`qr`, `qr2`) y en «sin movimiento» el Excel y el QR son opcionales.
+- **Sistemas:** pestaña con los accesos a todos los sistemas (`SISTEMAS` en app.js); el encabezado solo tiene el botón «Sistemas». **Recepción:** el comprobante va primero; la IA pone la forma de pago (QR o transferencia) y la fecha; los obligatorios vacíos se marcan en rojo; hay candado contra doble clic y aviso si se repite el N° de operación o la misma recepción en 10 minutos.
+- **Clientes → correo masivo** (solo admin y supervisor): «Correo a activos» y «Recordar a no recepcionados» (período anterior). Lo envía el puente (`admin_correo_masivo`, Gmail de CONTAX, 40 por llamada, versión 45) y queda en `bdlog`.
 - **Calendario:** los eventos pueden repetirse (`repite`: diario, laboral, semanal, mensual, anual; `repiteHasta`; cada repetición terminada en `hechas`). El botón «📅 Google» copia el evento al Google Calendar propio (no se sincroniza solo). **Asistente IA:** dictado por voz (Chrome/Edge) y agenda en el Calendario después de confirmar.
 - **El repositorio es PÚBLICO.** Nunca escribir claves de IA, contraseñas ni datos de clientes en los archivos; las claves van en el Panel (Configuración), que las guarda en Firestore.
 - Cualquier cambio a `users` o a las reglas afecta también a CONTROL y al Portal de repartidores.

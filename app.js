@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "70";
+const APP_VERSION = "71";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -130,7 +130,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 // ---------- Roles, secciones y permisos del portal ----------
 // Secciones del menú (apartados) y las pestañas (views) que contienen
 const NAV_SECTIONS = [
-  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario"] },
+  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "sistemas"] },
   { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "pasarela", "arqueo", "egresos", "repfinanzas"] },
   { key: "listas",   label: "LISTAS",          views: ["control", "declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
@@ -138,7 +138,7 @@ const NAV_SECTIONS = [
   { key: "admin",    label: "ADMINISTRACIÓN",  views: ["asistente", "config", "users", "importar"] }
 ];
 const VIEW_LABELS = {
-  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario",
+  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario", sistemas: "Sistemas",
   recepcion: "Recepción", pasarela: "Pasarela de pagos", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
   control: "Control del mes", declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
@@ -162,7 +162,7 @@ function roleViewsFor(role) {
   if (custom && Array.isArray(custom)) return custom;
   return DEFAULT_ROLE_VIEWS[role] || [];
 }
-function canSeeView(v) { if (!ME) return false; if (ME.role === "admin") return true; return roleViewsFor(ME.role).indexOf(v) >= 0; }
+function canSeeView(v) { if (!ME) return false; if (ME.role === "admin" || v === "sistemas") return true; return roleViewsFor(ME.role).indexOf(v) >= 0; }
 function isAdmin() { return !!(ME && (ME.role === "admin" || ME.role === "supervisor")); }
 function isAdminStrict() { return !!(ME && ME.role === "admin"); }
 function canEditClientes() { return !!(ME && ["admin", "supervisor", "editor", "cajero"].indexOf(ME.role) >= 0); }
@@ -194,6 +194,33 @@ async function ctrlSync(uid) {
   } catch (e) { console.warn("CONTROL: no se pudo sincronizar el acceso", e); }
 }
 
+// ---------- SISTEMAS: accesos a todos los sistemas (antes eran botones en el encabezado) ----------
+const SISTEMAS = [
+  ["CONTAX", [
+    ["Sistema contable", "Contabilidad completa de CONTAX y de los clientes.", "http://sistema.contaxbolivia.com/", "M4 20h16M6 16l4-5 3 3 5-7"],
+    ["Portal del Cliente", "Lo que ve cada cliente: declaraciones, documentos y pagos de Yango.", "cliente.html", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"],
+    ["Pasarela de pagos", "Página donde los clientes pagan con QR (vista previa).", "pagos.html?vista=previa", "M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M7 15h3"]
+  ]],
+  ["Yango / MTG", [
+    ["CONTROL", "Pagos y facturas de los repartidores (entras con tu mismo usuario).", "https://jmenachocntx.github.io/CONTROL-NUMMEROS/", "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"],
+    ["Portal de repartidores", "Lo que ve cada repartidor: sus pagos, facturas y pólizas.", "https://portalnummeros.contaxbolivia.com/", "M5.5 17a3.5 3.5 0 1 0 0 .01M18.5 17a3.5 3.5 0 1 0 0 .01M5.5 17h6l3-6h-4M15 6h2l3.5 11"]
+  ]],
+  ["Contenido y webs", [
+    ["EdiThor", "Editor de imágenes y tutoriales de NUMMEROS.", "https://edithornummeros.contaxbolivia.com/", "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"],
+    ["Web de CONTAX", "Página institucional de CONTAX.", "https://contaxbolivia.com/", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"],
+    ["Web de NUMMEROS", "Página institucional de NUMMEROS.", "https://nummeros.contaxbolivia.com/", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"]
+  ]],
+  ["Sistemas de clientes", [
+    ["Grupo Velasco", "Pagos al personal y arqueo de los restaurantes.", "https://nummeros-grupovelasco.contaxbolivia.com/", "M4 21V8l8-5 8 5v13M9 21v-6h6v6"],
+    ["PESO Finanzas", "Finanzas de PE$O.", "https://nummeros.peso.contaxbolivia.com/", "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"]
+  ]]
+];
+function renderSistemas() {
+  el("v-sistemas").innerHTML = `<h1>Sistemas</h1><p class="lead">Todos los sistemas de CONTAX y NUMMEROS en un solo lugar. Se abren en otra pestaña.</p>
+    <style>.sis-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin:0 0 22px}.sis{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--txt);text-decoration:none;transition:.12s}
+      .sis:hover{border-color:var(--sage);transform:translateY(-1px)}.sis .ico2{width:40px;height:40px;border-radius:10px;background:var(--panel2);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}.sis b{display:block;margin-bottom:3px}.sis small{color:var(--muted);font-size:12.5px;line-height:1.35}</style>
+    ${SISTEMAS.map(([g, l]) => `<h3 style="margin:0 0 10px">${escape(g)}</h3><div class="sis-grid">${l.map(([n, d, u, ic]) => `<a class="sis" href="${escape(u)}" target="_blank" rel="noopener"><span class="ico2"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ic}"/></svg></span><span><b>${escape(n)}</b><small>${escape(d)}</small></span></a>`).join("")}</div>`).join("")}`;
+}
 function buildNav() {
   let first = null;
   document.querySelectorAll('nav.tabs button').forEach(b => {
@@ -201,6 +228,7 @@ function buildNav() {
     b.classList.toggle("hidden", !ok);
     b.classList.remove("active");
     b.onclick = () => switchView(b.dataset.v, b);
+    if (b.dataset.v === "sistemas" && el("tbSistemas")) el("tbSistemas").onclick = () => switchView("sistemas", b);
     if (ok && !first) first = b;
   });
   // Ocultar el encabezado de una sección si no tiene ninguna pestaña visible
@@ -298,6 +326,7 @@ function switchView(v, btn) {
   if (v === "eeff") renderListaEEFF();
   if (v === "facturacion") renderFacturacion();
   if (v === "calendario") renderCalendario();
+  if (v === "sistemas") renderSistemas();
   if (v === "arqueo") renderArqueo();
   if (v === "egresos") renderEgresos();
   if (v === "repfinanzas") renderRepFinanzas();
@@ -1603,6 +1632,7 @@ function paintBaseDatos() {
       ${canEdit ? '<button class="btn" id="bd_new">＋ Nuevo</button>' : ""}
       <button class="btn sec" id="bd_cols" style="border:1px solid var(--line)">Columnas${bdHidden.length ? ` (${visHeader.length}/${bdHeader.length})` : ""}</button>
       <button class="btn sec" id="bd_download" style="border:1px solid var(--line)">⬇ Descargar</button>
+      ${isAdmin() ? '<button class="btn sec" id="bd_mail_act" style="border:1px solid var(--line)" title="Enviar un aviso por correo a todos los clientes activos">✉ Correo a activos</button><button class="btn sec" id="bd_mail_norec" style="border:1px solid var(--line)" title="Recordar a los activos que aún no recepcionaron su declaración">✉ Recordar a no recepcionados</button>' : ""}
       <button class="btn sec" id="bd_reload" style="border:1px solid var(--line)">Actualizar</button>
       ${(isAdmin() && !bdEnFirebaseFlag) ? '<button class="btn" id="bd_migrar" style="background:var(--green);border-color:var(--green)" title="Copiar todo a Firebase y dejar de usar Google Sheets">⬆ Migrar a Firebase</button>' : ''}
       ${(isAdmin() && bdEnFirebaseFlag) ? '<label class="btn sec" id="bd_xls" style="border:1px solid var(--line);cursor:pointer" title="Sube el Excel actualizado: solo se guarda lo nuevo y lo que cambió">Importar Excel<input type="file" id="bd_xls_in" accept=".xlsx,.xls" style="display:none"></label>' : ''}
@@ -1641,6 +1671,8 @@ function paintBaseDatos() {
   if (el("bd_xls_in")) el("bd_xls_in").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) bdImportarExcel(f); };
   el("v-basedatos").querySelectorAll(".bd-kpi").forEach(k => { k.style.cursor = "pointer"; k.onclick = () => { const g = "g:" + k.dataset.gfilter; bdEstado = (bdEstado === g) ? "" : g; bdSubtab = "general"; paintBaseDatos(); }; });
   if (el("bd_download")) el("bd_download").onclick = () => openBDDownloadModal(list);
+  if (el("bd_mail_act")) el("bd_mail_act").onclick = () => openCorreoMasivo("activos");
+  if (el("bd_mail_norec")) el("bd_mail_norec").onclick = () => openCorreoMasivo("norec");
   el("v-basedatos").querySelectorAll("[data-edit]").forEach(b =>b.onclick = (e) => { e.stopPropagation(); openBDModal(BD[+b.dataset.edit]); });
   el("v-basedatos").querySelectorAll("tr[data-open]").forEach(r =>r.onclick = () =>openBDModal(BD[+r.dataset.open]));
   // Resaltado de columna: al pasar el cursor, ilumina toda la columna
@@ -2938,6 +2970,28 @@ function paintRecepcion() {
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
       <div class="formcard" style="max-width:none">
+        <div style="border:1.5px dashed var(--accent);border-radius:12px;padding:12px 14px;margin:0 0 14px;background:var(--panel2)">
+          <div class="fs" style="margin-top:0">1) 📷 Empieza por el comprobante — la IA llena los datos</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start">
+            <div>
+              <p class="note" style="margin:0 0 8px">Sube la foto, la captura (JPG/PNG) o el <b>PDF</b> del comprobante, o <b>pégala</b> (Ctrl+V). La IA lo lee sola y llena Total, forma de pago (QR o transferencia), fecha, Banco, N° de operación y Depositante. Lo que quede en <b style="color:var(--danger)">rojo</b> lo llenas tú. Si fue en efectivo, sáltate este paso.</p>
+              <input id="r_compfile" type="file" accept="image/*,application/pdf">
+              <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+                <button type="button" class="btn sec" id="r_compread" style="border:1px solid var(--line)" disabled>🤖 Leer con IA</button>
+                <span class="msg" id="r_compmsg"></span>
+              </div>
+              <div id="r_compprev" style="margin-top:8px"></div>
+            </div>
+            <div>
+              <div style="${g2}">
+                <div class="field"><label>Banco</label><input id="r_banco" placeholder="Ej. BNB, BCP…"></div>
+                <div class="field"><label>N° de operación</label><input id="r_oper" placeholder="—"></div>
+              </div>
+              <div class="field"><label>Depositante</label><input id="r_depo" placeholder="Quién hizo el pago"></div>
+            </div>
+          </div>
+        </div>
+        <div class="fs" style="margin-top:0">2) Cliente, servicio y pago</div>
         <div class="field"><label>Cliente (escribe para buscar)</label><div style="display:flex;gap:8px"><input id="r_clibusca" list="r_cli_dl" placeholder="Escribe el nombre o código y elige de la lista" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn sec" id="r_newcli" style="border:1px solid var(--line);white-space:nowrap;display:inline-flex;align-items:center;gap:6px" title="El cliente no está en la Base de Datos"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>Nuevo cliente</button></div><datalist id="r_cli_dl">${cliDL}</datalist></div>
         <div id="r_estado_box" style="margin:-4px 0 6px"></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px;align-items:start;margin-top:6px">
@@ -2978,24 +3032,6 @@ function paintRecepcion() {
               <div class="field"><label>Fecha</label><input id="r_fecha" value="${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}"></div>
               <div class="field"><label>Hora</label><input id="r_hora" value="${now.toLocaleTimeString("es-BO", { hour12: false })}"></div>
             </div>
-          </div>
-
-          <div>
-            <div class="fs">📷 Comprobante (opcional) — la IA llena los datos</div>
-            <div class="field" style="border:1px dashed var(--line);border-radius:10px;padding:12px">
-              <p class="note" style="margin:0 0 8px">Sube la foto, la captura (JPG/PNG) o el <b>PDF</b> del comprobante, o <b>pégala</b> (Ctrl+V). La IA lo lee sola y llena Total, Banco, N° de operación y Depositante; lo demás lo completas tú.</p>
-              <input id="r_compfile" type="file" accept="image/*,application/pdf">
-              <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-                <button type="button" class="btn sec" id="r_compread" style="border:1px solid var(--line)" disabled>🤖 Leer con IA</button>
-                <span class="msg" id="r_compmsg"></span>
-              </div>
-              <div id="r_compprev" style="margin-top:8px"></div>
-            </div>
-            <div style="${g2}">
-              <div class="field"><label>Banco</label><input id="r_banco" placeholder="Ej. BNB, BCP…"></div>
-              <div class="field"><label>N° de operación</label><input id="r_oper" placeholder="—"></div>
-            </div>
-            <div class="field"><label>Depositante</label><input id="r_depo" placeholder="Quién hizo el pago"></div>
           </div>
 
         </div>
@@ -3100,7 +3136,16 @@ function paintRecepcion() {
         if (d.banco && el("r_banco") && !el("r_banco").value) el("r_banco").value = d.banco;
         if (d.nroOperacion && el("r_oper") && !el("r_oper").value) el("r_oper").value = d.nroOperacion;
         if (d.depositante && el("r_depo") && !el("r_depo").value) el("r_depo").value = d.depositante;
-        if (m) { m.className = "msg ok"; m.textContent = "✓ Datos extraídos. Revísalos antes de registrar." + (d.destino && !/contax/i.test(d.destino) ? " ⚠ El destino no parece CONTAX." : ""); }
+        // Forma de pago: QR o transferencia (si la lista no tiene «QR», se agrega para esta recepción)
+        const fp = /qr/i.test(String(d.metodo || "")) ? "QR" : /transf|deposit/i.test(String(d.metodo || "")) ? "TRANSFERENCIA" : "";
+        const selP = el("r_pago");
+        if (fp && selP) { let op = [...selP.options].find(o => o.value.toUpperCase().includes(fp)); if (!op) { op = new Option(fp, fp); selP.add(op); } selP.value = op.value; recMarcar("r_pago"); }
+        const fISO = String(d.fecha || "").match(/(\d{4})-(\d{2})-(\d{2})/) ? String(d.fecha).slice(0, 10) : (m2 => m2 ? m2[3] + "-" + m2[2].padStart(2, "0") + "-" + m2[1].padStart(2, "0") : "")(String(d.fecha || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/));
+        if (fISO && el("r_fpago")) { el("r_fpago").value = fISO; recMarcar("r_fpago"); }
+        // Duplicado: el mismo N° de operación ya está registrado
+        const dup = d.nroOperacion ? RECEP.find(x => String(x.compNroOperacion || "").replace(/\D/g, "") && String(x.compNroOperacion).replace(/\D/g, "") === String(d.nroOperacion).replace(/\D/g, "")) : null;
+        const faltan = recFaltantes();
+        if (m) { m.className = dup ? "msg err" : "msg ok"; m.innerHTML = (dup ? `⚠ <b>Este comprobante ya se registró</b> en la recepción N° ${escape(String(dup.nroRecepcion || ""))} (${escape(dup.clienteNombre || "")}). ` : "✓ Datos extraídos. ") + (faltan.length ? `Falta llenar (en rojo): <b>${faltan.map(escape).join(", ")}</b>.` : "Revísalos antes de registrar.") + (d.destino && !/contax/i.test(d.destino) ? " ⚠ El destino no parece CONTAX." : ""); }
       };
       // Pegar imagen con Ctrl+V
       recPasteHandler = (ev) => {
@@ -3110,6 +3155,8 @@ function paintRecepcion() {
       };
       document.addEventListener("paste", recPasteHandler);
       if (el("r_save")) el("r_save").onclick = registrarRecepcion;
+      // Al escribir en un campo marcado en rojo, se quita la marca
+      ["r_nombre", "r_nit", "r_serv", "r_det", "r_total", "r_pago", "r_at", "r_correo"].forEach(id => { const x = el(id); if (x) x.addEventListener(x.tagName === "SELECT" ? "change" : "input", () => { if (x.value.trim()) x.classList.remove("r-falta"); }); });
       if (el("r_newcli")) el("r_newcli").onclick = recNuevoCliente;
       if (recFlash && el("r_msg")) {
         el("r_msg").className = "msg ok"; el("r_msg").innerHTML = escape(recFlash) + (recLastRec ? ` <button class="btn sec" id="r_vercomp" style="border:1px solid var(--line);margin-left:8px;padding:3px 10px">👁 Ver comprobante</button>` : "");
@@ -3257,13 +3304,34 @@ function recPintarEstado() {
     if (ok) recPintarEstado(); else { b.disabled = false; b.textContent = "✓ Marcar ACTIVO"; }
   };
 }
+// Campos que el equipo debe llenar a mano: los vacíos se marcan en rojo
+const REC_OBLIG = [["r_nombre", "cliente"], ["r_nit", "NIT"], ["r_serv", "servicio"], ["r_det", "detalle"], ["r_total", "total"], ["r_pago", "forma de pago"], ["r_at", "atención"]];
+function recFaltantes() {
+  if (!document.getElementById("r_falta_css")) { const st = document.createElement("style"); st.id = "r_falta_css"; st.textContent = ".r-falta{border-color:var(--danger)!important;box-shadow:0 0 0 2px rgba(180,69,60,.25)!important}.r-ia{border-color:var(--ok)!important}"; document.head.appendChild(st); }
+  const f = [];
+  REC_OBLIG.forEach(([id, n]) => { const x = el(id); if (!x) return; const vacio = !String(x.value || "").trim(); x.classList.toggle("r-falta", vacio); if (vacio) f.push(n); });
+  return f;
+}
+function recMarcar(id) { const x = el(id); if (x) { x.classList.remove("r-falta"); x.classList.add("r-ia"); } }
+let recGuardando = false;
 async function registrarRecepcion() {
+  // Candado: si tocan «Registrar» dos veces, la segunda no hace nada mientras se guarda la primera
+  if (recGuardando) return;
+  recGuardando = true;
+  try { await registrarRecepcion1(); } finally { recGuardando = false; }
+}
+async function registrarRecepcion1() {
   const msg = el("r_msg");
   const nombre = el("r_nombre").value.trim();
   const total = parseFloat(el("r_total").value);
   const servicio = el("r_serv").value;
   if (!nombre) { msg.className = "msg err"; msg.textContent = "Elige o escribe el cliente."; return; }
   if (isNaN(total) || total < 0) { msg.className = "msg err"; msg.textContent = "Pon un total válido."; return; }
+  // Misma recepción registrada hace poco (mismo NIT, servicio, detalle e importe en los últimos 10 minutos) o mismo N° de operación
+  const nitN = el("r_nit").value.replace(/\D/g, ""), opN = el("r_oper").value.replace(/\D/g, ""), hace = Date.now() - 600000;
+  const dup = RECEP.find(x => (opN && String(x.compNroOperacion || "").replace(/\D/g, "") === opN) ||
+    (nitN && String(x.nit || "").replace(/\D/g, "") === nitN && x.servicio === servicio && x.detalleServicio === el("r_det").value && Number(x.importe) === total && Date.parse(x.fechaISO || "") > hace));
+  if (dup && !confirm(`Parece repetida: ya existe la recepción N° ${dup.nroRecepcion} de ${dup.clienteNombre} por Bs ${dup.importe}${opN && String(dup.compNroOperacion || "").replace(/\D/g, "") === opN ? " con el mismo N° de operación" : ""}.\n\n¿Registrar otra igual de todas formas?`)) return;
   // Cliente dado de baja: preguntar antes de registrar
   let activarAlRegistrar = false;
   if (recCli && esBaja(bdV(recCli, "estado"))) {
@@ -3420,8 +3488,8 @@ async function ocrComprobanteGemini(dataUrl) {
   if (!b64) return { error: "No hay imagen." };
   const prompt = "Eres un asistente contable en Bolivia. El archivo (imagen o PDF) es un comprobante de pago/transferencia bancaria o un gasto. " +
     "Extrae los datos y responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
-    '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":""}. ' +
-    "importe solo el número (ej. 150.00). Si un dato no aparece, déjalo como cadena vacía.";
+    '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":"","metodo":""}. ' +
+    "importe solo el número (ej. 150.00). fecha en formato aaaa-mm-dd. metodo: \"QR\" si fue un pago con código QR (dice QR, Simple, pago QR) o \"TRANSFERENCIA\" si fue transferencia o depósito. Si un dato no aparece, déjalo como cadena vacía.";
   const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" }, {}) });
   const baseModel = /latest/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-flash-lite-latest";
   const models = [baseModel, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i && /gemini/i.test(m));
@@ -3732,6 +3800,88 @@ const ESTADOS_FACTURA = [["pendiente", "Pendiente"], ["facturado", "Facturado"]]
 const LT_UI = {}; // filtros por lista
 // Datos propios de las listas (desde 2026), se cargan una vez por sesión para no gastar lecturas
 let LT_DATA = null, LT_AT = 0;
+// ---------- CORREO MASIVO (Clientes): aviso a todos los activos o recordatorio a quienes no recepcionaron ----------
+// Lo envía el puente con el Gmail de CONTAX (máx. 40 por llamada; Gmail tiene un límite diario).
+const CM_PLANTILLAS = {
+  activos: { asunto: "Aviso importante de CONTAX", texto: "Estimado/a {nombre}:\n\nEscribe aquí tu aviso.\n\nSaludos cordiales,\nEquipo CONTAX" },
+  norec: { asunto: "Recordatorio: declaración de {periodo}", texto: "Estimado/a {nombre}:\n\nTe recordamos que aún no recibimos tu declaración del período {periodo}. Tu fecha de vencimiento es el {vence}, según el último dígito de tu NIT.\n\nPuedes pagar y enviarnos tus facturas desde nuestra pasarela de pagos: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\n\nSi ya lo hiciste, por favor ignora este mensaje.\n\nSaludos cordiales,\nEquipo CONTAX" }
+};
+async function openCorreoMasivo(grupo) {
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:640px;max-width:96vw;max-height:94vh;overflow:auto"><p class="note"><span class="cx-spin"></span> Preparando la lista…</p></div>`;
+  document.body.appendChild(bg);
+  const caja = bg.firstElementChild;
+  let per = "";
+  if (grupo === "norec") { await ltLoad(); const d = new Date(); d.setMonth(d.getMonth() - 1); per = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  const lista = () => {
+    let L = BD.filter(bdIsActivo);
+    if (grupo === "norec") {
+      const nits = new Set(LT_DATA.filter(r => recCatDe(r) === "declaracion" && recPeriodoKey(r) === per).map(r => fiNit(r.nit)).filter(Boolean));
+      L = L.filter(c => !nits.has(fiNit(bdV(c, "nit"))));
+    }
+    const vistos = new Set(), out = [];
+    L.forEach(c => { const m = String(bdV(c, "correo") || "").trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m) || vistos.has(m)) return; vistos.add(m); out.push({ correo: m, nombre: bdV(c, "nombre") || bdV(c, "razon") || "", nit: fiNit(bdV(c, "nit")) }); });
+    return { todos: L.length, con: out };
+  };
+  const llenar = (t, c) => { const v = per ? cmVencimiento(c.nit, per) : null;
+    return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{periodo\}/g, per ? recPeriodoTxt(per) : "").replace(/\{vence\}/g, v ? djFechaTxt(v.iso) : "día de tu vencimiento").replace(/\{nit\}/g, c.nit || ""); };
+  const pl = CM_PLANTILLAS[grupo];
+  const pintar = () => {
+    const L = lista();
+    caja.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><h3 style="margin:0">${grupo === "norec" ? "✉ Recordar a quienes no recepcionaron" : "✉ Correo a todos los clientes activos"}</h3><button class="mini" id="cmm_x">✕</button></div>
+      ${grupo === "norec" ? `<div class="field" style="margin-top:10px"><label>Período a declarar</label><input id="cmm_per" type="month" value="${per}"></div>` : ""}
+      <div class="note" style="margin:8px 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">Se enviará a <b>${L.con.length}</b> clientes con correo${L.todos - L.con.length > 0 ? ` (<b>${L.todos - L.con.length}</b> ${grupo === "norec" ? "activos sin recepcionar" : "activos"} no tienen correo válido)` : ""}. <a href="#" id="cmm_ver">Ver la lista</a><div id="cmm_lista" style="display:none;max-height:160px;overflow:auto;margin-top:6px;font-size:12px">${L.con.map(c => escape(c.nombre) + " · " + escape(c.correo)).join("<br>")}</div></div>
+      <div class="field"><label>Asunto</label><input id="cmm_asunto" value="${escape(pl.asunto)}"></div>
+      <div class="field"><label>Mensaje</label><textarea id="cmm_texto" style="min-height:190px;font-family:inherit">${escape(pl.texto)}</textarea>
+        <div class="note" style="margin:4px 0 0">Se reemplaza solo: <b>{nombre}</b>${grupo === "norec" ? ", <b>{periodo}</b>, <b>{vence}</b> (su fecha de vencimiento), <b>{nit}</b>" : ", <b>{nit}</b>"}. Sale con el logo de CONTAX y si el cliente responde, llega a ${escape("info@contaxbolivia.com")}.</div></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <span class="msg" id="cmm_msg" style="margin:0 auto 0 0"></span>
+        <button class="btn sec" id="cmm_prueba" style="border:1px solid var(--line)">Enviarme una prueba</button>
+        <button class="btn" id="cmm_env" ${L.con.length ? "" : "disabled"}>Enviar a ${L.con.length}</button>
+      </div>`;
+    const $ = id => caja.querySelector("#" + id), msg = $("cmm_msg");
+    $("cmm_x").onclick = () => bg.remove();
+    $("cmm_ver").onclick = e => { e.preventDefault(); const l = $("cmm_lista"); l.style.display = l.style.display === "none" ? "" : "none"; };
+    if ($("cmm_per")) $("cmm_per").onchange = () => { pl.asunto = $("cmm_asunto").value; pl.texto = $("cmm_texto").value; per = $("cmm_per").value; pintar(); };
+    const mandar = async (dest, prueba) => {
+      const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+      const asunto = $("cmm_asunto").value.trim(), texto = $("cmm_texto").value.trim();
+      if (!asunto || !texto) throw new Error("Escribe el asunto y el mensaje.");
+      let env = 0, fall = [];
+      for (let i = 0; i < dest.length; i += 40) {
+        const grupoL = dest.slice(i, i + 40).map(c => ({ correo: c.correo, asunto: llenar(asunto, prueba ? prueba : c), texto: llenar(texto, prueba ? prueba : c) }));
+        msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Enviando… ${env} de ${dest.length}`;
+        const idToken = await auth.currentUser.getIdToken();
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo, prueba: !!prueba, lista: grupoL }) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
+        env += r.enviados; fall = fall.concat(r.fallidos || []);
+        if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos. Vuelve a intentar mañana." }); break; }
+      }
+      return { env, fall };
+    };
+    $("cmm_prueba").onclick = async () => {
+      const b = $("cmm_prueba"); b.disabled = true;
+      try { const ej = L.con[0] || { nombre: ME.name || "", nit: "" }; const o = await mandar([{ correo: ME.email }], ej); msg.className = o.env ? "msg ok" : "msg err"; msg.textContent = o.env ? "✓ Prueba enviada a " + ME.email + " (con los datos de " + (ej.nombre || "un cliente") + ")." : "No se pudo: " + ((o.fall[0] || {}).error || ""); }
+      catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+      b.disabled = false;
+    };
+    let confirmar = false;
+    $("cmm_env").onclick = async () => {
+      const b = $("cmm_env");
+      if (!confirmar) { confirmar = true; b.textContent = "¿Seguro? Toca otra vez para enviar a " + L.con.length; b.style.background = "var(--danger)"; b.style.borderColor = "var(--danger)"; return; }
+      b.disabled = true; $("cmm_prueba").disabled = true;
+      try {
+        const o = await mandar(L.con, null);
+        msg.className = o.fall.length ? "msg err" : "msg ok";
+        msg.innerHTML = `✓ Enviados: <b>${o.env}</b> de ${L.con.length}.` + (o.fall.length ? ` No se enviaron ${o.fall.length}: ` + o.fall.slice(0, 5).map(f => escape((f.correo ? f.correo + " — " : "") + f.error)).join("; ") : "");
+        b.textContent = "Enviado";
+      } catch (e) { msg.className = "msg err"; msg.textContent = e.message; b.disabled = false; $("cmm_prueba").disabled = false; }
+    };
+  };
+  pintar();
+}
+function primerNombreCM(n) { const t = String(n || "").trim(); if (!t) return "cliente"; return t.split(/\s+/).slice(0, 2).map(p => p.charAt(0) + p.slice(1).toLowerCase()).join(" "); }
 async function ltLoad(force) {
   try {
     const todos = (await recSync()).filter(recValida);
