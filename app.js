@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "76";
+const APP_VERSION = "77";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5892,7 +5892,102 @@ function paintRepFinanzas() {
 }
 
 // ---------- FACTURACIÓN (subpestañas) ----------
-const FAC_UI = { tab: "activos", per: "", q: "" };
+const FAC_UI = { tab: "activos", per: "", q: "", fuente: "yango", ycont: "CONTAX", yver: "faltan" };
+// ============================================================
+//  Lista de facturación de repartidores (la de CONTROL · Facturas)
+//  Se lee en vivo del Portal de repartidores (portal-nummeros) con la cuenta de CONTROL
+//  del usuario (puente: admin_ctrl_sesion). Mismas filas e importes que en CONTROL:
+//  semanas pendientes de pago + semanas pagadas «con retención» que aún deben factura.
+//  CONTAX = cliente «Activo» de la Base de Datos (por celular o por nombre).
+// ============================================================
+const PORTAL_FB = { apiKey: "AIzaSyBh_NxhM5h6x--ZwxwoUCYf0yhW7Mt9k_A", authDomain: "portal-nummeros.firebaseapp.com", projectId: "portal-nummeros",
+  storageBucket: "portal-nummeros.firebasestorage.app", messagingSenderId: "924886635369", appId: "1:924886635369:web:48f940d324d4dfb518e3f8" };
+const YF = { app: null, auth: null, db: null, filas: null, at: 0, err: "", cargando: null };
+async function yfConectar() {
+  if (!YF.app) { YF.app = initializeApp(PORTAL_FB, "portalRepartidores"); YF.auth = getAuth(YF.app); YF.db = getFirestore(YF.app); }
+  const yo = String((auth.currentUser && auth.currentUser.email) || "").toLowerCase();
+  if (YF.auth.currentUser && String(YF.auth.currentUser.email).toLowerCase() === yo) return;
+  const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+  const idToken = await auth.currentUser.getIdToken();
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_ctrl_sesion", idToken, reponer: false }) }).then(x => x.json());
+  if (!r.ok) throw new Error(r.error || "No se pudo entrar a CONTROL.");
+  await signInWithEmailAndPassword(YF.auth, r.correo, r.llave);
+}
+const yfNorm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+const yfPal = t => yfNorm(t).split(/[^A-Z]+/).filter(w => w.length >= 3);
+const yfSemN = s => { const m = String(s || "").match(/(\d{1,2})\D*G?\D*(\d{2,4})?/i); return m ? (Number(m[2] ? (m[2].length === 2 ? "20" + m[2] : m[2]) : 0) * 100 + Number(m[1])) : 0; };
+async function yfCargar(forzar) {
+  if (!forzar && YF.filas && Date.now() - YF.at < 10 * 60e3) return YF.filas;
+  if (YF.cargando) return YF.cargando;
+  YF.cargando = (async () => {
+    await Promise.all([yfConectar(), new Promise(res => bdEnsureLoaded(() => res()))]);
+    const [sem, fac, hist] = await Promise.all([
+      getDocs(query(collection(YF.db, "semanas"), where("estado", "==", "pendiente"))),
+      getDocs(collection(YF.db, "facturas")),
+      getDocs(collection(YF.db, "historialPagos"))
+    ]);
+    // Factura vigente por ID de Yango y semana (la más reciente manda)
+    const facDe = {};
+    fac.docs.forEach(d => { const f = { _id: d.id, ...d.data() }; if (f.estado === "anulada") return; const t = f.subido && f.subido.seconds || 0;
+      (f.semanas || []).forEach(sm => { const k = String(f.id) + "|" + sm, p = facDe[k]; if (!p || t > (p.subido && p.subido.seconds || 0)) facDe[k] = f; }); });
+    // Clientes «Activos» de la Base de Datos → por celular y por nombre
+    const act = BD.filter(r => yfNorm(bdV(r, "estado")) === "ACTIVO");
+    const porCel = {}; act.forEach(r => { const c = String(bdV(r, "celular")).replace(/\D/g, "").slice(-8); if (c.length === 8) porCel[c] = r; });
+    const nomCli = act.map(r => ({ r, set: new Set(yfPal(bdV(r, "nombre") || bdV(r, "razon"))) }));
+    const cacheCli = {};
+    const clienteDe = (id, nombre, cel) => {
+      if (id in cacheCli) return cacheCli[id];
+      const c8 = String(cel || "").replace(/\D/g, "").slice(-8); let r = c8.length === 8 ? porCel[c8] : null;
+      if (!r) { const p = yfPal(nombre); if (p.length >= 2) { const l = nomCli.filter(x => p.every(w => x.set.has(w))); if (l.length === 1) r = l[0].r; } }
+      return (cacheCli[id] = r || null);
+    };
+    const filas = [], ya = {};
+    const agregar = (id, nombre, cel, semana, importe, tipo, extra) => {
+      id = String(id); const k = id + "|" + semana; if (ya[k] || !(Number(importe) > 0)) return; ya[k] = 1;
+      const f = facDe[k] || null, cli = clienteDe(id, nombre, cel);
+      const estado = !f ? (cli ? "porEmitir" : "falta") : f.origen === "contax" ? "contax" : f.estado === "aprobada" ? "aprobada" : f.estado === "recibida" ? "subida" : "observada";
+      filas.push({ id, nombre: nombre || "", celular: cel || "", semana, importe: Number(importe) || 0, tipo, f, cli, contador: cli ? "CONTAX" : "OTRO", estado,
+        tiene: estado === "aprobada" || estado === "contax" || estado === "subida", ...(extra || {}) });
+    };
+    sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, "pendiente", { rango: x.rango || "" }); });
+    hist.docs.forEach(d => { const x = d.data(); let l = []; try { l = JSON.parse(x.filas || "[]"); } catch (e) {}
+      l.forEach(h => { if (/RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], "retenido", { rango: h[1] || "", fechaPago: x.fecha || "" }); }); });
+    filas.sort((a, b) => yfNorm(a.nombre).localeCompare(yfNorm(b.nombre)) || yfSemN(a.semana) - yfSemN(b.semana));
+    YF.filas = filas; YF.at = Date.now(); YF.err = "";
+    return filas;
+  })();
+  try { return await YF.cargando; } catch (e) { YF.err = e.message || String(e); throw e; } finally { YF.cargando = null; }
+}
+const fmtBsY = n => "Bs " + (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const YF_EST = { falta: ["#B4453C", "Falta factura"], porEmitir: ["#235347", "CONTAX debe emitir"], subida: ["#C77C2E", "Subida · por revisar"],
+  observada: ["#B4453C", "Observada"], aprobada: ["#2E7D5B", "Emitida ✅"], contax: ["#2E7D5B", "Emitida por CONTAX ✅"] };
+function yfChip(e) { const x = YF_EST[e] || ["#5E7A70", e]; return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${x[0]}">${escape(x[1])}</span>`; }
+function yfHTML() {
+  if (YF.err) return `<p class="msg err">No se pudo leer la lista de CONTROL: ${escape(YF.err)}</p><button class="btn" id="yf_rec">Reintentar</button>`;
+  if (!YF.filas) return `<p class="lead"><span class="cx-spin"></span> Trayendo la lista de facturación de CONTROL…</p>`;
+  const q = FAC_UI.q.toLowerCase(), todas = YF.filas;
+  const l = todas.filter(x => (!FAC_UI.ycont || x.contador === FAC_UI.ycont) && (FAC_UI.yver === "" || (FAC_UI.yver === "faltan" ? !x.tiene : x.tiene))
+    && (!q || [x.nombre, x.id, x.celular, x.semana].join(" ").toLowerCase().includes(q)));
+  const k = (t, a) => { const f = a.filter(x => !x.tiene); return `<div class="kpi"><div class="n">${f.length}</div><div class="l">${t} sin factura · ${fmtBsY(f.reduce((s, x) => s + x.importe, 0))}<br>${a.length - f.length} con factura</div></div>`; };
+  const fmtF = v => { if (!v) return ""; if (v.seconds) return new Date(v.seconds * 1000).toLocaleDateString("es-BO"); return escape(String(v)); };
+  return `<p class="note" style="margin:0 0 10px">Es la <b>lista de facturación de CONTROL</b> (pestaña Facturas): cada semana que necesita factura para MILTHAGOR, con los mismos importes. <b>CONTAX</b> = repartidores que son clientes activos (por celular o nombre); a ellos les emitimos nosotros. Se actualiza cada 10 minutos.</p>
+    <div class="kpis">${k("General", todas)}${k("CONTAX", todas.filter(x => x.contador === "CONTAX"))}${k("Externos", todas.filter(x => x.contador === "OTRO"))}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
+      <select id="yf_cont"><option value="CONTAX" ${FAC_UI.ycont === "CONTAX" ? "selected" : ""}>Solo CONTAX</option><option value="OTRO" ${FAC_UI.ycont === "OTRO" ? "selected" : ""}>Solo externos</option><option value="" ${!FAC_UI.ycont ? "selected" : ""}>Todos</option></select>
+      <select id="yf_ver"><option value="faltan" ${FAC_UI.yver === "faltan" ? "selected" : ""}>Sin factura</option><option value="con" ${FAC_UI.yver === "con" ? "selected" : ""}>Con factura</option><option value="" ${!FAC_UI.yver ? "selected" : ""}>Todas</option></select>
+      <input id="fac_q" placeholder="Buscar nombre, ID, celular o semana…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
+      <button class="btn ghost" id="yf_rec">↻ Actualizar</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
+    <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th><th>Contador</th><th>Factura</th><th>N.º · Fecha · NIT</th></tr></thead><tbody>
+    ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b><div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
+      <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : ""}</td>
+      <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
+      <td>${x.contador === "CONTAX" ? "<b>CONTAX</b>" : "Otro"}</td>
+      <td>${yfChip(x.estado)}</td>
+      <td class="mono" style="font-size:12px">${x.f ? escape(String(x.f.numero || "")) + " · " + fmtF(x.f.fechaEmision) + " · " + escape(String(x.f.nitEmisor || "")) : "—"}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
+    </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}`;
+}
 async function renderFacturacion() {
   el("v-facturacion").innerHTML = `<h1>Facturación</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
   await ltLoad();
@@ -5933,6 +6028,9 @@ function paintFacturacion() {
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
         <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">No hay suscriptores para este mes.</td></tr>`}
       </tbody></table></div>`;
+  } else if (FAC_UI.fuente === "yango") {
+    body = yfHTML();
+    if (!YF.filas && !YF.err && !YF.cargando) yfCargar().then(() => { if (FAC_UI.tab === "pendientes" && FAC_UI.fuente === "yango") paintFacturacion(); }, () => paintFacturacion());
   } else {
     const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
     body = `
@@ -5949,9 +6047,15 @@ function paintFacturacion() {
   el("v-facturacion").innerHTML = `<h1>Facturación</h1>
     <div class="subtabs" id="factabs">
       <button class="subtab ${FAC_UI.tab === "activos" ? "on" : ""}" data-tab="activos">Suscriptores Activos</button>
-      <button class="subtab ${FAC_UI.tab === "pendientes" ? "on" : ""}" data-tab="pendientes">Facturas pendientes (${pendientes.length})</button>
-    </div>${body}`;
+      <button class="subtab ${FAC_UI.tab === "pendientes" ? "on" : ""}" data-tab="pendientes">Facturas pendientes</button>
+    </div>${FAC_UI.tab === "pendientes" ? `<div class="subtabs" id="facfuente" style="margin-top:-4px">
+      <button class="subtab ${FAC_UI.fuente === "yango" ? "on" : ""}" data-f="yango">Repartidores Yango (CONTROL)${YF.filas ? " · " + YF.filas.filter(x => !x.tiene && x.contador === "CONTAX").length + " CONTAX" : ""}</button>
+      <button class="subtab ${FAC_UI.fuente === "susc" ? "on" : ""}" data-f="susc">Suscriptores de facturación (${pendientes.length})</button></div>` : ""}${body}`;
   el("v-facturacion").querySelectorAll("#factabs .subtab").forEach(b => b.onclick = () => { FAC_UI.tab = b.dataset.tab; paintFacturacion(); });
+  el("v-facturacion").querySelectorAll("#facfuente .subtab").forEach(b => b.onclick = () => { FAC_UI.fuente = b.dataset.f; paintFacturacion(); });
+  if (el("yf_cont")) el("yf_cont").onchange = e => { FAC_UI.ycont = e.target.value; paintFacturacion(); };
+  if (el("yf_ver")) el("yf_ver").onchange = e => { FAC_UI.yver = e.target.value; paintFacturacion(); };
+  if (el("yf_rec")) el("yf_rec").onclick = () => { YF.err = ""; YF.filas = null; paintFacturacion(); yfCargar(true).then(() => paintFacturacion(), () => paintFacturacion()); };
   if (el("fac_per")) el("fac_per").onchange = e => { FAC_UI.per = e.target.value; paintFacturacion(); };
   if (el("fac_q")) el("fac_q").oninput = e => { FAC_UI.q = e.target.value; clearTimeout(FAC_UI._t); FAC_UI._t = setTimeout(() => { paintFacturacion(); const x = el("fac_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
   ltBindEstados(el("v-facturacion"), paintFacturacion);
