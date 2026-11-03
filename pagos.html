@@ -448,7 +448,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function tutAbrir() {
     if (!TUT) return;
     var v = document.createElement("div"); v.className = "tutVelo";
-    v.innerHTML = '<div class="tutCaja" role="dialog" aria-label="Video tutorial"><button type="button" class="tutCerrar">Cerrar ✕</button><video controls autoplay playsinline preload="auto"' + (TUT.poster ? ' poster="' + TUT_BASE + esc(TUT.poster) + '"' : "") + ' src="' + TUT_BASE + esc(TUT.file) + '"></video><p>' + esc(TUT.name || "Cómo pagar en la pasarela") + "</p></div>";
+    v.innerHTML = '<div class="tutCaja" role="dialog" aria-label="Video tutorial"><button type="button" class="tutCerrar">Cerrar ✕</button><video controls autoplay playsinline preload="auto"' + (TUT.poster ? ' poster="' + TUT_BASE + esc(TUT.poster) + '"' : "") + ' src="' + TUT_BASE + esc(TUT.file) + '"></video><p>Cómo pagar en la pasarela de CONTAX</p></div>";
     var cerrar = function () { var vid = v.querySelector("video"); if (vid) vid.pause(); v.remove(); };
     v.onclick = function (e) { if (e.target === v || e.target.className === "tutCerrar") cerrar(); };
     document.body.appendChild(v);
