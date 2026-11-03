@@ -4384,7 +4384,7 @@ const DJ_TIPOS = [
   ["f200", "Formulario 200 (IVA)", "application/pdf,image/*"],
   ["f400", "Formulario 400 (IT)", "application/pdf,image/*"],
   ["qr", "QR de pago 1 (por ejemplo IVA)", "image/*,application/pdf"],
-  ["qr2", "QR de pago 2 (por ejemplo IT) — opcional", "image/*,application/pdf"]
+  ["qr2", "QR de pago 2 (por ejemplo IT)", "image/*,application/pdf"]
 ];
 // Documentos obligatorios para entregar al cliente. Sin movimiento: el Excel de compras y el QR son opcionales; el 2.º QR siempre lo es.
 function djSinMov(r) { return /sin movimiento/i.test(String(r.detalleServicio || "")); }
