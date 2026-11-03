@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "72";
+const APP_VERSION = "73";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2834,7 +2834,9 @@ async function postRecibo(rec) {
     mes: rec.mesRecepcion || "", tipoServicio: rec.servicio || "", detalleServicio: rec.detalleServicio || "",
     importe: rec.importe, formaPago: rec.tipoPago || "", atencion: rec.atencion || "", comentarios: rec.comentarios || "",
     fechaPago: rec.fechaPago || "", compBanco: rec.compBanco || "", compNroOperacion: rec.compNroOperacion || "", compDepositante: rec.compDepositante || "",
-    empresa: (cfg.company || "CONTAX")
+    empresa: (cfg.company || "CONTAX"),
+    // Declaraciones: el puente adjunta también el PDF «Términos y condiciones» vigente de la pasarela
+    terminosPdf: recCategoria(rec.servicio || rec.servicioNombre, rec.detalleServicio) === "declaracion" ? "declaracion" : ""
   };
   try { await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) }); return true; }
   catch (e) { return false; }
@@ -2965,7 +2967,7 @@ function paintRecepcion() {
        <td>${escape(r.tipoPago || "—")}</td>
        <td>${escape(r.atencion || "—")}</td>
        <td style="text-align:center">${(r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") ? '<span class="badge danger">Con deuda</span>' : '<span class="badge ok">Sin deuda</span>'}</td>
-       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Recibo</button>` : ''}${isAdmin() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro (solo administrador)" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
+       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Enviar Recibo</button>` : ''}${isAdmin() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro (solo administrador)" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
 
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
@@ -3136,6 +3138,15 @@ function paintRecepcion() {
         if (d.banco && el("r_banco") && !el("r_banco").value) el("r_banco").value = d.banco;
         if (d.nroOperacion && el("r_oper") && !el("r_oper").value) el("r_oper").value = d.nroOperacion;
         if (d.depositante && el("r_depo") && !el("r_depo").value) el("r_depo").value = d.depositante;
+        // Cliente: se busca al depositante en la Base de Datos; si no está, queda su nombre escrito para buscarlo a mano
+        const busca = el("r_clibusca");
+        if (d.depositante && busca && !busca.value.trim() && !recCli) {
+          const pal = recNormTxt(d.depositante).replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(x => x.length > 1);
+          const cands = pal.length ? BD.filter(c => { const n = recNormTxt(bdV(c, "nombre") || bdV(c, "razon")); return n && pal.every(w => n.includes(w)); }) : [];
+          const c = cands.length === 1 ? cands[0] : null;
+          busca.value = c ? (bdV(c, "codigoId") ? bdV(c, "codigoId") + " · " : "") + (bdV(c, "nombre") || bdV(c, "razon") || "") : d.depositante;
+          if (c) { if (busca.oninput) busca.oninput(); recMarcar("r_clibusca"); }
+        }
         // Forma de pago: QR o transferencia (si la lista no tiene «QR», se agrega para esta recepción)
         const fp = /qr/i.test(String(d.metodo || "")) ? "QR" : /transf|deposit/i.test(String(d.metodo || "")) ? "TRANSFERENCIA" : "";
         const selP = el("r_pago");

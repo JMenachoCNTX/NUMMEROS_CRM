@@ -90,7 +90,27 @@ function enviarRecibo(d) {
   var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
   if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
   var html = buildCorreoHTML(d, empresaNombre).replace(LOGOS.contax, bC ? "cid:logoContax" : LOGOS.contax).replace(LOGOS.nummeros, bN ? "cid:logoNummeros" : LOGOS.nummeros);
-  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, htmlBody: html, attachments: [blob], inlineImages: inl });
+  // El Panel pide además el PDF de Términos y condiciones (los mismos de la pasarela, siempre la versión vigente)
+  var adj = [blob], ter = d.terminosPdf ? terminosPdf_(d.terminosPdf, d, empresaNombre) : null;
+  if (ter) adj.push(ter);
+  GmailApp.sendEmail(para, asunto, cuerpo, { name: empresaNombre, htmlBody: html, attachments: adj, inlineImages: inl });
+}
+// PDF «Términos y condiciones» de un servicio (PAS_TERMINOS de PASARELA.gs)
+function terminosPdf_(clave, d, empresaNombre) {
+  var t = (typeof PAS_TERMINOS !== "undefined" && PAS_TERMINOS[clave]) || [];
+  if (!t.length) return null;
+  var serv = { declaracion: "Declaración mensual", eeff: "Estados financieros", facturacion: "Suscripción de facturación" }[clave] || clave;
+  var logoC = logoB64_("contax-logo.png"), navy = EMPRESA.navy;
+  var html = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:18mm 16mm}*{font-family:Helvetica,Arial,sans-serif;color:#1f2a3a}' +
+    'h1{font-size:20px;margin:18px 0 4px;color:' + navy + '}p{font-size:12px;margin:2px 0;color:#55617a}ol{margin:16px 0 0;padding-left:20px}li{font-size:13px;line-height:1.55;margin:0 0 8px}</style></head><body>' +
+    '<div style="text-align:center">' + (logoC ? '<img src="data:image/png;base64,' + logoC + '" style="height:60px;width:auto" alt="CONTAX">' : '<span style="font-size:28px;letter-spacing:.2em;color:' + navy + '">CONTAX</span>') + '</div>' +
+    '<div style="border-bottom:3px solid ' + navy + ';margin-top:12px"></div>' +
+    '<h1>Términos y condiciones del servicio</h1><p><b>Servicio:</b> ' + esc(serv) + (d.nroRecepcion ? ' · Orden de Recepción N° ' + esc(String(d.nroRecepcion)) : '') + '</p>' +
+    (d.nombre ? '<p><b>Cliente:</b> ' + esc(String(d.nombre)) + (d.nit ? ' · NIT ' + esc(String(d.nit)) : '') + '</p>' : '') +
+    '<p>Versión vigente: ' + esc(typeof PAS_TERMINOS_VERSION !== "undefined" ? PAS_TERMINOS_VERSION : "") + '</p>' +
+    '<ol>' + t.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join("") + '</ol>' +
+    '<p style="margin-top:24px;text-align:center;font-size:11px">' + esc(empresaNombre) + ' · Contabilidad e Impuestos · ' + esc(EMPRESA.correo) + '</p></body></html>';
+  return Utilities.newBlob(html, "text/html", "terminos.html").getAs("application/pdf").setName("Terminos-y-condiciones-" + serv.replace(/\s+/g, "-") + ".pdf");
 }
 
 // Correo con diseño: logo CONTAX, resumen del servicio, aviso y pie "Sistema NUMMEROS by CONTAX"
