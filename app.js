@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "71";
+const APP_VERSION = "72";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4183,6 +4183,25 @@ function djResumenHTML(base, conDinero) {
     ${keys.length > 1 ? `<tfoot>${fila("TOTAL", T)}</tfoot>` : ""}</table></div>
     <p class="note">En proceso = RCV en curso + Falta declarar · Entregado = Terminado.</p>`;
 }
+// Video tutorial de la pestaña (vive en EdiThor → Claude → Videos tutoriales → carpeta TUTORIALES)
+const DJ_TUTORIAL = "https://edithornummeros.contaxbolivia.com/tutoriales/panel-declaraciones.mp4";
+function djCabecera() {
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 4px"><h1 style="margin:0 auto 0 0">Declaraciones</h1><button class="btn sec" id="dj_tuto" type="button" style="border:1px solid var(--line);padding:8px 14px">▶ Ver tutorial</button></div>`;
+}
+// Abre un video tutorial en una ventana; se cierra con ✕, Escape o tocando afuera
+function verTutorial(url, titulo) {
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:120;display:flex;align-items:center;justify-content:center;padding:20px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:1100px;max-width:96vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px"><h3 style="margin:0">${escape(titulo)}</h3><button class="mini" type="button" data-x>✕</button></div>
+    <video src="${escape(url)}" controls autoplay playsinline style="width:100%;max-height:78vh;border-radius:8px;background:#000;display:block"></video>
+    <div class="note" style="margin:8px 0 0">Si no carga, ábrelo aquí: <a href="${escape(url)}" target="_blank" rel="noopener">${escape(url)}</a></div></div>`;
+  const cerrar = () => { const v = bg.querySelector("video"); if (v) v.pause(); bg.remove(); document.removeEventListener("keydown", tecla); };
+  const tecla = e => { if (e.key === "Escape") cerrar(); };
+  bg.onclick = e => { if (e.target === bg || e.target.closest("[data-x]")) cerrar(); };
+  document.addEventListener("keydown", tecla);
+  document.body.appendChild(bg);
+}
 async function renderDDJJ() {
   el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
   await ltLoad();
@@ -4213,14 +4232,14 @@ function paintDDJJ() {
       <td>${djEstadoBadge(djEstado(r))}</td>
       <td style="font-size:12px">${escape(r.dj_pagoImpuestos || "")} ${r.dj_correoEnviado ? "✉️" : ""}</td></tr>`).join("");
   const tabs = `<div class="subtabs" id="djtabs"><button class="subtab ${DJ_UI.tab === "lista" ? "on" : ""}" data-tab="lista">Lista de trabajo</button><button class="subtab ${DJ_UI.tab === "resumen" ? "on" : ""}" data-tab="resumen">Resumen</button></div>`;
-  const bindTabs = () => el("v-declaraciones").querySelectorAll("#djtabs .subtab").forEach(b => b.onclick = () => { DJ_UI.tab = b.dataset.tab; paintDDJJ(); });
+  const bindTabs = () => { el("v-declaraciones").querySelectorAll("#djtabs .subtab").forEach(b => b.onclick = () => { DJ_UI.tab = b.dataset.tab; paintDDJJ(); }); el("dj_tuto").onclick = () => verTutorial(DJ_TUTORIAL, "Tutorial · pestaña Declaraciones"); };
   if (DJ_UI.tab === "resumen") {
-    el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>${tabs}${djResumenHTML(base)}`;
+    el("v-declaraciones").innerHTML = `${djCabecera()}${tabs}${djResumenHTML(base)}`;
     bindTabs();
     el("dj_agr").onchange = e => { DJ_UI.agr = e.target.value; paintDDJJ(); };
     return;
   }
-  el("v-declaraciones").innerHTML = `<h1>Declaraciones</h1>${tabs}
+  el("v-declaraciones").innerHTML = `${djCabecera()}${tabs}
     <p class="lead">Declaraciones del período <b>Octubre 2026</b> en adelante, más <b>toda declaración que se recepcione desde ahora</b>, sea del mes que sea (lo anterior ya está culminado). Toca una fila para llenar el <b>RCV</b>, la <b>Declaración</b> y el <b>Seguimiento</b>.</p>
     <div class="kpis">
       <div class="kpi"><div class="n">${base.length}</div><div class="l">Total</div></div>
