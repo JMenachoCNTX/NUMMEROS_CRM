@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "78";
+const APP_VERSION = "79";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5938,8 +5938,8 @@ async function yfCargar(forzar) {
     const clienteDe = (id, nombre, cel) => {
       if (id in cacheCli) return cacheCli[id];
       const c8 = String(cel || "").replace(/\D/g, "").slice(-8); let r = c8.length === 8 ? porCel[c8] : null;
-      if (!r) { const p = yfPal(nombre); if (p.length >= 2) { let l = nomCli.filter(x => p.every(w => x.set.has(w))); if (l.length > 1) l = l.filter(x => x.set.size === p.length); if (l.length === 1) r = l[0].r; } }
-      return (cacheCli[id] = r || null);
+      if (!r) { const p = yfPal(nombre); if (p.length >= 2) { let l = nomCli.filter(x => p.every(w => x.set.has(w))); if (l.length > 1) l = l.filter(x => x.set.size === p.length); if (l.length >= 1 && l.every(x => x.set.size === l[0].set.size)) r = l[0].r; } }
+      if (r) cacheCli[id] = r; return r || null;
     };
     const filas = [], ya = {};
     const agregar = (id, nombre, cel, semana, importe, tipo, extra) => {
