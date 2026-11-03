@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "74";
+const APP_VERSION = "75";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2755,11 +2755,12 @@ function recDetallesPorCat(cat, L) {
   const key = map[cat];
   const arr = (key && L[key] && L[key].length) ? L[key] : (key ? REC_SEED[key] : []);
   const vistos = new Set();
-  // Los detalles generales de la configuración solo se muestran en su servicio (o en «otro»), para no mezclar trámites con declaraciones
-  const gen = (L.detalles || []).filter(x => cat === "otro" || recCategoria("", x) === cat);
-  return (arr || []).concat(gen).filter(x => {
+  // Los detalles generales de la configuración solo se muestran en su servicio, para no mezclar trámites con declaraciones
+  const gen = (L.detalles || []).filter(x => recCategoria("", x) === cat);
+  const out = (arr || []).concat(gen).filter(x => {
     const k = recNormTxt(x).replace(/\s+/g, " ").trim(); if (!k || vistos.has(k)) return false; vistos.add(k); return true;
   });
+  return out.length ? out : (cat === "otro" ? ["OTROS"] : out);
 }
 const REC_MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 function recMesesOpts() {
@@ -2888,7 +2889,9 @@ function recServicioPorMonto(monto) {
 function recElegir(sel, valor) {
   if (!sel || !valor) return false;
   const v = recNormTxt(valor).replace(/\s+/g, " ").trim();
-  const op = [...sel.options].find(o => recNormTxt(o.value).replace(/\s+/g, " ").trim() === v);
+  // Si no está con ese nombre exacto, se toma el primero del mismo tipo (ej. «FACTURACIÓN YANGO» para facturación)
+  const op = [...sel.options].find(o => recNormTxt(o.value).replace(/\s+/g, " ").trim() === v)
+    || (sel.id === "r_serv" ? [...sel.options].find(o => o.value && recCategoria(o.value, "") === recCategoria(valor, "")) : null);
   if (!op) return false;
   sel.value = op.value; return true;
 }
