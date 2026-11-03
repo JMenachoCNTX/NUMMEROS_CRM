@@ -177,6 +177,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     msj: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/>', ver: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     salir: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3"/>', fact: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>', rep: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>',
     tema: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>', ojo: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>',
     enviar: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', check: '<path d="M20 6L9 17l-5-5"/>'
   };
   function ic(n, t) { return '<svg width="' + (t || 18) + '" height="' + (t || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + I[n] + "</svg>"; }
@@ -286,7 +287,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     cont.innerHTML = h; tic();
     cont.querySelectorAll("[data-ir]").forEach(function (b) { b.onclick = function () { ir(b.dataset.ir); }; });
     if (S.tab === "inicio") promoIniciar();
-    if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; }
+    if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; enlazarDocsDecl(); }
     if (S.tab === "docs") enlazarDocs();
     enlazarPdf(cont);
     if (document.getElementById("bChatIr")) document.getElementById("bChatIr").onclick = function () { S.chatAbierto = true; pintarChat(); };
@@ -346,7 +347,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var k = S.anio + "-" + ("0" + m).slice(-2), rs = d.declaraciones.filter(function (x) { return x.key === k; });
       if (!rs.length) { filas += "<tr><td><b>" + MESES[m - 1] + "</b></td><td>" + (k < hoyK && k >= primera ? '<span class="badge b-pend">No recepcionado</span>' : '<span class="suave">—</span>') + '</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>'; continue; }
       rs.forEach(function (r) { tv += r.ventas; tc += r.compras; ti += r.iva; tt += r.it;
-        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div><button class="mini" data-pdf="declaracion|' + esc(r.id) + '" style="margin-top:4px">' + ic("ver", 14) + "Ver</button></td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
+        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div><button class="mini" data-pdf="declaracion|' + esc(r.id) + '" style="margin-top:4px">' + ic("ver", 14) + "Ver</button>" + docsDecl(r) + "</td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
           '<td class="n">' + (r.ventas ? bs(r.ventas) : "—") + '</td><td class="n">' + (r.compras ? bs(r.compras) : "—") + '</td><td class="n">' + (r.iva ? bs(r.iva) : "—") + '</td><td class="n">' + (r.it ? bs(r.it) : "—") + "</td></tr>"; });
     }
     var util = Math.round((tv - tc) * 100) / 100;
@@ -356,7 +357,30 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       kpi("decl", "IVA + IT pagado o por pagar", bs(ti + tt), "IVA " + bs(ti) + " · IT " + bs(tt), "") + kpi("bal", "Utilidad estimada " + S.anio, bs(util), util > 0 ? "IUE estimado (25%): " + bs(util * 0.25) : "Sin utilidad estimada por ahora.", util > 0 ? "var(--ok)" : "") + "</div>" +
       '<div class="tw"><table><thead><tr><th>Mes</th><th>Estado</th><th class="n">Ventas</th><th class="n">Compras</th><th class="n">IVA</th><th class="n">IT</th></tr></thead><tbody>' + filas + "</tbody>" +
       '<tfoot><tr><td><b>Total</b></td><td></td><td class="n"><b>' + bs(tv) + '</b></td><td class="n"><b>' + bs(tc) + '</b></td><td class="n"><b>' + bs(ti) + '</b></td><td class="n"><b>' + bs(tt) + "</b></td></tr></tfoot></table></div>" +
-      '<p class="chico suave">La utilidad es un estimado con tus ventas y compras registradas; el cálculo oficial se hace en tus estados financieros. Tus formularios y QR de pago de impuestos están en la pestaña Documentos.</p></div>';
+      '<p class="chico suave">La utilidad es un estimado con tus ventas y compras registradas; el cálculo oficial se hace en tus estados financieros. En cada mes están tus documentos: RCV, formularios 200 y 400, libro de compras y el QR para pagar tus impuestos (el QR vale solo hasta las 00:00 de su fecha de vencimiento).</p></div>';
+  }
+
+  // Documentos de la declaración que sube CONTAX (RCV, formularios, libro de compras y QR de pago)
+  var NOM_DJ = { rcv: "RCV", f200: "Formulario 200 (IVA)", f400: "Formulario 400 (IT)", compras: "Libro de compras", qr: "QR de pago" };
+  function docsDecl(r) {
+    var l = r.archivos || []; if (!l.length) return "";
+    var hoy = new Date().toISOString().slice(0, 10);
+    return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + l.map(function (a) {
+      var vencido = a.tipo === "qr" && a.qrVence && a.qrVence < hoy;
+      return '<button class="mini" data-djarch="' + esc(a.id) + '" title="' + esc(a.nombre) + '">' + ic(a.tipo === "qr" ? "qr" : "doc", 14) + esc(NOM_DJ[a.tipo] || a.tipo) + "</button>" +
+        (a.tipo === "qr" ? '<div class="chico ' + (vencido ? "" : "suave") + '" style="flex-basis:100%' + (vencido ? ";color:var(--err,#B42318)" : "") + '">' +
+          (a.qrMonto ? "Bs " + esc(a.qrMonto) + " · " : "") + (vencido ? "QR vencido: pide uno nuevo por WhatsApp." : (a.qrVence ? "Vale hasta el " + esc(a.qrVence.split("-").reverse().join("/")) + " a las 00:00." : "Válido solo hasta las 00:00 del día de vencimiento.")) + "</div>" : "");
+    }).join("") + "</div>";
+  }
+  function enlazarDocsDecl() {
+    document.querySelectorAll("[data-djarch]").forEach(function (bt) { bt.onclick = function () {
+      bt.disabled = true; var o = bt.innerHTML; bt.textContent = "Abriendo…";
+      apiS({ action: "portal_djarchivo", id: bt.dataset.djarch }).then(function (r) {
+        bt.disabled = false; bt.innerHTML = o;
+        if (!r.ok) { alert(r.error || "No se pudo abrir."); return; }
+        abrirVisor(r);
+      });
+    }; });
   }
 
   // ----- Balances, trámites, facturación -----

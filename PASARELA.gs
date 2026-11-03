@@ -1053,6 +1053,7 @@ function portalHandle_(d) {
   if (a === "portal_pdf") return portalPdf_(nit, d);
   if (a === "portal_subir") return portalSubir_(nit, d);
   if (a === "portal_archivo") return portalArchivo_(nit, d.id);
+  if (a === "portal_djarchivo") return portalDjArchivo_(nit, d.id);
   if (a === "portal_chat") return portalChat_(nit, d);
   if (a === "portal_salir") { pasCacheDel_("ps_" + d.token); return { ok: true }; }
   return { ok: false, error: "accion_desconocida" };
@@ -1124,7 +1125,7 @@ function portalDatos_(nit) {
   var cli = pasClienteCache_(nit);
   if (!cli) return { ok: false, error: "No encontramos tus datos." };
   var recs = portalRecepciones_(nit), hoy = pasHoy_();
-  var decl = [], tram = [], eeff = [], fact = [], otros = [];
+  var decl = [], tram = [], eeff = [], fact = [], otros = [], archDe = portalDjArchivos_(nit);
   recs.forEach(function (r) {
     var cat = portalCat_(r);
     var base = { id: r.id, fecha: r.fecha || String(r.fechaISO || "").slice(0, 10), fechaISO: r.fechaISO || "", nro: r.nroRecepcion || "", servicio: r.servicio || r.servicioNombre || "",
@@ -1133,6 +1134,7 @@ function portalDatos_(nit) {
       base.key = portalPeriodoKey_(r); base.estado = portalEstadoDJ_(r);
       base.ventas = pasNum_(r.dj_totalVentas); base.compras = pasNum_(r.dj_totalCompras); base.iva = pasNum_(r.dj_ivaPagar); base.it = pasNum_(r.dj_itPagar);
       base.fechaDecl = r.dj_fechaDeclaracion || ""; base.pagoImp = r.dj_pagoImpuestos || "";
+      base.archivos = archDe[r.id] || [];
       decl.push(base);
     } else {
       base.estado = portalEstadoGen_(r);
@@ -1157,6 +1159,30 @@ function portalDatos_(nit) {
     documentos: portalListarDocs_(nit, cli.nombre, false),
     hoy: hoy.iso
   };
+}
+// Archivos de las declaraciones que sube el equipo en Panel → Declaraciones (colección djArchivos de Firestore,
+// el contenido en trozos en djArchivos/{id}/p/{n}; se guardan 3 meses). Devuelve { recId: [archivos] } sin el contenido.
+function portalDjArchivos_(nit) {
+  var out = {}, orden = { rcv: 1, f200: 2, f400: 3, compras: 4, qr: 5 };
+  try {
+    fsQuery_("djArchivos", [["nit", "EQUAL", String(nit)]], 300).forEach(function (x) {
+      var a = x.data; if (!a.recId) return;
+      (out[a.recId] = out[a.recId] || []).push({ id: x.id, tipo: a.tipo, nombre: a.nombre, kb: a.kb, mime: a.mime, subido: a.subidoISO || "",
+        qrMonto: a.qrMonto || "", qrVence: a.qrVence || "", qrFormulario: a.qrFormulario || "" });
+    });
+    Object.keys(out).forEach(function (k) { out[k].sort(function (a, b) { return (orden[a.tipo] || 9) - (orden[b.tipo] || 9); }); });
+  } catch (e) { console.warn("djArchivos: " + e); }
+  return out;
+}
+function portalDjArchivo_(nit, id) {
+  id = String(id || "");
+  if (!/^[A-Za-z0-9_-]{3,120}$/.test(id)) return { ok: false, error: "Archivo no válido." };
+  var m = fsGet_("djArchivos/" + id);
+  if (!m || String(m.nit) !== String(nit)) return { ok: false, error: "Ese archivo ya no está disponible. Pídelo por WhatsApp." };
+  var b64 = "";
+  for (var i = 0; i < (Number(m.partes) || 1); i++) { var p = fsGet_("djArchivos/" + id + "/p/" + i); b64 += p && p.d ? p.d : ""; }
+  if (!b64) return { ok: false, error: "Ese archivo ya no está disponible. Pídelo por WhatsApp." };
+  return { ok: true, nombre: m.nombre, dataUrl: "data:" + m.mime + ";base64," + b64 };
 }
 // Carpeta de Drive del cliente: "Subidos por el cliente" y "Entregados por CONTAX"
 function portalCarpetas_(nit, nombre, crear) {
