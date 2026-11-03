@@ -1005,12 +1005,15 @@ function admCorreoMasivo_(yo, d) {
   var lista = (d.lista || []).slice(0, 40), enviados = 0, fallidos = [];
   var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
   if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
+  // Adjuntos (PDF o imágenes) que se mandan a todos; máx. 5 archivos
+  var adj = (d.adjuntos || []).slice(0, 5).filter(function (a) { return a && a.b64 && /^(image\/|application\/pdf)/.test(String(a.mime || "")); })
+    .map(function (a) { return Utilities.newBlob(Utilities.base64Decode(a.b64), a.mime, String(a.nombre || "adjunto").slice(0, 120)); });
   for (var i = 0; i < lista.length; i++) {
     var x = lista[i] || {}, para = String(x.correo || "").trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(para)) { fallidos.push({ correo: para, error: "correo no válido" }); continue; }
     try {
       GmailApp.sendEmail(para, String(x.asunto || "Aviso de CONTAX").slice(0, 200), String(x.texto || ""),
-        { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_(x, !!bC, !!bN), inlineImages: inl });
+        { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_(x, !!bC, !!bN), inlineImages: inl, attachments: adj });
       enviados++;
     } catch (e) {
       var msg = String(e && e.message || e); fallidos.push({ correo: para, error: msg });
@@ -1088,7 +1091,7 @@ function portalHandle_(d) {
   if (a === "portal_login") return portalLogin_(d.nit, d.ci);
   var ses = portalSesionObj_(d.token), nit = ses && ses.nit;
   if (!nit) return { ok: false, sesion: false, error: "Tu sesión terminó. Vuelve a ingresar con tu NIT y tu C.I." };
-  if (!ses.staff) { var cA = pasClienteCache_(nit); if (!cA || pasGrupoEstado_(cA.estado) !== "activo") { pasCacheDel_("ps_" + d.token); return { ok: false, sesion: false, error: "Tu acceso al Portal del Cliente ya no está activo. Escríbenos por WhatsApp." }; } }
+  if (!ses.staff) { var cA = pasClienteCache_(nit); if (!cA || pasGrupoEstado_(cA.estado) !== "activo") { pasCacheDel_("ps_" + d.token); return { ok: false, sesion: false, error: "¡Ups! El Portal de CONTAX es exclusivo para clientes activos. Si no realizaste el pago de tu suscripción mensual, no podrás acceder. Paga en nuestra pasarela o escríbenos por WhatsApp para reactivar tu servicio.", inactivo: true }; } }
   if (a === "portal_datos") { var dd = portalDatos_(nit); if (ses.staff) dd.staff = ses.staff; return dd; }
   if (a === "portal_pdf") return portalPdf_(nit, d);
   if (a === "portal_subir") return portalSubir_(nit, d);
@@ -1111,7 +1114,7 @@ function portalLogin_(nitIn, ciIn) {
   var cli = pasClienteCache_(nit);
   var fallo = function () { pasCachePut_(kInt, intentos + 1, 900); return { ok: false, error: "NIT o C.I. incorrectos. Si no recuerdas tus datos, escríbenos por WhatsApp." }; };
   if (!cli) return fallo();
-  if (pasGrupoEstado_(cli.estado) !== "activo") return { ok: false, error: "Tu acceso al Portal del Cliente no está activo. El portal es exclusivo para clientes activos de CONTAX. Escríbenos por WhatsApp si deseas reactivar tus servicios." };
+  if (pasGrupoEstado_(cli.estado) !== "activo") return { ok: false, inactivo: true, error: "¡Ups! El Portal de CONTAX es exclusivo para clientes activos. Si no realizaste el pago de tu suscripción mensual, no podrás acceder. Paga en nuestra pasarela o escríbenos por WhatsApp para reactivar tu servicio." };
   var ciBD = portalLimpiaCi_(cli.ci), ciNum = ci.replace(/\D/g, "");
   var ok = false;
   if (ciBD) ok = ci === ciBD || (ciNum.length >= 5 && ciNum === ciBD.replace(/\D/g, ""));

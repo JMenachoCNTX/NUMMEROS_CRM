@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "73";
+const APP_VERSION = "74";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -210,9 +210,12 @@ const SISTEMAS = [
     ["Web de CONTAX", "Página institucional de CONTAX.", "https://contaxbolivia.com/", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"],
     ["Web de NUMMEROS", "Página institucional de NUMMEROS.", "https://nummeros.contaxbolivia.com/", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"]
   ]],
-  ["Sistemas de clientes", [
-    ["Grupo Velasco", "Pagos al personal y arqueo de los restaurantes.", "https://nummeros-grupovelasco.contaxbolivia.com/", "M4 21V8l8-5 8 5v13M9 21v-6h6v6"],
-    ["PESO Finanzas", "Finanzas de PE$O.", "https://nummeros.peso.contaxbolivia.com/", "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"]
+  ["Marca", [
+    ["Marca NUMMEROS", "Manual de marca: logos, colores, letras y plantillas de NUMMEROS.", "https://edithornummeros.contaxbolivia.com/manuales/nummeros/", "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8zM7.5 11.5h.01M10.5 7.5h.01M15 8h.01"],
+    ["Marca CONTAX", "Manual de marca: logos, colores, letras y plantillas de CONTAX.", "https://edithornummeros.contaxbolivia.com/manuales/contax/", "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8zM7.5 11.5h.01M10.5 7.5h.01M15 8h.01"]
+  ]],
+  ["Recursos humanos", [
+    ["RRHH", "Personal, boletas de pago, certificados de trabajo y planillas.", "https://jmenachocntx.github.io/RRHH-NUMMEROS/", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"]
   ]]
 ];
 function renderSistemas() {
@@ -2089,7 +2092,7 @@ function paintTarifas() {
     <div class="toolbar">
       <input id="tar_search" class="mini" style="padding:9px;min-width:240px" placeholder="Buscar servicio…" value="${escape(tarFilter)}">
       ${admin ? '<button class="btn" id="tar_new">＋ Nuevo servicio</button>' : ''}
-      ${admin ? '<button class="btn sec" id="tar_seed" style="border:1px solid var(--line)" title="Carga los planes de CONTAX (Básico, Standard, Premium, Facturación, Trámites, Balances)">⬆ Cargar planes CONTAX</button>' : ''}
+      ${admin ? '<button class="btn sec" id="tar_seed" style="border:1px solid var(--line)" title="Copia aquí los planes, servicios y precios que tiene hoy la pasarela">⬆ Cargar tarifas de la pasarela</button>' : ''}
       <button class="btn sec" id="tar_export" style="border:1px solid var(--line)" title="Descargar respaldo en CSV">⬇ Exportar</button>
       <span class="msg" id="tar_msg" style="align-self:center"></span>
     </div>
@@ -2106,30 +2109,41 @@ function paintTarifas() {
   el("v-tarifas").querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openTarifaModal(TARIFAS.find(x => x.id === b.dataset.edit)));
   el("v-tarifas").querySelectorAll("[data-del]").forEach(b => b.onclick = () => delTarifa(TARIFAS.find(x => x.id === b.dataset.del)));
 }
-// Planes de CONTAX (según la información dada) para cargar de una vez
-const CONTAX_TARIFAS = [
-  { id: "contax-decl-basico", nombre: "Declaración Mensual — Básico", categoria: "Declaración Mensual", tipo: "declaracion", precio: 30, plazo: "", descripcion: "Declaración jurada SIN movimiento (no se ingresan las facturas electrónicas del portal). Incluye facturación. Tarifa especial para repartidores (YANGO, PedidosYa, TADA, ToGo, Turbo).", activo: true },
-  { id: "contax-decl-standard", nombre: "Declaración Mensual — Standard", categoria: "Declaración Mensual", tipo: "declaracion", precio: 50, precioTexto: "50 Bs (paga 25–30) / 60 Bs (paga 1–5)", plazo: "", descripcion: "Declaración con hasta 100 facturas (electrónicas + manuales en total). Incluye emisión de facturas. 50 Bs si recepciona del 25 al 30 (anticipado), 60 Bs si paga del 1 al 5. Tarifa especial para repartidores.", activo: true },
-  { id: "contax-decl-premium", nombre: "Declaración Mensual — Premium", categoria: "Declaración Mensual", tipo: "declaracion", precio: 95, plazo: "", descripcion: "Igual que Standard (hasta 100 facturas, incluye emisión de facturas) pero para empresas unipersonales que NO son repartidores.", activo: true },
-  { id: "contax-facturacion", nombre: "Facturación (suscripción)", categoria: "Facturación", tipo: "facturacion", precio: 20, plazo: "", descripcion: "Solo emisión de facturas durante todo el mes.", activo: true },
-  { id: "contax-tramites", nombre: "Trámites", categoria: "Trámites", tipo: "tramite", precio: null, precioTexto: "Según el trámite", plazo: "", descripcion: "Trámites varios (matrículas, ROE, SEPREC, actualizaciones). No es suscripción: se cobra por trámite.", activo: true },
-  { id: "contax-balance", nombre: "Balance / Estados Financieros (EEFF)", categoria: "Balances", tipo: "eeff", precio: null, precioTexto: "Según la empresa", plazo: "", descripcion: "Elaboración de balances / estados financieros por gestión. No es suscripción: se cobra por trabajo.", activo: true }
-];
+// Tarifas de la pasarela (Panel → Pasarela): planes, servicios y balances con el detalle que usa Recepción.
+// «detalle» une la tarifa con el «Detalle de servicio» de Recepción para poner el precio solo.
+function tarifasDePasarela(cfg) {
+  const p = (cfg && cfg.pasarela) || {}, P = Object.assign({}, PAS_DEF.precios, p.precios || {}), b = p.beneficios || {};
+  const sc = Object.assign({}, PAS_SC_DEF, p.sinContador || {}), ben = k => (b[k] || []).join(" · ");
+  const L = [
+    { id: "contax-decl-basico", nombre: "Declaración Mensual — Plan Básico (sin movimiento)", categoria: "Declaración Mensual", tipo: "declaracion", detalle: "DDJJ - Sin Movimiento", precio: Number(P.sinMov), descripcion: ben("basico") || "Declaración sin movimiento (IVA e IT)." },
+    { id: "contax-decl-standard", nombre: "Declaración Mensual — Plan Estándar", categoria: "Declaración Mensual", tipo: "declaracion", precio: Number(P.enFecha), precioTexto: `Bs ${P.enFecha} pagando hasta el último día del mes que se declara · Bs ${P.fueraFecha} después (recepción tardía)`, descripcion: (ben("estandar") || "Hasta 100 facturas al mes.") + " · Para repartidores (Yango, PedidosYa, etc.)." },
+    { id: "contax-decl-premium", nombre: "Declaración Mensual — Plan Premium", categoria: "Declaración Mensual", tipo: "declaracion", precio: Number(P.premium), descripcion: (ben("premium") || "De 101 a 200 facturas al mes.") + " · También para unipersonales que no son repartidores." },
+    { id: "contax-decl-personalizado", nombre: "Declaración Mensual — Plan Personalizado", categoria: "Declaración Mensual", tipo: "declaracion", precio: null, precioTexto: "Desde Bs 250 (más de 200 facturas al mes)", descripcion: "Se cotiza por WhatsApp." },
+    { id: "contax-facturacion", nombre: "Facturación (suscripción mensual)", categoria: "Facturación", tipo: "facturacion", detalle: "EMISIÓN DE FACTURAS (mes completo)", precio: Number(P.fact), descripcion: ben("fact") || "Emisión de facturas durante todo el mes." },
+    { id: "contax-balance-independiente", nombre: "Balance Independiente (no clientes, sin contador)", categoria: "Balances", tipo: "eeff", precio: Number(sc.precio), descripcion: `Estados financieros para quien declara por su cuenta. Hasta ${String(sc.hasta || "").slice(0, 10).split("-").reverse().join("/")}.`, activo: sc.activo !== false },
+    { id: "contax-balance-otros", nombre: "Balance — otros rubros", categoria: "Balances", tipo: "eeff", precio: Number(P.eeffOtros), precioTexto: `Desde Bs ${P.eeffOtros}`, descripcion: "Estados financieros de empresas que no son repartidores." }
+  ];
+  (p.cupos || PAS_DEF.cupos).forEach((c, i) => L.push({ id: "contax-balance-fase" + (i + 1), nombre: (c.nombre || "Balance fase " + (i + 1)) + " (cupos)", categoria: "Balances", tipo: "eeff", precio: Number(c.precio), descripcion: `Balance por cupos de la gestión ${p.eeffGestion || ""}: ${c.capacidad || ""} cupos.`.replace(/ +:/, ":") }));
+  return L.map(t => Object.assign({ plazo: "", precioTexto: "", activo: true, origen: "pasarela" }, t));
+}
 async function seedTarifasContax() {
   if (!isAdmin()) return;
   const msg = el("tar_msg");
-  if (!confirm("Se cargarán los planes de CONTAX (Básico 30, Standard 50/60, Premium 95, Facturación 20, Trámites y Balances). Si ya existían, se actualizan. ¿Continuar?")) return;
+  const lista = tarifasDePasarela(await loadConfigDoc());
+  if (!confirm("Se cargarán las " + lista.length + " tarifas que tiene hoy la pasarela (planes de declaración, facturación y balances). Si ya existían, se actualizan con el precio de la pasarela; tus otros servicios (trámites, etc.) no se tocan. ¿Continuar?")) return;
   const btn = el("tar_seed"); if (btn) { btn.disabled = true; btn.textContent = "Cargando…"; }
   try {
-    for (const t of CONTAX_TARIFAS) {
+    // Quita las tarifas viejas que ya no existen en la pasarela
+    try { await deleteDoc(doc(db, "tarifas", "contax-balance")); } catch (e) {}
+    for (const t of lista) {
       const { id, ...data } = t;
       data.updatedAt = serverTimestamp();
       await setDoc(doc(db, "tarifas", id), data, { merge: true });
     }
     await tarLoad(); await saveTarifasText(); paintTarifas();
-    const m = el("tar_msg"); if (m) { m.className = "msg ok"; m.textContent = "✓ Planes de CONTAX cargados. Puedes editarlos cuando quieras."; }
+    const m = el("tar_msg"); if (m) { m.className = "msg ok"; m.textContent = "✓ Tarifas de la pasarela cargadas. Recepción usa estos precios."; }
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = "⬆ Cargar planes CONTAX"; }
+    if (btn) { btn.disabled = false; btn.textContent = "⬆ Cargar tarifas de la pasarela"; }
     const m = el("tar_msg"); if (m) { m.className = "msg err"; m.textContent = "Error: " + (e.code || e.message) + " (solo el administrador puede cargarlos)."; }
   }
 }
@@ -2144,6 +2158,8 @@ function openTarifaModal(t) {
       <div class="field"><label>Plazo de entrega</label><input id="t_plazo" value="${t ? escape(t.plazo || '') : ''}" placeholder="Ej. 48 a 72 hrs hábiles"></div>
     </div>
     <datalist id="t_catlist">${[...new Set(TARIFAS.map(x => x.categoria).filter(Boolean))].map(c => `<option value="${escape(c)}">`).join("")}</datalist>
+    <div class="field"><label>Detalle de servicio en Recepción (para poner el precio solo al recepcionar)</label><input id="t_detalle" list="t_detlist" value="${t ? escape(t.detalle || '') : ''}" placeholder="Ej. TRÁMITE ROE"></div>
+    <datalist id="t_detlist">${(() => { const L = recListas({}); return ["detallesDeclaracion", "detallesTramite", "detallesBalance", "detallesFacturacion"].flatMap(k => L[k] || []); })().map(c => `<option value="${escape(c)}">`).join("")}</datalist>
     <div class="field"><label>Tipo (para las listas de trabajo)</label><select id="t_tipo"><option value="">Ninguno</option><option value="declaracion">Declaración</option><option value="tramite">Trámite</option><option value="eeff">Balance / EEFF</option><option value="otro">Otro</option></select></div>
     <div class="grid2">
       <div class="field"><label>Precio (Bs) — número</label><input id="t_precio" type="number" step="0.01" value="${t && t.precio != null ? escape(String(t.precio)) : ''}" placeholder="Ej. 150"></div>
@@ -2168,7 +2184,7 @@ function openTarifaModal(t) {
     const item = {
       nombre, categoria: bg.querySelector("#t_cat").value.trim() || "General", plazo: bg.querySelector("#t_plazo").value.trim(),
       precio: pv === "" ? null : Number(pv), precioTexto: bg.querySelector("#t_preciotxt").value.trim(),
-      descripcion: bg.querySelector("#t_desc").value.trim(), tipo: bg.querySelector("#t_tipo").value, activo: bg.querySelector("#t_activo").checked, updatedAt: serverTimestamp()
+      descripcion: bg.querySelector("#t_desc").value.trim(), detalle: bg.querySelector("#t_detalle").value.trim(), tipo: bg.querySelector("#t_tipo").value, activo: bg.querySelector("#t_activo").checked, updatedAt: serverTimestamp()
     };
     const btn = bg.querySelector("#t_save"); btn.disabled = true; btn.textContent = "Guardando…";
     try {
@@ -2739,7 +2755,9 @@ function recDetallesPorCat(cat, L) {
   const key = map[cat];
   const arr = (key && L[key] && L[key].length) ? L[key] : (key ? REC_SEED[key] : []);
   const vistos = new Set();
-  return (arr || []).concat((L.detalles && L.detalles.length) ? L.detalles : []).filter(x => {
+  // Los detalles generales de la configuración solo se muestran en su servicio (o en «otro»), para no mezclar trámites con declaraciones
+  const gen = (L.detalles || []).filter(x => cat === "otro" || recCategoria("", x) === cat);
+  return (arr || []).concat(gen).filter(x => {
     const k = recNormTxt(x).replace(/\s+/g, " ").trim(); if (!k || vistos.has(k)) return false; vistos.add(k); return true;
   });
 }
@@ -2822,6 +2840,58 @@ function recLeerPeriodo() {
 }
 function nitUltimo(nit) { const d = String(nit || "").replace(/\D/g, ""); return d ? d.slice(-3) : ""; }
 function recDiaSemana(d) { try { return d.toLocaleDateString("es-BO", { weekday: "long" }); } catch (e) { return ""; } }
+
+// ---- Tarifas automáticas en Recepción: los precios salen de la pasarela (Panel → Pasarela) y del catálogo de Tarifas ----
+let REC_PRECIOS = null;
+async function recPreciosCargar() {
+  if (REC_PRECIOS) return REC_PRECIOS;
+  const p = (await loadConfigDoc()).pasarela || {};
+  REC_PRECIOS = Object.assign({}, PAS_DEF.precios, p.precios || {});
+  if (!TARIFAS.length) await tarLoad();
+  return REC_PRECIOS;
+}
+// Precio de un servicio y detalle (o null si no hay una tarifa fija)
+function recTarifaDe(servicio, detalle, per, cli) {
+  const P = REC_PRECIOS || PAS_DEF.precios, cat = recCategoria(servicio, detalle), d = recNormTxt(detalle);
+  if (!detalle) return null;
+  const doc1 = TARIFAS.find(t => t.activo !== false && t.detalle && recNormTxt(t.detalle) === d && t.precio != null && t.precio !== "");
+  if (doc1) return Number(doc1.precio);
+  if (cat === "declaracion" && !/FORM 110|RC IVA/.test(d)) {
+    if (/SIN MOVIMIENTO/.test(d)) return Number(P.sinMov);
+    if (cli && !esRepartidorCli(cli)) return Number(P.premium);
+    // Estándar: precio normal pagando hasta el último día del mes que se declara; después, recepción tardía
+    const h = new Date(), mes = Number(per && per.mes), anio = Number(per && per.anio);
+    if (!mes || !anio) return Number(P.enFecha);
+    return (h.getFullYear() * 12 + h.getMonth() + 1) <= (anio * 12 + mes) ? Number(P.enFecha) : Number(P.fueraFecha);
+  }
+  if (cat === "facturacion" && /MES COMPLETO|SUSCRIP/.test(d)) return Number(P.fact);
+  return null;
+}
+// Pone el total solo si está vacío o lo había puesto el sistema (no pisa lo que escribió la persona)
+function recAutoTotal() {
+  const t = el("r_total"), sv = el("r_serv"), dt = el("r_det"); if (!t || !sv || !dt || REC_FASE) return;
+  if (t.value && t.dataset.auto !== "1") return;
+  const pr = recTarifaDe(sv.value, dt.value, recLeerPeriodo(), recCli);
+  if (pr != null && !isNaN(pr)) { t.value = pr; t.dataset.auto = "1"; t.classList.remove("r-falta"); }
+  else if (t.dataset.auto === "1") { t.value = ""; t.dataset.auto = ""; }
+}
+// Del monto del comprobante al servicio: 30 = sin movimiento; 50/60 = Estándar; 95 = Premium; 20 = facturación
+function recServicioPorMonto(monto) {
+  const P = REC_PRECIOS || PAS_DEF.precios, n = Number(monto);
+  if (!n) return null;
+  const decl = "DECLARACIÓN MENSUAL";
+  if (n === Number(P.sinMov)) return [decl, "DDJJ - Sin Movimiento"];
+  if (n === Number(P.enFecha) || n === Number(P.fueraFecha) || n === Number(P.premium)) return [decl, "DDJJ - Facturas ELECTRÓNICAS"];
+  if (n === Number(P.fact)) return ["FACTURACIÓN", "EMISIÓN DE FACTURAS (mes completo)"];
+  return null;
+}
+function recElegir(sel, valor) {
+  if (!sel || !valor) return false;
+  const v = recNormTxt(valor).replace(/\s+/g, " ").trim();
+  const op = [...sel.options].find(o => recNormTxt(o.value).replace(/\s+/g, " ").trim() === v);
+  if (!op) return false;
+  sel.value = op.value; return true;
+}
 
 async function postRecibo(rec) {
   const url = await recibosUrlGet(); if (!url) return false;
@@ -3023,7 +3093,7 @@ function paintRecepcion() {
             <div class="fs">Pago</div>
             <div style="${g2}">
               <div class="field"><label>Total (Bs)</label><input id="r_total" type="number" step="0.01" placeholder="0.00"></div>
-              <div class="field"><label>Forma de pago</label><select id="r_pago">${L.pagos.map(s => `<option>${escape(s)}</option>`).join("")}</select></div>
+              <div class="field"><label>Forma de pago</label><select id="r_pago">${L.pagos.filter(s => !/^\s*QR\s*$/i.test(s)).map(s => `<option>${escape(s)}</option>`).join("")}</select></div>
               <div class="field"><label>Fecha de pago real</label><input id="r_fpago" type="date" value="${hoyIso}"></div>
               <div class="field"><label>Atención</label><select id="r_at"><option value="">—</option>${L.atencion.map(s => `<option>${escape(s)}</option>`).join("")}</select></div>
             </div>
@@ -3091,6 +3161,7 @@ function paintRecepcion() {
           recFill("r_correo", bdV(c, "correo")); recFill("r_cel", bdV(c, "celular"));
           recPintarEstado();
           if (REC_FASE) recFasePintar(true);
+          recAutoTotal();
         }
       };
       // Servicio → detalle dependiente + período según categoría
@@ -3105,7 +3176,10 @@ function paintRecepcion() {
           recFaseCargar();
           const pa = el("r_peranio"); if (pa) pa.addEventListener("change", () => recFasePintar(true));
         } else { REC_FASE = null; const t = el("r_total"); if (t && t.dataset.auto === "1") { t.value = ""; t.dataset.auto = ""; } }
+        if (pw) pw.querySelectorAll("select").forEach(x => x.addEventListener("change", recAutoTotal));
       };
+      recPreciosCargar().catch(() => {});
+      if (el("r_det")) el("r_det").addEventListener("change", recAutoTotal);
       if (el("r_total")) el("r_total").addEventListener("input", () => { el("r_total").dataset.auto = ""; if (REC_FASE) recFasePintar(false); });
       if (serv) serv.onchange = refreshServicio;
       // Comprobante con IA (igual que en el CRM)
@@ -3138,6 +3212,12 @@ function paintRecepcion() {
         if (d.banco && el("r_banco") && !el("r_banco").value) el("r_banco").value = d.banco;
         if (d.nroOperacion && el("r_oper") && !el("r_oper").value) el("r_oper").value = d.nroOperacion;
         if (d.depositante && el("r_depo") && !el("r_depo").value) el("r_depo").value = d.depositante;
+        // Servicio y detalle según el monto pagado (solo si todavía no los eligieron)
+        const sm = recServicioPorMonto(el("r_total") && el("r_total").value);
+        if (sm && serv && !serv.value && recElegir(serv, sm[0])) {
+          refreshServicio(); recMarcar("r_serv");
+          if (recElegir(el("r_det"), sm[1])) recMarcar("r_det");
+        }
         // Cliente: se busca al depositante en la Base de Datos; si no está, queda su nombre escrito para buscarlo a mano
         const busca = el("r_clibusca");
         if (d.depositante && busca && !busca.value.trim() && !recCli) {
@@ -3147,8 +3227,8 @@ function paintRecepcion() {
           busca.value = c ? (bdV(c, "codigoId") ? bdV(c, "codigoId") + " · " : "") + (bdV(c, "nombre") || bdV(c, "razon") || "") : d.depositante;
           if (c) { if (busca.oninput) busca.oninput(); recMarcar("r_clibusca"); }
         }
-        // Forma de pago: QR o transferencia (si la lista no tiene «QR», se agrega para esta recepción)
-        const fp = /qr/i.test(String(d.metodo || "")) ? "QR" : /transf|deposit/i.test(String(d.metodo || "")) ? "TRANSFERENCIA" : "";
+        // Forma de pago: los pagos por QR o transferencia se registran como TRANSFERENCIA
+        const fp = /qr|transf|deposit/i.test(String(d.metodo || "")) || d.nroOperacion || d.banco ? "TRANSFERENCIA" : "";
         const selP = el("r_pago");
         if (fp && selP) { let op = [...selP.options].find(o => o.value.toUpperCase().includes(fp)); if (!op) { op = new Option(fp, fp); selP.add(op); } selP.value = op.value; recMarcar("r_pago"); }
         const fISO = String(d.fecha || "").match(/(\d{4})-(\d{2})-(\d{2})/) ? String(d.fecha).slice(0, 10) : (m2 => m2 ? m2[3] + "-" + m2[2].padStart(2, "0") + "-" + m2[1].padStart(2, "0") : "")(String(d.fecha || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/));
@@ -3838,6 +3918,8 @@ async function openCorreoMasivo(grupo) {
   const llenar = (t, c) => { const v = per ? cmVencimiento(c.nit, per) : null;
     return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{periodo\}/g, per ? recPeriodoTxt(per) : "").replace(/\{vence\}/g, v ? djFechaTxt(v.iso) : "día de tu vencimiento").replace(/\{nit\}/g, c.nit || ""); };
   const pl = CM_PLANTILLAS[grupo];
+  // Adjuntos (solo «Correo a activos»): PDF o imágenes, hasta 5 archivos y 7 MB en total
+  const ADJ = [], conAdj = grupo !== "norec";
   const pintar = () => {
     const L = lista();
     caja.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><h3 style="margin:0">${grupo === "norec" ? "✉ Recordar a quienes no recepcionaron" : "✉ Correo a todos los clientes activos"}</h3><button class="mini" id="cmm_x">✕</button></div>
@@ -3846,6 +3928,8 @@ async function openCorreoMasivo(grupo) {
       <div class="field"><label>Asunto</label><input id="cmm_asunto" value="${escape(pl.asunto)}"></div>
       <div class="field"><label>Mensaje</label><textarea id="cmm_texto" style="min-height:190px;font-family:inherit">${escape(pl.texto)}</textarea>
         <div class="note" style="margin:4px 0 0">Se reemplaza solo: <b>{nombre}</b>${grupo === "norec" ? ", <b>{periodo}</b>, <b>{vence}</b> (su fecha de vencimiento), <b>{nit}</b>" : ", <b>{nit}</b>"}. Sale con el logo de CONTAX y si el cliente responde, llega a ${escape("info@contaxbolivia.com")}.</div></div>
+      ${conAdj ? `<div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="cmm_adj" multiple accept="application/pdf,image/*">
+        <div id="cmm_adjl" class="note" style="margin:4px 0 0">${ADJ.length ? ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>` : ""}
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
         <span class="msg" id="cmm_msg" style="margin:0 auto 0 0"></span>
         <button class="btn sec" id="cmm_prueba" style="border:1px solid var(--line)">Enviarme una prueba</button>
@@ -3853,6 +3937,19 @@ async function openCorreoMasivo(grupo) {
       </div>`;
     const $ = id => caja.querySelector("#" + id), msg = $("cmm_msg");
     $("cmm_x").onclick = () => bg.remove();
+    const guardarTxt = () => { pl.asunto = $("cmm_asunto").value; pl.texto = $("cmm_texto").value; };
+    if ($("cmm_adj")) $("cmm_adj").onchange = async () => {
+      const fs = [...($("cmm_adj").files || [])];
+      for (const f of fs) {
+        if (!/^image\/|application\/pdf/.test(f.type)) { msg.className = "msg err"; msg.textContent = f.name + ": solo PDF o imágenes."; continue; }
+        if (ADJ.length >= 5) { msg.className = "msg err"; msg.textContent = "Máximo 5 archivos."; break; }
+        if (ADJ.reduce((t, a) => t + a.kb, 0) + f.size / 1024 > 7 * 1024) { msg.className = "msg err"; msg.textContent = "Los adjuntos pasan de 7 MB en total."; break; }
+        const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(f); });
+        ADJ.push({ nombre: f.name, mime: f.type, b64, kb: f.size / 1024 });
+      }
+      guardarTxt(); pintar();
+    };
+    caja.querySelectorAll("[data-qadj]").forEach(a => a.onclick = e => { e.preventDefault(); ADJ.splice(Number(a.dataset.qadj), 1); guardarTxt(); pintar(); });
     $("cmm_ver").onclick = e => { e.preventDefault(); const l = $("cmm_lista"); l.style.display = l.style.display === "none" ? "" : "none"; };
     if ($("cmm_per")) $("cmm_per").onchange = () => { pl.asunto = $("cmm_asunto").value; pl.texto = $("cmm_texto").value; per = $("cmm_per").value; pintar(); };
     const mandar = async (dest, prueba) => {
@@ -3864,7 +3961,7 @@ async function openCorreoMasivo(grupo) {
         const grupoL = dest.slice(i, i + 40).map(c => ({ correo: c.correo, asunto: llenar(asunto, prueba ? prueba : c), texto: llenar(texto, prueba ? prueba : c) }));
         msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Enviando… ${env} de ${dest.length}`;
         const idToken = await auth.currentUser.getIdToken();
-        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo, prueba: !!prueba, lista: grupoL }) }).then(x => x.json());
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo, prueba: !!prueba, lista: grupoL, adjuntos: ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
         if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
         env += r.enviados; fall = fall.concat(r.fallidos || []);
         if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos. Vuelve a intentar mañana." }); break; }
@@ -4434,7 +4531,7 @@ function openDDJJ(r, alGuardar) {
     }).join("") + (canEdit ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
         <label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir varios a la vez<input type="file" id="dj_amulti" multiple accept="application/pdf,image/*,.xlsx,.xls,.csv" style="display:none"></label>
         <span class="note">Elige todos juntos: se reconocen por el nombre (RCV, 200, 400, Excel = compras, imagen = QR) y la IA llena el formulario.</span></div>` : "") +
-      `<div class="note" style="margin-top:8px">${djArchFaltan(r, ARCH).length ? "📌 Falta subir para el cliente: <b>" + djArchFaltan(r, ARCH).map(escape).join(", ") + "</b>" : "✅ El cliente ya tiene todos los documentos obligatorios."}${djSinMov(r) ? " · Declaración <b>sin movimiento</b>: el Excel de compras y el QR son opcionales." : ""}</div>` +
+      `<div class="note" style="margin-top:8px">${djArchFaltan(r, ARCH).length ? "📌 Falta subir para el cliente: <b>" + djArchFaltan(r, ARCH).map(escape).join(", ") + "</b>" : "✅ El cliente ya tiene todos los documentos obligatorios."}${djSinMov(r) ? " · Declaración <b>sin movimiento</b>: no paga impuestos, el Excel de compras y los QR son opcionales." : " · El QR del <b>IT</b> es obligatorio si hubo ventas; el del <b>IVA</b> es opcional (se puede compensar con compras)."}</div>` +
       `<div class="msg" id="dj_archmsg" style="margin-top:6px"></div>`;
     enlazarArch();
   };
@@ -4470,6 +4567,8 @@ function openDDJJ(r, alGuardar) {
       const q = { qrMonto: String(d.monto || ""), qrVence: aISO(d.vence) || String(d.vence || ""), qrFormulario: String(d.formulario || "").replace(/\D/g, "") };
       try { await updateDoc(doc(db, DJ_ARCH, ARCH[t]._id), q); Object.assign(ARCH[t], q); } catch (e) {}
       llenos.push("datos del QR");
+      // Aviso si el QR está en la fila equivocada (el IT es el Formulario 400 y el IVA el 200)
+      if ((t === "qr" && q.qrFormulario === "200") || (t === "qr2" && q.qrFormulario === "400")) alertas.push(`Este QR es del Formulario ${q.qrFormulario} (${q.qrFormulario === "200" ? "IVA" : "IT"}): súbelo en la fila «${q.qrFormulario === "200" ? "QR de pago del IVA" : "QR de pago del IT"}».`);
     }
     return { llenos, alertas };
   };
@@ -4563,12 +4662,15 @@ const DJ_TIPOS = [
   ["compras", "Excel de compras registradas", ".xlsx,.xls,.csv,application/pdf"],
   ["f200", "Formulario 200 (IVA)", "application/pdf,image/*"],
   ["f400", "Formulario 400 (IT)", "application/pdf,image/*"],
-  ["qr", "QR de pago 1 (por ejemplo IVA)", "image/*,application/pdf"],
-  ["qr2", "QR de pago 2 (por ejemplo IT)", "image/*,application/pdf"]
+  ["qr", "QR de pago del IT (F400)", "image/*,application/pdf"],
+  ["qr2", "QR de pago del IVA (F200)", "image/*,application/pdf"]
 ];
 // Documentos obligatorios para entregar al cliente. Sin movimiento: el Excel de compras y el QR son opcionales; el 2.º QR siempre lo es.
 function djSinMov(r) { return /sin movimiento/i.test(String(r.detalleServicio || "")); }
-function djArchOpcional(r, t) { return t === "qr2" || (djSinMov(r) && (t === "compras" || t === "qr")); }
+// QR del IT: obligatorio si hubo ventas (el 3% se paga siempre); no hace falta si es sin movimiento o el IT a pagar es 0.
+// QR del IVA: siempre opcional, porque el IVA se puede compensar con las facturas de compras.
+function djItCero(r) { const x = String(r.dj_itPagar == null ? "" : r.dj_itPagar).trim(); return x !== "" && !(parseFloat(x.replace(/\./g, "").replace(",", ".")) > 0); }
+function djArchOpcional(r, t) { return t === "qr2" || (djSinMov(r) && t === "compras") || (t === "qr" && (djSinMov(r) || djItCero(r))); }
 function djArchFaltan(r, arch) { return DJ_TIPOS.filter(([t]) => !djArchOpcional(r, t) && !(arch && arch[t])).map(([t, l]) => l.replace(/ \(.*$/, "").replace(/ —.*$/, "")); }
 async function djArchListar(recId) {
   const q = await getDocs(query(collection(db, DJ_ARCH), where("recId", "==", recId)));
