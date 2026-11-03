@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "82";
+const APP_VERSION = "83";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -831,7 +831,7 @@ function paintPermisosMatrix() {
 // ---------- Configuración IA ----------
 const AI_MODELS = {
   deepseek: [["deepseek-chat", "deepseek-chat (recomendado)"], ["deepseek-reasoner", "deepseek-reasoner (razonamiento)"]],
-  gemini: [["gemini-2.5-flash", "gemini-2.5-flash (recomendado)"], ["gemini-2.5-pro", "gemini-2.5-pro (más potente)"], ["gemini-flash-latest", "gemini-flash-latest (siempre el más nuevo)"], ["gemini-2.0-flash", "gemini-2.0-flash (antiguo)"]]
+  gemini: [["gemini-2.5-flash", "gemini-2.5-flash (recomendado)"], ["gemini-2.5-pro", "gemini-2.5-pro (más potente)"], ["gemini-flash-latest", "gemini-flash-latest (siempre el más nuevo)"]]
 };
 const AI_HELP = {
   deepseek: 'Consigue tu clave en <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:var(--green)">platform.deepseek.com</a> (crea cuenta, agrega saldo — es muy barato — y crea una API key). Empieza con <code>sk-</code>.',
@@ -995,7 +995,7 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
     catch (e) { msg.className = "msg err"; msg.textContent = "Error: " + (e.code || e.message); }
   };
   el("c_visiontest").onclick = async () => {
-    const msg = el("c_visionmsg"), key = el("c_vision").value.trim(), model = el("c_vmodel").value === "auto" ? "gemini-flash-lite-latest" : el("c_vmodel").value;
+    const msg = el("c_visionmsg"), key = el("c_vision").value.trim(), model = el("c_vmodel").value === "auto" ? "gemini-3.5-flash-lite" : el("c_vmodel").value;
     if (!key) { msg.className = "msg err"; msg.textContent = "Pega primero la clave."; return; }
     msg.className = "msg"; msg.textContent = "Probando " + model + "…";
     // Imagen de prueba pequeña con un texto de comprobante (se dibuja aquí mismo)
@@ -1003,7 +1003,7 @@ Contacto: …">${escape(cfg.aiContext || "")}</textarea>
     g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 300); g.fillStyle = "#000"; g.font = "22px sans-serif";
     ["Banco Nacional de Bolivia", "Transferencia QR exitosa", "Importe: Bs 50.00", "Destino: CONTAX SRL", "Fecha: 26/10/2026 20:15", "Nro. operacion: 00123456"].forEach((t, i) => g.fillText(t, 30, 45 + i * 42));
     const b64 = cv.toDataURL("image/jpeg", 0.8).split(",")[1];
-    const gen = { temperature: 0.1, maxOutputTokens: 300, responseMimeType: "application/json" };
+    const gen = cxGenConfig(model, { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: "application/json" });
     const t0 = performance.now();
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -2669,13 +2669,13 @@ async function panelAI(cfg, system, user) {
     if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (e) {} throw new Error("DeepSeek: " + (t || res.status)); }
     const d = await res.json(); return ((((d.choices || [])[0] || {}).message || {}).content || "").trim();
   }
-  const models = [cfg.aiModel, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"].filter((m, i, a) => m && a.indexOf(m) === i);
+  const models = [/2\.0|2\.5-flash-lite/.test(cfg.aiModel || "") ? "" : cfg.aiModel, "gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-2.5-flash"].filter((m, i, a) => m && a.indexOf(m) === i);
   const body = JSON.stringify({ system_instruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 900 } });
   let lastErr = "";
   for (const model of models) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-      if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (e) {} lastErr = t || ("HTTP " + res.status); if (res.status === 404) continue; throw new Error("Gemini: " + lastErr); }
+      if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (e) {} lastErr = t || ("HTTP " + res.status); if (res.status === 404 || res.status === 429 || res.status === 503) continue; throw new Error("Gemini: " + lastErr); }
       const d = await res.json();
       const txt = ((((d.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || "").join("").trim();
       if (txt) return txt;
@@ -3602,7 +3602,15 @@ function cxCompressImage(file, maxPx, quality) {
   });
 }
 // Lee un comprobante con Gemini (usa la clave visionKey, o la principal si es Gemini)
-const CX_GEMINI_FALLBACKS = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+// (Google dio de baja gemini-2.0-flash y 2.5-flash-lite: ahora se usa la familia 3.x)
+const CX_GEMINI_FALLBACKS = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-flash-latest"];
+// Gemini 3 «piensa» antes de responder: se le pide lo mínimo para que lea en pocos segundos.
+// Si un modelo no acepta esa opción (400), se repite sin ella.
+function cxGenConfig(model, base, sinPensar) {
+  const g = Object.assign({}, base);
+  if (!sinPensar) g.thinkingConfig = /gemini-3|latest/.test(model) ? { thinkingLevel: "minimal" } : { thinkingBudget: 0 };
+  return g;
+}
 async function ocrComprobanteGemini(dataUrl) {
   const cfg = await loadConfigDoc();
   let key = (cfg.visionKey || "").trim();
@@ -3617,15 +3625,17 @@ async function ocrComprobanteGemini(dataUrl) {
     "Extrae los datos y responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","importe":"","moneda":"","depositante":"","destino":"","fecha":"","hora":"","nroOperacion":"","concepto":"","observacion":"","metodo":""}. ' +
     "importe solo el número (ej. 150.00). fecha en formato aaaa-mm-dd. metodo: \"QR\" si fue un pago con código QR (dice QR, Simple, pago QR) o \"TRANSFERENCIA\" si fue transferencia o depósito. Si un dato no aparece, déjalo como cadena vacía.";
-  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 400, responseMimeType: "application/json" }, {}) });
-  const baseModel = /latest/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-flash-lite-latest";
+  const parts = [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }], gen = { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: "application/json" };
+  const baseModel = /latest|gemini-3/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-3.5-flash-lite";
   const models = [baseModel, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i && /gemini/i.test(m));
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   let lastErr = "";
   for (const model of models) {
     // Hasta 3 intentos por modelo ante sobrecarga (503) o límite momentáneo (429/500)
+    let sinPensar = false;
     for (let intento = 0; intento < 3; intento++) {
       try {
+        const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: cxGenConfig(model, gen, sinPensar) });
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
         if (res.ok) {
           const data = await res.json();
@@ -3637,6 +3647,8 @@ async function ocrComprobanteGemini(dataUrl) {
         }
         let d = ""; try { d = (await res.json()).error.message || ""; } catch (e) {}
         lastErr = `(${res.status}) ${d}`;
+        if (res.status === 400 && !sinPensar) { sinPensar = true; continue; } // no acepta la opción de «pensar»: se repite sin ella
+        if (res.status === 400) break; // prueba otro modelo
         if (res.status === 503 || res.status === 429 || res.status === 500) break; // saturado: pasa al siguiente modelo
         if (res.status === 404 || /not found|not supported/i.test(d)) break; // prueba otro modelo
         return { error: "No se pudo leer el comprobante. " + lastErr }; // error definitivo
@@ -5025,13 +5037,15 @@ async function djLeerIA(tipo, dataUrl) {
   const cfg = await loadConfigDoc();
   const key = (cfg.visionKey || cfg.aiKey || cfg.geminiKey || "").trim();
   if (!key) return { error: "Falta la clave de Gemini (Configuración → IA)." };
-  const body = JSON.stringify({ contents: [{ role: "user", parts: [{ text: DJ_PROMPTS[tipo] + ". Los importes solo con números y punto decimal (ej. 118582.28). Si un dato no aparece, cadena vacía. Sin texto extra." }, { inline_data: { mime_type: mime, data: dataUrl.replace(/^data:[^;]+;base64,/, "") } }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 500, responseMimeType: "application/json" } });
-  const base = /latest/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-flash-lite-latest";
+  const mk = (model, sp) => JSON.stringify({ contents: [{ role: "user", parts: [{ text: DJ_PROMPTS[tipo] + ". Los importes solo con números y punto decimal (ej. 118582.28). Si un dato no aparece, cadena vacía. Sin texto extra." }, { inline_data: { mime_type: mime, data: dataUrl.replace(/^data:[^;]+;base64,/, "") } }] }],
+    generationConfig: cxGenConfig(model, { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: "application/json" }, sp) });
+  const base = /latest|gemini-3/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-3.5-flash-lite";
   let err = "";
   for (const model of [base, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i)) {
-    for (let k = 0; k < 2; k++) {
+    let sp = false;
+    for (let k = 0; k < 3; k++) {
       try {
+        const body = mk(model, sp);
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
         if (res.ok) {
           const j = await res.json();
@@ -5039,7 +5053,7 @@ async function djLeerIA(tipo, dataUrl) {
           try { return { data: JSON.parse(t) }; } catch (e) { const m = t.match(/\{[\s\S]*\}/); if (m) try { return { data: JSON.parse(m[0]) }; } catch (_) {} }
           return { error: "La IA no pudo leer el documento." };
         }
-        err = "(" + res.status + ")"; if (res.status !== 503 && res.status !== 429 && res.status !== 500) break;
+        err = "(" + res.status + ")"; if (res.status === 400 && !sp) { sp = true; continue; } if (res.status !== 503 && res.status !== 429 && res.status !== 500) break;
       } catch (e) { err = String(e.message || e); }
       await new Promise(z => setTimeout(z, 700));
     }

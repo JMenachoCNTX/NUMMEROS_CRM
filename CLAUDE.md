@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v82; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v83; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -58,3 +58,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - No pegar `firestore-rules.txt` (el viejo) en la consola: dejaría sin acceso a casi todo el panel.
 - Cambiar el `.gs` en GitHub **no** cambia el script real: hay que pegarlo y crear nueva versión.
 - Hay varios puntos de seguridad pendientes en las reglas y en el puente: ver aviso de seguridad.
+- **IA de comprobantes (v83):** Google dio de baja gemini-2.0-flash y 2.5-flash-lite. Se usa `gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-flash-latest`, con `thinkingLevel: 'minimal'` (`cxGenConfig`); si el modelo responde 400 se repite sin esa opción. La clave gratuita tiene ~20 lecturas al día por modelo: para uso diario hay que activar la facturación en Google AI Studio.
