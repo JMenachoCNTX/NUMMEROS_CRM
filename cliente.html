@@ -178,7 +178,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     salir: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3"/>', fact: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>', rep: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>',
     tema: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>', ojo: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>',
-    enviar: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', check: '<path d="M20 6L9 17l-5-5"/>'
+    enviar: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', check: '<path d="M20 6L9 17l-5-5"/>',
+    moto: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17h6l3-6h-4M15 6h2l3.5 11M8.5 11h4"/>'
   };
   function ic(n, t) { return '<svg width="' + (t || 18) + '" height="' + (t || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + I[n] + "</svg>"; }
   function anim(t1, t2) { return '<div class="animFull"><div class="animN" role="status"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg><img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo"></div><b>' + t1 + "</b><span>" + t2 + '</span><i class="anBar"><i></i></i></div></div>'; }
@@ -259,13 +260,14 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   setInterval(tic, 1000);
 
   // ================= APP =================
-  var TABS = [["inicio", "Inicio", "casa"], ["decl", "Declaraciones", "decl"], ["serv", "Balances y trámites", "bal"], ["docs", "Documentos", "doc"], ["datos", "Mis datos", "yo"]];
+  var TABS = [["inicio", "Inicio", "casa"], ["decl", "Declaraciones", "decl"], ["serv", "Balances y trámites", "bal"], ["yango", "Pagos Yango", "moto"], ["docs", "Documentos", "doc"], ["datos", "Mis datos", "yo"]];
   function pintarApp() {
     var c = S.d.cliente;
+    if (S.tab === "yango" && !S.d.yango) S.tab = "inicio";
     raiz.innerHTML = (S.d.staff ? '<div style="background:#93370D;color:#fff;text-align:center;font-size:13px;padding:7px 12px;font-weight:600">Vista de CONTAX (' + esc(S.d.staff) + "): estás viendo el portal de este cliente tal como él lo ve.</div>" : "") + '<div class="top"><div class="topin"><img class="logo logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><img class="logo logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS">' +
       '<div class="who"><b>' + esc(c.nombre) + "</b><span>NIT " + esc(c.nit) + "</span></div>" +
       '<button class="icb" id="bTema" title="Modo claro u oscuro" aria-label="Cambiar modo claro u oscuro">' + ic("tema") + '</button><button class="icb" id="bSalir" title="Salir" aria-label="Salir del portal">' + ic("salir") + "</button></div>" +
-      '<nav class="tabs" aria-label="Secciones">' + TABS.map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + ic(t[2], 16) + esc(t[1]) + "</button>"; }).join("") + "</nav></div>" +
+      '<nav class="tabs" aria-label="Secciones">' + TABS.filter(function (t) { return t[0] !== "yango" || S.d.yango; }).map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + ic(t[2], 16) + esc(t[1]) + "</button>"; }).join("") + "</nav></div>" +
       '<main id="cont"></main>' +
       '<div class="flot">' + (WA ? '<a class="wa" href="' + wa() + '" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">' + ic("msj", 22) + "<span>WhatsApp</span></a>" : "") +
       '<button class="ia" id="bChat" aria-label="Asistente">' + '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" style="width:20px;height:24px">' + "<span>Asistente</span></button></div>" + '<div id="chatBox"></div>';
@@ -282,6 +284,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.tab === "inicio") h = tabInicio(d);
     else if (S.tab === "decl") h = tabDecl(d);
     else if (S.tab === "serv") h = tabServ(d);
+    else if (S.tab === "yango") h = tabYango();
     else if (S.tab === "docs") h = tabDocs(d);
     else h = tabDatos(d);
     cont.innerHTML = h; tic();
@@ -289,6 +292,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (S.tab === "inicio") promoIniciar();
     if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; enlazarDocsDecl(); }
     if (S.tab === "docs") enlazarDocs();
+    if (S.tab === "yango") { cargarYango(); cont.querySelectorAll("[data-ygpdf]").forEach(function (b) { b.onclick = function () { pdfYango(S.yg.repartidores[Number(b.dataset.ygpdf)]); }; }); }
     enlazarPdf(cont);
     if (document.getElementById("bChatIr")) document.getElementById("bChatIr").onclick = function () { S.chatAbierto = true; pintarChat(); };
   }
@@ -319,6 +323,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<button data-ir="docs"><span class="ic">' + ic("subir") + "</span>Subir documentos<small>Carnet, facturas, extractos</small></button>" +
       '<button data-ir="decl"><span class="ic">' + ic("rep") + "</span>Mis reportes<small>Ventas, compras e impuestos</small></button>" +
       '<button data-ir="serv"><span class="ic">' + ic("tram") + "</span>Trámites y balances<small>Estado de cada uno</small></button>" +
+      (d.yango ? '<button data-ir="yango"><span class="ic">' + ic("moto") + "</span>Pagos de Yango<small>Tu informe de pagos MTG</small></button>" : "") +
       '<button id="bChatIr"><span class="ic">' + ic("chat") + "</span>Asistente<small>Resuelve tus dudas</small></button>" +
       (WA ? '<a href="' + wa() + '" target="_blank" rel="noopener"><span class="ic">' + ic("msj") + "</span>WhatsApp<small>Habla con el equipo</small></a>" : "") +
       "</div>" +
@@ -443,6 +448,75 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         abrirVisor(r);
       });
     }; });
+  }
+
+  // ----- Pagos Yango (solo clientes que también son repartidores: informe general de pagos MTG-YANGO) -----
+  var EST_YG = { pagado: ["Pagado", "b-ok"], pendiente: ["Pendiente", "b-pend"], en_planilla: ["Enviado a pagar", "b-proc"], no_habilitado: ["No habilitado (Bs 0)", "b-mut"] };
+  function fechaBo(iso) { var m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; }
+  function estYg(s) { var e = EST_YG[s.estado] || [s.estado || "—", "b-mut"]; if (s.estado === "pendiente" && s.rebote) e = ["Devuelto por el banco", "b-pend"]; else if (s.estado === "pendiente" && s.fuera) e = ["No entró a la planilla", "b-pend"]; return e; }
+  function cifrasYg(r) {
+    var pag = r.semanas.filter(function (s) { return s.estado === "pagado"; }), pend = r.semanas.filter(function (s) { return s.estado === "pendiente" || s.estado === "en_planilla"; });
+    var suma = function (l) { return Math.round(l.reduce(function (t, s) { return t + s.importe; }, 0) * 100) / 100; };
+    var porMes = {}; pag.forEach(function (s) { var k = s.fechaPago.slice(0, 7); if (k) porMes[k] = (porMes[k] || 0) + s.importe; });
+    var meses = Object.keys(porMes).sort().slice(-12), ult = pag.filter(function (s) { return s.fechaPago; }).sort(function (a, b) { return b.fechaPago.localeCompare(a.fechaPago); })[0];
+    return { tot: suma(pag), n: pag.length, pend: suma(pend), nPend: pend.length, ult: ult, meses: meses.map(function (k) { return { t: MESES[Number(k.slice(5)) - 1].slice(0, 3) + " " + k.slice(2, 4), v: Math.round(porMes[k] * 100) / 100 }; }) };
+  }
+  function barrasYg(l, color) {
+    if (!l.length) return '<p class="c13 suave" style="text-align:center;padding:18px">Todavía no hay pagos para graficar.</p>';
+    var W = 640, H = 220, iz = 8, ar = 24, ab = 26, max = Math.max.apply(null, l.map(function (x) { return x.v; })) || 1, hu = (W - iz * 2) / l.length, bw = Math.min(40, hu * .6), g = "";
+    l.forEach(function (x, i) {
+      var h = (H - ar - ab) * x.v / max, cx = iz + hu * i + hu / 2, y = H - ab - h;
+      g += '<rect x="' + (cx - bw / 2) + '" y="' + y + '" width="' + bw + '" height="' + Math.max(h, 1) + '" rx="4" fill="' + color + '"/>' +
+        '<text x="' + cx + '" y="' + (y - 6) + '" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor">' + Math.round(x.v).toLocaleString("es-BO") + "</text>" +
+        '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="currentColor" opacity=".7">' + esc(x.t) + "</text>";
+    });
+    return '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" role="img" aria-label="Ingresos por mes">' + g + "</svg>";
+  }
+  function tabYango() {
+    if (!S.yg) return '<div class="card" style="text-align:center;padding:30px"><p class="suave">Buscando tus pagos de Yango…</p></div>';
+    if (!S.yg.ok) return '<div class="aviso warn">' + esc(S.yg.error || "No pudimos leer tus pagos de Yango.") + ' Si crees que es un error, <a href="' + wa("Hola CONTAX, no veo mis pagos de Yango en el portal. Mi NIT es " + S.d.cliente.nit + ".") + '" target="_blank" rel="noopener" style="color:inherit;font-weight:700">escríbenos por WhatsApp</a>.</div>';
+    return '<div class="pila">' + S.yg.repartidores.map(function (r, i) {
+      var c = cifrasYg(r);
+      var filas = r.semanas.map(function (s) { var e = estYg(s); return "<tr><td><b>" + esc(s.semana) + '</b><div class="chico suave">' + esc(s.rango) + '</div></td><td><span class="badge ' + e[1] + '">' + esc(e[0]) + "</span></td><td>" + (fechaBo(s.fechaPago) || '<span class="suave">—</span>') + "</td><td>" + (esc(s.factura) || '<span class="suave">—</span>') + '</td><td class="n">' + bs(s.importe) + "</td></tr>"; }).join("");
+      return '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Pagos de Yango</h2><p class="c13 suave">' + esc(r.nombre || S.d.cliente.nombre) + " · ID Yango " + esc(r.id) + " · MTG Delivery (MILTHAGOR S.R.L.)</p></div>" +
+        '<button class="btn2" data-ygpdf="' + i + '">' + ic("bajar", 16) + "Informe general PDF</button></div>" +
+        '<div class="grid">' + kpi("pago", "Total cobrado", bs(c.tot), c.n + " pagos recibidos", "var(--ok)") +
+        kpi("reloj", "Pendiente de pago", bs(c.pend), c.nPend ? c.nPend + " semana" + (c.nPend > 1 ? "s" : "") + " por cobrar" : "No tienes pagos pendientes.", c.pend ? "var(--aviso)" : "") +
+        kpi("check", "Último pago", c.ult ? fechaBo(c.ult.fechaPago) : "—", c.ult ? bs(c.ult.importe) + " · " + c.ult.semana : "Sin pagos todavía.", "") +
+        kpi("yo", "Estado en Yango", r.habilitado ? "Habilitado" : "No habilitado", (r.poliza ? "Póliza de seguro registrada." : "Sin póliza de seguro registrada."), r.habilitado ? "var(--ok)" : "var(--error)") + "</div>" +
+        '<div class="card"><h3 style="margin-bottom:6px">Ingresos por mes</h3>' + barrasYg(c.meses, "var(--acento)") + "</div>" +
+        '<div class="tw"><table><thead><tr><th>Semana</th><th>Estado</th><th>Fecha de pago</th><th>N.º factura</th><th class="n">Importe</th></tr></thead><tbody>' + (filas || '<tr><td colspan="5" class="suave" style="text-align:center">Sin pagos registrados.</td></tr>') + "</tbody></table></div>";
+    }).join('<hr style="border:0;border-top:1px solid var(--borde);margin:10px 0">') +
+      '<p class="chico suave">Datos del control de pagos que CONTAX lleva para MTG Delivery. El débito fiscal (13%) y el IT (3%) de cada pago están en el informe PDF.</p></div>';
+  }
+  function cargarYango() {
+    if (S.yg || S.ygCargando) return;
+    S.ygCargando = true;
+    apiS({ action: "portal_yango" }).then(function (r) { S.ygCargando = false; S.yg = r || { ok: false }; if (S.tab === "yango") pintarTab(); });
+  }
+  function pdfYango(r) {
+    var c = cifrasYg(r), base = location.href.replace(/[#?].*$/, "").replace(/[^/]*$/, ""), f2 = function (n) { return (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    var w = window.open("", "_blank"); if (!w) { alert("El navegador bloqueó la ventana. Permite las ventanas emergentes para este sitio."); return; }
+    var filas = r.semanas.map(function (s) { var p = s.estado === "pagado"; return '<tr class="' + (p ? "" : "ret") + '"><td>' + esc(s.semana) + "</td><td>" + esc(s.rango) + "</td><td>" + esc(estYg(s)[0]) + "</td><td>" + fechaBo(s.fechaPago) + "</td><td>" + esc(s.factura) + '</td><td class="n">' + f2(s.importe) + '</td><td class="n">' + (p ? f2(s.importe * .13) : "") + '</td><td class="n">' + (p ? f2(s.importe * .03) : "") + "</td></tr>"; }).join("");
+    var css = '@font-face{font-family:Akshar;font-weight:700;src:url(' + base + 'marca/fuentes/Akshar-700.woff2)}@font-face{font-family:Questrial;src:url(' + base + 'marca/fuentes/Questrial-400.woff2)}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}' +
+      'body{margin:0;background:#fff;font-family:Questrial,"Century Gothic",Arial,sans-serif;color:#051F20;font-size:11.5px}.inf{max-width:900px;margin:0 auto;padding:22px 26px}' +
+      '.cab{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:3px solid #235347}.cab img{height:34px}.cab b{font:700 13px Akshar,sans-serif;color:#557363;letter-spacing:.2em}' +
+      '.banda{background:#163832;color:#fff;border-radius:12px;padding:14px 18px;margin:14px 0 12px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.banda h1{margin:0;font:700 24px Akshar,sans-serif}.banda p{margin:2px 0 0;color:#DAF1DE}.banda .id{font:700 22px Akshar,sans-serif;color:#8EB69B;text-align:right}.banda small{display:block;font-size:10px;letter-spacing:.15em;color:#DAF1DE}' +
+      '.kp{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.kp div{border:1px solid #DAF1DE;background:#F4FAF5;border-radius:10px;padding:8px 10px}.kp small{display:block;font:700 9px Akshar,sans-serif;letter-spacing:.12em;color:#557363;text-transform:uppercase}.kp b{font:700 17px Akshar,sans-serif;color:#163832}' +
+      'h2{font:700 15px Akshar,sans-serif;color:#163832;border-left:4px solid #235347;padding-left:8px;margin:16px 0 8px}.gr{border:1px solid #DAF1DE;border-radius:10px;padding:8px;color:#163832}' +
+      'table{width:100%;border-collapse:collapse;font-size:10px}th{background:#163832;color:#fff;font:700 10px Akshar,sans-serif;padding:5px 4px;text-align:left}td{padding:4px;border-bottom:1px solid #DAF1DE}tbody tr:nth-child(even) td{background:#F4FAF5}.n{text-align:right;white-space:nowrap}tr.ret td{color:#B42318}tfoot td{font-weight:700;border-top:2px solid #235347;background:#DAF1DE}' +
+      '.pie{display:flex;justify-content:space-between;align-items:center;color:#557363;font-size:9px;margin-top:14px;border-top:1px solid #DAF1DE;padding-top:8px}.pie img{height:16px}@media print{@page{size:A4;margin:10mm}.inf{padding:0}tr,.gr{break-inside:avoid}}';
+    var hoy = fechaBo(S.d.hoy) || new Date().toLocaleDateString("es-BO");
+    w.document.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe Yango ' + esc(r.id) + '</title><style>' + css + '</style></head><body><div class="inf">' +
+      '<div class="cab"><img src="' + base + 'marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><b>INFORME GENERAL DE PAGOS</b></div>' +
+      '<div class="banda"><div><h1>' + esc(r.nombre || S.d.cliente.nombre) + "</h1><p>Pagos y facturación al " + hoy + " · MTG Delivery (MILTHAGOR S.R.L.) · NIT " + esc(S.d.cliente.nit) + '</p></div><div class="id"><small>ID YANGO</small>' + esc(r.id) + "</div></div>" +
+      '<div class="kp"><div><small>Total cobrado</small><b>' + bs(c.tot) + "</b></div><div><small>Pagos recibidos</small><b>" + c.n + "</b></div><div><small>Pendiente</small><b>" + bs(c.pend) + "</b></div><div><small>Último pago</small><b>" + (c.ult ? fechaBo(c.ult.fechaPago) : "—") + "</b></div></div>" +
+      '<h2>Ingresos por mes</h2><div class="gr">' + barrasYg(c.meses, "#235347") + "</div>" +
+      "<h2>Historial de pagos y facturación</h2><table><thead><tr><th>Semana</th><th>Rango</th><th>Estado</th><th>Fecha de pago</th><th>N.º factura</th><th class=\"n\">Importe</th><th class=\"n\">Débito fiscal 13%</th><th class=\"n\">IT 3%</th></tr></thead><tbody>" + filas + "</tbody>" +
+      '<tfoot><tr><td colspan="5">Total pagado</td><td class="n">' + f2(c.tot) + '</td><td class="n">' + f2(c.tot * .13) + '</td><td class="n">' + f2(c.tot * .03) + "</td></tr></tfoot></table>" +
+      '<div class="pie"><img src="' + base + 'marca/logos/nummeros-logotipo-firma-principal.svg" alt="NUMMEROS by CONTAX"><span>CONTAX · Contabilidad e Impuestos · Portal del Cliente</span></div></div>' +
+      "<script>window.onload=function(){(document.fonts?document.fonts.ready:Promise.resolve()).then(function(){setTimeout(function(){window.print()},300)})}<\/script></body></html>");
+    w.document.close();
   }
 
   // ----- Visor de documentos con formato NUMMEROS -----

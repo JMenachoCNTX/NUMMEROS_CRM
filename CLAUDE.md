@@ -8,7 +8,7 @@ Es el **sistema central de CONTAX** y la **fuente de usuarios** de todos los sis
   trámites, egresos, reportes, pasarela, CONTROL, usuarios, configuración, asistente IA.
 - `pagos.html` — **Pasarela de pagos** pública: el cliente busca su NIT, ve el precio, paga por QR y sube el comprobante en foto o PDF (máx. 2,5 MB; lo lee la IA).
   Incluye la venta de balances (Balance Integral / Balance Independiente para no clientes).
-- `cliente.html` — **Portal del Cliente**: el cliente activo entra con NIT y C.I. y ve sus datos y documentos. En cada declaración ve los archivos que el equipo subió en Declaraciones (RCV, F200, F400, compras y QR con su vencimiento a las 00:00), servidos por el puente (`portal_djarchivo`, versión 42).
+- `cliente.html` — **Portal del Cliente**: el cliente activo entra con NIT y C.I. y ve sus datos y documentos. En cada declaración ve los archivos que el equipo subió en Declaraciones (RCV, F200, F400, compras y QR con su vencimiento a las 00:00), servidos por el puente (`portal_djarchivo`). Si el cliente también es repartidor de Yango (su NIT en `perfiles` del Portal de repartidores, o su NIT o C.I. en BDYango) ve la pestaña **Pagos Yango** con su informe general de pagos MTG y lo descarga en PDF (`portal_yango`, lee `semanas` e `historialRider` de `portal-nummeros`; versión 44 del puente).
 - `privacy-policy.html` — política de privacidad.
 
 ## Para qué empresa

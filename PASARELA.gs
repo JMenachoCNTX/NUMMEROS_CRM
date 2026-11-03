@@ -1054,6 +1054,7 @@ function portalHandle_(d) {
   if (a === "portal_subir") return portalSubir_(nit, d);
   if (a === "portal_archivo") return portalArchivo_(nit, d.id);
   if (a === "portal_djarchivo") return portalDjArchivo_(nit, d.id);
+  if (a === "portal_yango") return portalYango_(nit);
   if (a === "portal_chat") return portalChat_(nit, d);
   if (a === "portal_salir") { pasCacheDel_("ps_" + d.token); return { ok: true }; }
   return { ok: false, error: "accion_desconocida" };
@@ -1157,6 +1158,7 @@ function portalDatos_(nit) {
     suscripcion: { activa: susc, mes: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, estadoBD: cli.estado },
     config: { precios: c.precios, lanzamiento: c.lanzamiento || "", eeffGestion: c.eeffGestion || PAS_DEF.eeffGestion, diaDesde: c.diaDesde || 25 },
     documentos: portalListarDocs_(nit, cli.nombre, false),
+    yango: ygIds_(nit).length > 0,
     hoy: hoy.iso
   };
 }
@@ -1183,6 +1185,84 @@ function portalDjArchivo_(nit, id) {
   for (var i = 0; i < (Number(m.partes) || 1); i++) { var p = fsGet_("djArchivos/" + id + "/p/" + i); b64 += p && p.d ? p.d : ""; }
   if (!b64) return { ok: false, error: "Ese archivo ya no está disponible. Pídelo por WhatsApp." };
   return { ok: true, nombre: m.nombre, dataUrl: "data:" + m.mime + ";base64," + b64 };
+}
+// Informe de pagos MTG-YANGO para clientes que también son repartidores. Los datos están en el Portal de
+// repartidores (proyecto portal-nummeros, los escribe CONTROL): perfiles/{uid}.nit une al cliente con su ID de Yango;
+// «semanas» trae lo pendiente y lo pagado, y «historialRider/{uid}» los pagos anteriores (HistPagosMTG).
+var YG_PROY = "portal-nummeros";
+function ygBase_() { return "https://firestore.googleapis.com/v1/projects/" + YG_PROY + "/databases/(default)/documents"; }
+function ygQuery_(coll, filtros, lim) {
+  var res = fsReq_(ygBase_() + ":runQuery", "post", { structuredQuery: { from: [{ collectionId: coll }], where: fsFiltros_(filtros), limit: lim } }) || [];
+  return res.filter(function (x) { return x.document; }).map(function (x) { return { id: x.document.name.split("/").pop(), data: fsDec_(x.document.fields || {}) }; });
+}
+function ygGet_(path) { var d = fsReq_(ygBase_() + "/" + path); return d ? fsDec_(d.fields || {}) : null; }
+// NIT y C.I. → IDs de Yango según BDYango (planilla de activaciones de Yango); se guarda 6 horas
+function ygMapaBDY_() {
+  var k = "yg_bdy", m = pasCache_(k);
+  if (m) return m;
+  var h = CTRL_HOJAS.bdyango, token = ScriptApp.getOAuthToken(); m = {};
+  h.hojas.forEach(function (hj) {
+    var s = UrlFetchApp.fetch("https://docs.google.com/spreadsheets/d/" + h.id + "/export?format=csv&gid=" + hj[1], { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true });
+    if (s.getResponseCode() !== 200) return;
+    var f = Utilities.parseCsv(s.getContentText("UTF-8")), enc = (f[0] || []).map(function (x) { return String(x).trim().toUpperCase(); });
+    var col = function (re) { for (var i = 0; i < enc.length; i++) if (re.test(enc[i])) return i; return -1; };
+    var cId = col(/^ID\b/), cNit = col(/^NIT$/), cCi = col(/^CI$/);
+    if (cId < 0) return;
+    f.slice(1).forEach(function (r) {
+      var id = String(r[cId] || "").trim().replace(/\.0+$/, "");
+      if (!/^\d{4,}$/.test(id)) return;
+      var pon = function (c) { if (c.length >= 5) { var l = m[c] || (m[c] = []); if (l.indexOf(id) < 0) l.push(id); } };
+      if (cNit >= 0) pon(String(r[cNit] || "").replace(/\D/g, ""));
+      if (cCi >= 0) pon(String(r[cCi] || "").replace(/\.0+$/, "").replace(/\D/g, ""));
+    });
+  });
+  pasCachePut_(k, m, 21600);
+  return m;
+}
+// IDs de Yango del cliente: por su NIT en el Portal de repartidores, y por su NIT o C.I. en BDYango; se guarda 6 horas
+function ygIds_(nit) {
+  nit = String(nit || "").replace(/\D/g, "");
+  if (!/^\d{5,15}$/.test(nit)) return [];
+  var k = "yg_" + nit, c = CacheService.getScriptCache(), v = c.get(k);
+  if (v) return JSON.parse(v);
+  var ids = [], pon = function (id) { if (id && ids.indexOf(id) < 0) ids.push(id); };
+  try { ygQuery_("perfiles", [["nit", "EQUAL", nit]], 5).forEach(function (x) { pon(x.id); }); } catch (e) { console.warn("Yango perfiles: " + e); }
+  try {
+    var m = ygMapaBDY_(), cli = pasClienteCache_(nit), ci = cli ? String(cli.ci || "").replace(/\D/g, "") : "";
+    (m[nit] || []).concat(ci.length >= 5 ? m[ci] || [] : []).forEach(pon);
+  } catch (e) { console.warn("Yango BDYango: " + e); }
+  ids = ids.slice(0, 3);
+  c.put(k, JSON.stringify(ids), 21600);
+  return ids;
+}
+function ygOrden_(t) {
+  var x = String(t || ""), m = x.match(/G\s*(\d{2,4})\s*$/i), a = m ? Number(m[1].length === 2 ? "20" + m[1] : m[1]) : Number((x.match(/20\d\d/) || [0])[0]);
+  var n = Number((x.replace(/G\s*\d{2,4}\s*$/i, "").match(/(\d{1,2})/) || [0, 0])[1]);
+  return (a || 0) * 100 + n;
+}
+function portalYango_(nit) {
+  var uids = ygIds_(nit);
+  if (!uids.length) return { ok: false, error: "No encontramos pagos de Yango con tu NIT." };
+  var reps = uids.map(function (uid) {
+    var rep = ygGet_("repartidores/" + uid) || {}, hr = ygGet_("historialRider/" + uid), l = [], ya = {};
+    ygQuery_("semanas", [["uid", "EQUAL", uid]], 1000).forEach(function (x) {
+      var s = x.data, o = s.orden || ygOrden_(s.semana);
+      if (s.estado === "pagado") ya[o + "|" + Math.round((Number(s.importe) || 0) * 100)] = 1;
+      l.push({ semana: s.semana || "", rango: s.rango || "", importe: Number(s.importe) || 0, estado: s.estado || "", fechaPago: String(s.fechaPago || "").slice(0, 10), orden: o,
+               factura: s.factura && s.factura.numero ? String(s.factura.numero) : "", rebote: !!s.rebote, fuera: s.fueraDePlanilla ? String(s.fueraDePlanilla.motivo || "") : "" });
+    });
+    var filas = []; try { filas = hr ? JSON.parse(hr.filas || "[]") : []; } catch (e) {}
+    filas.forEach(function (f) {
+      var o = ygOrden_(f[0]), k = o + "|" + Math.round((Number(f[2]) || 0) * 100);
+      if (ya[k]) return; ya[k] = 1;
+      l.push({ semana: f[0], rango: f[1] || "", importe: Number(f[2]) || 0, estado: "pagado", fechaPago: String(f[3] || "").slice(0, 10), orden: o, factura: String(f[4] || ""), rebote: false, fuera: "" });
+    });
+    l.sort(function (a, b) { return (b.orden || 0) - (a.orden || 0); });
+    var ult = l.filter(function (s) { return s.importe > 0 || s.estado === "no_habilitado"; })[0];
+    return { id: String(rep.id || (hr && hr.id) || uid), nombre: rep.nombre || "", poliza: !!rep.poliza, habilitado: !(ult && ult.estado === "no_habilitado"), semanas: l, hay: !!rep.id || l.length > 0 };
+  }).filter(function (r) { return r.hay; });
+  if (!reps.length) return { ok: false, error: "Todavía no hay pagos de Yango registrados con tu NIT." };
+  return { ok: true, repartidores: reps };
 }
 // Carpeta de Drive del cliente: "Subidos por el cliente" y "Entregados por CONTAX"
 function portalCarpetas_(nit, nombre, crear) {
