@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v88; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v89; puente versión 48). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -63,3 +63,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v85 · Recepción:** al registrar sale al centro el aviso «¡Registrado!» (`cxPopupOk`) con el N° y el cliente; se cierra solo (4 s, o 7 s si no se envió la Orden al correo), con clic, Enter o Esc.
 - **v87 · Comunicados:** plantillas guardadas por grupo en `config/comunicados` (`plantillas`: id, nombre, grupo, asunto, texto; solo admin las guarda, actualiza o borra), «↺ Restablecer», vista previa con el 1.er cliente, botones para insertar variables y `{cliente}` (nombre completo). Al enviar, el mensaje vuelve a la plantilla.
 - **v88 · Control del mes → No recepcionados → «⛔ Dar de baja a los no recepcionados»** (admin y supervisor): lista con casillas (vienen desmarcados los que tienen un pago del período en revisión en la pasarela), pasa a `CLIENTE INACTIVO` en `bdclientes` y manda el correo de suspensión por el puente (variables {nombre}, {cliente}, {nit}, {mes} = mes siguiente al período, {periodo}). Cada cambio en `bdlog` y el lote en `bdlog` (`accion: baja_masiva`, `lote` con estado anterior). «↶ Deshacer última baja» devuelve el estado anterior solo a quien sigue de baja y crea `baja_masiva_deshecha`.
+- **v89 · Baja separada por tipo de suscriptor:** como en la pasarela, la declaración se recepciona por el mes anterior (período elegido, ej. oct-2026) y la facturación por el mes en curso (`cmPerFact(per)` = mes siguiente, ej. nov-2026). «No recepcionados» = activos sin ninguna de las dos recepciones; se divide en *Suscriptores de declaración* / *de facturación* (`bdSuscDe`) y la baja se hace por grupo, con su propio correo (`CM_BAJA_TXT` / `CM_BAJA_TXT_FACT`) y adjuntos (PDF/imágenes, máx. 5 y 7 MB). El lote guarda `grupo`.

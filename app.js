@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "88";
+const APP_VERSION = "89";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5334,7 +5334,9 @@ function fiBind() {
 
 // ---------- CONTROL DEL MES (antes hoja "Consultas") ----------
 // Cruza los clientes ACTIVOS de la Base de Datos con las declaraciones recepcionadas del período elegido.
-const CM_UI = { per: "", tab: "resumen", q: "" };
+const CM_UI = { per: "", tab: "resumen", q: "", grp: "decl" };
+// Facturación se recepciona por el mes en curso (el siguiente al período de declaración): Oct-2026 de declaración ↔ Nov-2026 de facturación
+function cmPerFact(per) { const [y, m] = String(per).split("-").map(Number); return m === 12 ? (y + 1) + "-01" : y + "-" + String(m + 1).padStart(2, "0"); }
 // Vencimiento SIN según último dígito del NIT: 0→13, 1→14 … 9→22 del mes siguiente al período
 function cmVencimiento(nit, perKey) {
   const d = fiNit(nit).slice(-1); if (d === "" || !perKey) return null;
@@ -5378,17 +5380,19 @@ function cmActividadDias(decl) {
 // del período en revisión en la pasarela. Cada baja queda en bdlog y el lote completo en bdlog (accion 'baja_masiva')
 // para poder deshacerlo («↶ Deshacer última baja»: vuelve al estado anterior solo a quien sigue CLIENTE INACTIVO).
 const CM_BAJA_EST = "CLIENTE INACTIVO";
+const CM_BAJA_TXT_FACT = { asunto: "Suspensión de tu servicio de facturación en CONTAX", texto: "Estimado/a {nombre}:\n\nTe informamos que, al no haber renovado tu suscripción de facturación del mes de {mes}, procedimos con la suspensión del servicio de emisión de facturas y tu cuenta quedó como cliente inactivo.\n\nSi deseas reactivarlo, puedes pagar desde nuestra pasarela: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\nApenas registremos tu pago, reactivamos tu servicio.\n\nSi crees que se trata de un error, responde a este correo o escríbenos por WhatsApp.\n\nSaludos cordiales,\nEquipo CONTAX" };
 const CM_BAJA_TXT = { asunto: "Suspensión de tu servicio en CONTAX", texto: "Estimado/a {nombre}:\n\nTe informamos que, al no haber renovado tu suscripción del mes de {mes} (declaración del período {periodo}), procedimos con la suspensión del servicio y tu cuenta quedó como cliente inactivo.\n\nSi deseas reactivarlo, puedes pagar desde nuestra pasarela: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\nApenas registremos tu pago, reactivamos tu servicio.\n\nSi crees que se trata de un error, responde a este correo o escríbenos por WhatsApp.\n\nSaludos cordiales,\nEquipo CONTAX" };
-async function cmBajaMasiva(noRec) {
-  const per = CM_UI.per, [y, m] = per.split("-").map(Number);
+async function cmBajaMasiva(noRec, grp) {
+  const per = CM_UI.per, [y, m] = per.split("-").map(Number), perF = cmPerFact(per), esF = grp === "fact";
   const mesPago = REC_MESES_CAP[m % 12].toLowerCase() + (m === 12 ? " " + (y + 1) : "");
+  const base = esF ? CM_BAJA_TXT_FACT : CM_BAJA_TXT, perTxt = esF ? "facturación de " + recPeriodoTxt(perF) : "declaración de " + recPeriodoTxt(per);
   // Pagos del período que aún están en revisión en la pasarela (no cuentan como recepcionados, pero ya pagaron)
   let enRev = new Set();
-  try { enRev = new Set((await recSync()).filter(r => !r.eliminado && recCatDe(r) === "declaracion" && recPeriodoKey(r) === per).map(r => fiNit(r.nit)).filter(Boolean)); } catch (e) {}
+  try { enRev = new Set((await recSync()).filter(r => !r.eliminado && ((recCatDe(r) === "declaracion" && recPeriodoKey(r) === per) || (recCatDe(r) === "facturacion" && recPeriodoKey(r) === perF))).map(r => fiNit(r.nit)).filter(Boolean)); } catch (e) {}
   const L = noRec.filter(c => c._docid).map(c => ({ c, nombre: bdV(c, "nombre") || bdV(c, "razon") || "", nit: fiNit(bdV(c, "nit")), correo: String(bdV(c, "correo") || "").trim().toLowerCase(), rev: enRev.has(fiNit(bdV(c, "nit"))) }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
   const quitar = new Set(L.filter(x => x.rev).map(x => x.c._docid));
-  const txt = Object.assign({}, CM_BAJA_TXT);
+  const txt = Object.assign({}, base), ADJ = [];
   const llenar = (t, x) => String(t).replace(/\{nombre\}/g, primerNombreCM(x.nombre)).replace(/\{cliente\}/g, x.nombre).replace(/\{nit\}/g, x.nit).replace(/\{mes\}/g, mesPago).replace(/\{periodo\}/g, recPeriodoTxt(per));
   const bg = document.createElement("div");
   bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
@@ -5397,7 +5401,7 @@ async function cmBajaMasiva(noRec) {
   const pintar = () => {
     const sel = L.filter(x => !quitar.has(x.c._docid)), conMail = sel.filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.correo));
     bg.innerHTML = `<div style="background:var(--panel);border:2px solid var(--danger);border-radius:14px;padding:22px;width:720px;max-width:96vw;max-height:94vh;overflow:auto">
-      <div style="display:flex;justify-content:space-between;gap:10px"><h3 style="margin:0;color:var(--danger)">⛔ Dar de baja a los que no recepcionaron ${escape(recPeriodoTxt(per))}</h3><button class="mini" id="cb_x">✕</button></div>
+      <div style="display:flex;justify-content:space-between;gap:10px"><h3 style="margin:0;color:var(--danger)">⛔ Dar de baja · no recepcionaron ${escape(perTxt)}</h3><button class="mini" id="cb_x">✕</button></div>
       <p class="note" style="margin:8px 0">Pasarán a <b>${CM_BAJA_EST}</b> en la Base de Datos. Desmarca a quien no quieras dar de baja.${L.some(x => x.rev) ? " Los que tienen un pago del período <b>en revisión en la pasarela</b> ya vienen desmarcados." : ""}</p>
       <div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px"><table style="font-size:12px"><thead><tr><th><input type="checkbox" id="cb_all" ${quitar.size ? "" : "checked"}></th><th>Cliente</th><th>NIT</th><th>Correo</th><th>Estado actual</th></tr></thead><tbody>
         ${L.map((x, i) => `<tr><td><input type="checkbox" data-i="${i}" ${quitar.has(x.c._docid) ? "" : "checked"}></td><td>${escape(x.nombre)}${x.rev ? ' <span class="badge warn">pago en revisión</span>' : ""}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo || "—")}</td><td>${escape(bdV(x.c, "estado"))}</td></tr>`).join("")}
@@ -5407,6 +5411,8 @@ async function cmBajaMasiva(noRec) {
         <div class="field"><label>Asunto</label><input id="cb_asunto" value="${escape(txt.asunto)}"></div>
         <div class="field"><label>Mensaje</label><textarea id="cb_texto" style="min-height:170px;font-family:inherit">${escape(txt.texto)}</textarea>
           <div class="note" style="margin:4px 0 0">Variables: <b>{nombre}</b>, <b>{cliente}</b>, <b>{nit}</b>, <b>{mes}</b> (= ${escape(mesPago)}), <b>{periodo}</b> (= ${escape(recPeriodoTxt(per))}). <a href="#" id="cb_reset">↺ Restablecer</a></div></div>
+        <div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="cb_adj" multiple accept="application/pdf,image/*">
+          <div class="note" style="margin:4px 0 0">${ADJ.length ? ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
         <span class="msg" id="cb_msg" style="margin:0 auto 0 0"></span>
@@ -5419,14 +5425,26 @@ async function cmBajaMasiva(noRec) {
     bg.querySelectorAll("[data-i]").forEach(c => c.onchange = () => { leer(); const id = L[Number(c.dataset.i)].c._docid; c.checked ? quitar.delete(id) : quitar.add(id); confirmar = false; pintar(); });
     $("cb_all").onchange = () => { leer(); quitar.clear(); if (!$("cb_all").checked) L.forEach(x => quitar.add(x.c._docid)); confirmar = false; pintar(); };
     $("cb_mail").onchange = () => { leer(); pintar(); };
-    $("cb_reset").onclick = e => { e.preventDefault(); txt.asunto = CM_BAJA_TXT.asunto; txt.texto = CM_BAJA_TXT.texto; pintar(); };
+    $("cb_adj").onchange = async () => {
+      leer(); let aviso = "";
+      for (const f of [...($("cb_adj").files || [])]) {
+        if (!/^image\/|application\/pdf/.test(f.type)) { aviso = f.name + ": solo PDF o imágenes."; continue; }
+        if (ADJ.length >= 5) { aviso = "Máximo 5 archivos."; break; }
+        if (ADJ.reduce((t, a) => t + a.kb, 0) + f.size / 1024 > 7 * 1024) { aviso = "Los adjuntos pasan de 7 MB en total."; break; }
+        const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(f); });
+        ADJ.push({ nombre: f.name, mime: f.type, b64, kb: f.size / 1024 });
+      }
+      pintar(); if (aviso) { const m = bg.querySelector("#cb_msg"); m.className = "msg err"; m.textContent = aviso; }
+    };
+    bg.querySelectorAll("[data-qadj]").forEach(a => a.onclick = e => { e.preventDefault(); leer(); ADJ.splice(Number(a.dataset.qadj), 1); pintar(); });
+    $("cb_reset").onclick = e => { e.preventDefault(); txt.asunto = base.asunto; txt.texto = base.texto; pintar(); };
     const mandar = async (dest, ej) => {
       const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
       let env = 0, fall = [];
       for (let i = 0; i < dest.length; i += 40) {
         const lista = dest.slice(i, i + 40).map(x => ({ correo: x.correo, asunto: llenar(txt.asunto, ej || x), texto: llenar(txt.texto, ej || x) }));
         const idToken = await auth.currentUser.getIdToken();
-        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: "baja_" + per, prueba: !!ej, lista, adjuntos: [] }) }).then(x => x.json());
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: "baja_" + grp + "_" + (esF ? perF : per), prueba: !!ej, lista, adjuntos: ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
         if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
         env += r.enviados; fall = fall.concat(r.fallidos || []);
         if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos." }); break; }
@@ -5449,10 +5467,10 @@ async function cmBajaMasiva(noRec) {
         msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Dando de baja… ${hechos.length + fallaron.length} de ${sel.length}`;
         const antes = bdV(x.c, "estado"), item = {}; item[hdr] = CM_BAJA_EST;
         const ok = await bdSave({}, bdV(x.c, "codigoId"), item, x.c._docid);
-        if (ok) { try { x.c[hdr] = CM_BAJA_EST; } catch (e) {} hechos.push({ docid: x.c._docid, nombre: x.nombre, antes }); bdLog({ accion: "cambio_estado", nombre: x.nombre, estadoAnterior: antes, estadoNuevo: CM_BAJA_EST, detalle: "Baja por no recepcionar " + recPeriodoTxt(per) }); }
+        if (ok) { try { x.c[hdr] = CM_BAJA_EST; } catch (e) {} hechos.push({ docid: x.c._docid, nombre: x.nombre, antes }); bdLog({ accion: "cambio_estado", nombre: x.nombre, estadoAnterior: antes, estadoNuevo: CM_BAJA_EST, detalle: "Baja por no recepcionar " + perTxt }); }
         else fallaron.push(x.nombre);
       }
-      try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "baja_masiva", nombre: "No recepcionaron " + recPeriodoTxt(per), estadoAnterior: "", estadoNuevo: CM_BAJA_EST, detalle: hechos.length + " clientes", lote: hechos, periodo: per, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || ME.email || "" }); } catch (e) {}
+      try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "baja_masiva", nombre: "No recepcionaron " + perTxt, grupo: grp, estadoAnterior: "", estadoNuevo: CM_BAJA_EST, detalle: hechos.length + " clientes", lote: hechos, periodo: esF ? perF : per, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || ME.email || "" }); } catch (e) {}
       let res = `✓ <b>${hechos.length}</b> dados de baja.` + (fallaron.length ? ` No se pudo con ${fallaron.length}: ${escape(fallaron.slice(0, 5).join(", "))}.` : "");
       if (txt.enviar) {
         const dest = sel.filter(x => hechos.some(h => h.docid === x.c._docid) && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.correo));
@@ -5497,7 +5515,12 @@ function paintControl() {
   const delPer = decl.filter(r => recPeriodoKey(r) === CM_UI.per);
   const nitsRec = new Set(delPer.map(r => fiNit(r.nit)).filter(Boolean));
   const activos = BD.filter(bdIsActivo);
-  const noRec = activos.filter(c => !nitsRec.has(fiNit(bdV(c, "nit"))));
+  // Facturación: se recepciona por el mes siguiente al de declaración (el mes en curso)
+  const perF = cmPerFact(CM_UI.per);
+  const nitsFact = new Set(LT_DATA.filter(r => recCatDe(r) === "facturacion" && recPeriodoKey(r) === perF).map(r => fiNit(r.nit)).filter(Boolean));
+  // Cuenta como recepcionado si pagó cualquiera de los dos (así nadie se da de baja por error)
+  const noRec = activos.filter(c => { const n = fiNit(bdV(c, "nit")); return !nitsRec.has(n) && !nitsFact.has(n); });
+  const noRecFact = noRec.filter(c => bdSuscDe(c) === SUSC_FACT), noRecDecl = noRec.filter(c => bdSuscDe(c) !== SUSC_FACT);
   const recActivos = activos.length - noRec.length;
   const enCorte = CM_UI.per >= LISTA_CORTE.declaracionDesdePeriodo || delPer.some(r => r.origen !== "importado");
   const pend = delPer.filter(r => djEstado(r) !== "terminado");
@@ -5524,11 +5547,13 @@ function paintControl() {
     </tbody></table>
     <p class="note">"Activos" = clientes con estado ACTIVO en la Base de Datos. Un cliente que trabaja para varias plataformas cuenta en cada una.</p>`;
   } else if (CM_UI.tab === "norec") {
-    const list = noRec.filter(c => !q || [bdV(c, "nombre"), bdV(c, "razon"), bdV(c, "nit"), bdV(c, "celular"), bdV(c, "codigoId")].join(" ").toLowerCase().includes(q))
+    const esF = CM_UI.grp === "fact", grpL = esF ? noRecFact : noRecDecl;
+    const list = grpL.filter(c => !q || [bdV(c, "nombre"), bdV(c, "razon"), bdV(c, "nit"), bdV(c, "celular"), bdV(c, "codigoId")].join(" ").toLowerCase().includes(q))
       .sort((a, b) => (bdV(a, "nombre") || bdV(a, "razon")).localeCompare(bdV(b, "nombre") || bdV(b, "razon")));
     const wa = cel => { const d = fiNit(cel); return d ? `https://wa.me/${d.length === 8 ? "591" + d : d}` : ""; };
-    body = `<p class="note" style="margin:0 0 10px">Clientes ACTIVOS que todavía no recepcionaron su declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>. Toca el celular para escribirles por WhatsApp.</p>
-      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button>${isAdmin() ? `<button class="btn" id="cm_baja" style="background:var(--danger);border-color:var(--danger);padding:6px 12px" ${noRec.length ? "" : "disabled"}>⛔ Dar de baja a los no recepcionados</button><button class="mini" id="cm_deshacer" title="Vuelve al estado anterior a los de la última baja masiva">↶ Deshacer última baja</button>` : ""}</div>
+    body = `<div style="display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap"><button class="mini cm-grp" data-g="decl" style="${esF ? "" : "background:var(--accent);color:#fff"}">Suscriptores de declaración (${noRecDecl.length})</button><button class="mini cm-grp" data-g="fact" style="${esF ? "background:var(--accent);color:#fff" : ""}">Suscriptores de facturación (${noRecFact.length})</button></div>
+      <p class="note" style="margin:0 0 10px">${esF ? `Suscriptores de <b>facturación</b> ACTIVOS que no recepcionaron la facturación de <b>${escape(recPeriodoTxt(perF))}</b> (se paga el mes en curso).` : `Suscriptores de <b>declaración</b> ACTIVOS que no recepcionaron la declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>.`} Toca el celular para escribirles por WhatsApp.</p>
+      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button>${isAdmin() ? `<button class="btn" id="cm_baja" style="background:var(--danger);border-color:var(--danger);padding:6px 12px" ${grpL.length ? "" : "disabled"}>⛔ Dar de baja a estos ${grpL.length} (${esF ? "facturación" : "declaración"})</button><button class="mini" id="cm_deshacer" title="Vuelve al estado anterior a los de la última baja masiva">↶ Deshacer última baja</button>` : ""}</div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
       ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))}</td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
       </tbody></table></div>`;
@@ -5567,7 +5592,8 @@ function paintControl() {
   el("cm_per").onchange = e => { CM_UI.per = e.target.value; paintControl(); };
   el("cm_reload").onclick = async () => { await ltLoad(true); paintControl(); };
   if (el("cm_q")) el("cm_q").oninput = e => { CM_UI.q = e.target.value; clearTimeout(CM_UI._t); CM_UI._t = setTimeout(() => { paintControl(); const x = el("cm_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
-  if (el("cm_baja")) el("cm_baja").onclick = () => cmBajaMasiva(noRec);
+  if (el("cm_baja")) el("cm_baja").onclick = () => cmBajaMasiva(CM_UI.grp === "fact" ? noRecFact : noRecDecl, CM_UI.grp === "fact" ? "fact" : "decl");
+  document.querySelectorAll(".cm-grp").forEach(b => b.onclick = () => { CM_UI.grp = b.dataset.g; paintControl(); });
   if (el("cm_deshacer")) el("cm_deshacer").onclick = () => cmDeshacerBaja();
   if (el("cm_copycel")) el("cm_copycel").onclick = () => { try { navigator.clipboard.writeText(el("cm_cels").textContent); el("cm_copycel").textContent = "✓ Copiados"; } catch (e) {} };
   V.querySelectorAll(".cm-dj").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id), paintControl));
