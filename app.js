@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "85";
+const APP_VERSION = "86";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -130,7 +130,7 @@ el("agentLogout").onclick = () =>signOut(auth);
 // ---------- Roles, secciones y permisos del portal ----------
 // Secciones del menú (apartados) y las pestañas (views) que contienen
 const NAV_SECTIONS = [
-  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "ficha", "tarifas", "calendario", "sistemas"] },
+  { key: "portal",   label: "PORTAL",          views: ["inicio", "dashboard", "basedatos", "comunicados", "ficha", "tarifas", "calendario", "sistemas"] },
   { key: "finanzas", label: "FINANZAS",        views: ["recepcion", "pasarela", "arqueo", "egresos", "repfinanzas"] },
   { key: "listas",   label: "LISTAS",          views: ["control", "declaraciones", "tramites", "eeff", "facturacion"] },
   { key: "crm",      label: "CRM",             views: ["bandeja", "respuestas"] },
@@ -138,7 +138,7 @@ const NAV_SECTIONS = [
   { key: "admin",    label: "ADMINISTRACIÓN",  views: ["asistente", "config", "users", "importar"] }
 ];
 const VIEW_LABELS = {
-  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario", sistemas: "Sistemas",
+  inicio: "Inicio", dashboard: "Dashboard", basedatos: "Clientes", comunicados: "Comunicados", ficha: "Ficha del cliente", tarifas: "Tarifas y Suscripciones", calendario: "Calendario", sistemas: "Sistemas",
   recepcion: "Recepción", pasarela: "Pasarela de pagos", arqueo: "Arqueo", egresos: "Egresos", repfinanzas: "Reportes financieros",
   control: "Control del mes", declaraciones: "Declaraciones", tramites: "Trámites", eeff: "Estados Fin. (EEFF)", facturacion: "Facturación",
   bandeja: "Bandeja", respuestas: "Respuestas",
@@ -162,7 +162,7 @@ function roleViewsFor(role) {
   if (custom && Array.isArray(custom)) return custom;
   return DEFAULT_ROLE_VIEWS[role] || [];
 }
-function canSeeView(v) { if (!ME) return false; if (ME.role === "admin" || v === "sistemas") return true; return roleViewsFor(ME.role).indexOf(v) >= 0; }
+function canSeeView(v) { if (!ME) return false; if (v === "comunicados") return isAdmin(); if (ME.role === "admin" || v === "sistemas") return true; return roleViewsFor(ME.role).indexOf(v) >= 0; }
 function isAdmin() { return !!(ME && (ME.role === "admin" || ME.role === "supervisor")); }
 function isAdminStrict() { return !!(ME && ME.role === "admin"); }
 function canEditClientes() { return !!(ME && ["admin", "supervisor", "editor", "cajero"].indexOf(ME.role) >= 0); }
@@ -328,6 +328,7 @@ function switchView(v, btn) {
   if (v === "tramites") renderLista("tramite", "v-tramites", "Trámites");
   if (v === "eeff") renderListaEEFF();
   if (v === "facturacion") renderFacturacion();
+  if (v === "comunicados") renderComunicados();
   if (v === "calendario") renderCalendario();
   if (v === "sistemas") renderSistemas();
   if (v === "arqueo") renderArqueo();
@@ -1667,7 +1668,7 @@ function paintBaseDatos() {
       ${canEdit ? '<button class="btn" id="bd_new">＋ Nuevo</button>' : ""}
       <button class="btn sec" id="bd_cols" style="border:1px solid var(--line)">Columnas${bdHidden.length ? ` (${visHeader.length}/${bdHeader.length})` : ""}</button>
       <button class="btn sec" id="bd_download" style="border:1px solid var(--line)">⬇ Descargar</button>
-      ${isAdmin() ? '<button class="btn sec" id="bd_mail_act" style="border:1px solid var(--line)" title="Enviar un aviso por correo a todos los clientes activos">✉ Correo a activos</button><button class="btn sec" id="bd_mail_norec" style="border:1px solid var(--line)" title="Recordar a los activos que aún no recepcionaron su declaración">✉ Recordar a no recepcionados</button>' : ""}
+      
       <button class="btn sec" id="bd_reload" style="border:1px solid var(--line)">Actualizar</button>
       ${(isAdmin() && !bdEnFirebaseFlag) ? '<button class="btn" id="bd_migrar" style="background:var(--green);border-color:var(--green)" title="Copiar todo a Firebase y dejar de usar Google Sheets">⬆ Migrar a Firebase</button>' : ''}
       ${bdEnFirebaseFlag ? '<span class="badge ok" style="align-self:center;padding:4px 10px">⚡ En Firebase</span>' : ''}
@@ -1706,8 +1707,6 @@ function paintBaseDatos() {
   if (el("bd_xls_in")) el("bd_xls_in").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) bdImportarExcel(f); };
   el("v-basedatos").querySelectorAll(".bd-kpi").forEach(k => { k.style.cursor = "pointer"; k.onclick = () => { const g = "g:" + k.dataset.gfilter; bdEstado = (bdEstado === g) ? "" : g; bdSubtab = "general"; paintBaseDatos(); }; });
   if (el("bd_download")) el("bd_download").onclick = () => openBDDownloadModal(list);
-  if (el("bd_mail_act")) el("bd_mail_act").onclick = () => openCorreoMasivo("activos");
-  if (el("bd_mail_norec")) el("bd_mail_norec").onclick = () => openCorreoMasivo("norec");
   el("v-basedatos").querySelectorAll("[data-edit]").forEach(b =>b.onclick = (e) => { e.stopPropagation(); openBDModal(BD[+b.dataset.edit]); });
   el("v-basedatos").querySelectorAll("tr[data-open]").forEach(r =>r.onclick = () =>openBDModal(BD[+r.dataset.open]));
   // Resaltado de columna: al pasar el cursor, ilumina toda la columna
@@ -3962,97 +3961,142 @@ const CM_PLANTILLAS = {
   activos: { asunto: "Aviso importante de CONTAX", texto: "Estimado/a {nombre}:\n\nEscribe aquí tu aviso.\n\nSaludos cordiales,\nEquipo CONTAX" },
   norec: { asunto: "Recordatorio: declaración de {periodo}", texto: "Estimado/a {nombre}:\n\nTe recordamos que aún no recibimos tu declaración del período {periodo}. Tu fecha de vencimiento es el {vence}, según el último dígito de tu NIT.\n\nPuedes pagar y enviarnos tus facturas desde nuestra pasarela de pagos: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\n\nSi ya lo hiciste, por favor ignora este mensaje.\n\nSaludos cordiales,\nEquipo CONTAX" }
 };
-async function openCorreoMasivo(grupo) {
-  const bg = document.createElement("div");
-  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
-  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:640px;max-width:96vw;max-height:94vh;overflow:auto"><p class="note"><span class="cx-spin"></span> Preparando la lista…</p></div>`;
-  document.body.appendChild(bg);
-  const caja = bg.firstElementChild;
-  let per = "";
-  if (grupo === "norec") { await ltLoad(); const d = new Date(); d.setMonth(d.getMonth() - 1); per = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
-  const lista = () => {
-    let L = BD.filter(bdIsActivo);
-    if (grupo === "norec") {
-      const nits = new Set(LT_DATA.filter(r => recCatDe(r) === "declaracion" && recPeriodoKey(r) === per).map(r => fiNit(r.nit)).filter(Boolean));
-      L = L.filter(c => !nits.has(fiNit(bdV(c, "nit"))));
+// ---------- COMUNICADOS: correos masivos segmentados (pestaña propia, solo admin y supervisor) ----------
+// Grupos: todos los activos, los que no recepcionaron la declaración de un período y los que no pagaron el balance
+// de la gestión que está a la venta. En «balance» cada cliente recibe SU precio ({precio}): repartidores = la fase
+// habilitada para él (como en Recepción y la pasarela); otros rubros = precio de otros rubros.
+const CO = { grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], ver: false, fases: null, pagados: null, cargando: false, msg: "" };
+async function renderComunicados() {
+  const v = el("v-comunicados");
+  if (!isAdmin()) { v.innerHTML = `<h1>Comunicados</h1><p class="lead">Solo un administrador o supervisor puede enviar comunicados.</p>`; return; }
+  v.innerHTML = `<h1>Comunicados</h1><p class="lead"><span class="cx-spin"></span> Preparando las listas…</p>`;
+  if (!CO.per) { const d = new Date(); d.setMonth(d.getMonth() - 1); CO.per = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  try {
+    await Promise.all([new Promise(res => bdEnsureLoaded(() => res())), ltLoad()]);
+    const [f, res, todos] = await Promise.all([eeffFasesCfg(), eeffReservasScript().catch(() => ({})), recSync()]);
+    CO.fases = Object.assign(f, { recs: eeffRecsPorPrecio(f.gestion), res: res || {} });
+    CO.pagados = new Set(todos.filter(r => recValida(r) && recCatDe(r) === "eeff" && eeffGestionDe(r) === String(f.gestion)).map(r => fiNit(r.nit)).filter(Boolean));
+  } catch (e) { v.innerHTML = `<h1>Comunicados</h1><p class="msg err">No se pudo preparar la lista: ${escape(e.message || String(e))}</p>`; return; }
+  paintComunicados();
+}
+// Precio del balance para este cliente (0 = todas las fases agotadas)
+function coPrecio(c) {
+  const F = CO.fases; if (!F) return { precio: 0, fase: "" };
+  if (!esRepartidorCli(c)) return { precio: Number(F.otros) || 0, fase: "Otros rubros" };
+  const a = eeffEstadoFases(F.cupos, F.recs, F.res, c).activa;
+  return a ? { precio: Number(a.precio) || 0, fase: a.nombre } : { precio: 0, fase: "Fases agotadas" };
+}
+function coLista() {
+  let L = BD.filter(bdIsActivo);
+  if (CO.rubro) L = L.filter(c => CO.rubro === "rep" ? esRepartidorCli(c) : !esRepartidorCli(c));
+  if (CO.susc) L = L.filter(c => bdSuscDe(c) === CO.susc);
+  if (CO.grupo === "norec") {
+    const nits = new Set(LT_DATA.filter(r => recCatDe(r) === "declaracion" && recPeriodoKey(r) === CO.per).map(r => fiNit(r.nit)).filter(Boolean));
+    L = L.filter(c => !nits.has(fiNit(bdV(c, "nit"))));
+  }
+  if (CO.grupo === "balance") L = L.filter(c => !CO.pagados.has(fiNit(bdV(c, "nit"))));
+  const vistos = new Set(), con = [], sinCorreo = [], sinPrecio = [], porPrecio = {};
+  L.forEach(c => {
+    const p = CO.grupo === "balance" ? coPrecio(c) : { precio: 0, fase: "" };
+    const x = { correo: String(bdV(c, "correo") || "").trim().toLowerCase(), nombre: bdV(c, "nombre") || bdV(c, "razon") || "", nit: fiNit(bdV(c, "nit")), rep: esRepartidorCli(c), precio: p.precio, fase: p.fase };
+    if (CO.grupo === "balance") { if (!p.precio) { sinPrecio.push(x); return; } porPrecio[p.precio] = (porPrecio[p.precio] || 0) + 1; if (CO.precio && String(p.precio) !== CO.precio) return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.correo)) { sinCorreo.push(x); return; }
+    if (vistos.has(x.correo)) return; vistos.add(x.correo); con.push(x);
+  });
+  return { con, sinCorreo, sinPrecio, porPrecio };
+}
+const CO_PLANTILLAS = Object.assign(CM_PLANTILLAS, {
+  balance: { asunto: "Tus Estados Financieros {gestion}: Bs {precio}", texto: "Estimado/a {nombre}:\n\nTe recordamos que aún no registramos el pago de tus Estados Financieros (balance) de la gestión {gestion}.\n\nTu precio hoy es de Bs {precio}, vigente hasta agotar cupos.\n\nPuedes pagar con QR desde nuestra pasarela, donde siempre verás el precio vigente: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\n\nSi ya lo pagaste, por favor ignora este mensaje.\n\nSaludos cordiales,\nEquipo CONTAX" }
+});
+function coLlenar(t, c) {
+  const v = CO.grupo === "norec" && CO.per ? cmVencimiento(c.nit, CO.per) : null;
+  return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{periodo\}/g, CO.per ? recPeriodoTxt(CO.per) : "")
+    .replace(/\{vence\}/g, v ? djFechaTxt(v.iso) : "día de tu vencimiento").replace(/\{nit\}/g, c.nit || "")
+    .replace(/\{precio\}/g, c.precio ? String(c.precio) : "").replace(/\{gestion\}/g, CO.fases ? CO.fases.gestion : "");
+}
+function paintComunicados() {
+  const v = el("v-comunicados"), L = coLista(), pl = CO_PLANTILLAS[CO.grupo], F = CO.fases;
+  const sel = (id, opts, val) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(val) === k ? "selected" : ""}>${escape(t)}</option>`).join("")}</select>`;
+  const vars = CO.grupo === "norec" ? "{nombre}, {periodo}, {vence}, {nit}" : CO.grupo === "balance" ? "{nombre}, {precio}, {gestion}, {nit}" : "{nombre}, {nit}";
+  v.innerHTML = `<h1>Comunicados</h1>
+    <p class="note" style="margin:0 0 12px">Correos a clientes activos, enviados con el Gmail de CONTAX. Elige el grupo, ajusta los filtros, revisa la lista y mándate una prueba antes de enviar.</p>
+    <div class="card" style="padding:14px;margin-bottom:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0"><label>Grupo</label>${sel("co_grupo", [["balance", "No pagaron el balance"], ["norec", "No recepcionaron su declaración"], ["activos", "Todos los activos"]], CO.grupo)}</div>
+        ${CO.grupo === "norec" ? `<div class="field" style="margin:0"><label>Período a declarar</label><input id="co_per" type="month" value="${CO.per}"></div>` : ""}
+        <div class="field" style="margin:0"><label>Rubro</label>${sel("co_rubro", [["", "Todos"], ["rep", "Repartidores"], ["otros", "Otros rubros"]], CO.rubro)}</div>
+        <div class="field" style="margin:0"><label>Tipo de suscriptor</label>${sel("co_susc", [["", "Todos"], [SUSC_DECL, "De declaración"], [SUSC_FACT, "De facturación"]], CO.susc)}</div>
+        ${CO.grupo === "balance" ? `<div class="field" style="margin:0"><label>Precio del balance</label>${sel("co_precio", [["", "Todos los precios"]].concat(Object.keys(L.porPrecio).sort((a, b) => a - b).map(k => [k, "Bs " + k + " (" + L.porPrecio[k] + ")"])), CO.precio)}</div>` : ""}
+      </div>
+      ${CO.grupo === "balance" ? `<p class="note" style="margin:10px 0 0">Gestión <b>${escape(F.gestion)}</b> (la que está a la venta en la pasarela). Ya pagaron: <b>${CO.pagados.size}</b>. Cada cliente recibe su propio precio: repartidores = la fase habilitada para él${F.cupos.length ? "" : ""}; otros rubros = Bs ${escape(String(F.otros))}.${L.sinPrecio.length ? ` <b style="color:#B4453C">${L.sinPrecio.length} sin precio (fases agotadas): no se les envía.</b>` : ""}</p>` : ""}
+    </div>
+    <div class="note" style="margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">Se enviará a <b>${L.con.length}</b> clientes con correo${L.sinCorreo.length ? ` (<b>${L.sinCorreo.length}</b> sin correo válido)` : ""}. <a href="#" id="co_verl">${CO.ver ? "Ocultar" : "Ver"} la lista</a>
+      ${CO.ver ? `<div style="max-height:320px;overflow:auto;margin-top:8px"><table style="font-size:12px"><thead><tr><th>Cliente</th><th>NIT</th><th>Correo</th><th>Rubro</th>${CO.grupo === "balance" ? '<th style="text-align:right">Precio</th>' : ""}</tr></thead><tbody>
+        ${L.con.map(x => `<tr><td>${escape(x.nombre)}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo)}</td><td>${x.rep ? "Repartidor" : "Otro rubro"}</td>${CO.grupo === "balance" ? `<td class="mono" style="text-align:right"><b>Bs ${x.precio}</b><div style="color:var(--muted)">${escape(x.fase)}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : ""}</div>
+    <div class="field"><label>Asunto</label><input id="co_asunto" value="${escape(pl.asunto)}"></div>
+    <div class="field"><label>Mensaje</label><textarea id="co_texto" style="min-height:220px;font-family:inherit">${escape(pl.texto)}</textarea>
+      <div class="note" style="margin:4px 0 0">Se reemplaza solo: <b>${vars}</b>. Sale con el logo de CONTAX y si el cliente responde, llega a info@contaxbolivia.com.</div></div>
+    <div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="co_adj" multiple accept="application/pdf,image/*">
+      <div class="note" style="margin:4px 0 0">${CO.ADJ.length ? CO.ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
+      <span class="msg" id="co_msg" style="margin:0 auto 0 0">${CO.msg}</span>
+      <button class="btn sec" id="co_prueba" style="border:1px solid var(--line)">Enviarme una prueba</button>
+      <button class="btn" id="co_env" ${L.con.length ? "" : "disabled"}>Enviar a ${L.con.length}</button>
+    </div>`;
+  CO.msg = "";
+  const $ = id => v.querySelector("#" + id), msg = $("co_msg");
+  const guardarTxt = () => { pl.asunto = $("co_asunto").value; pl.texto = $("co_texto").value; };
+  const cambia = (id, k) => { if ($(id)) $(id).onchange = () => { guardarTxt(); CO[k] = $(id).value; if (k === "grupo" || k === "rubro" || k === "susc") CO.precio = ""; paintComunicados(); }; };
+  cambia("co_grupo", "grupo"); cambia("co_per", "per"); cambia("co_rubro", "rubro"); cambia("co_susc", "susc"); cambia("co_precio", "precio");
+  $("co_verl").onclick = e => { e.preventDefault(); guardarTxt(); CO.ver = !CO.ver; paintComunicados(); };
+  $("co_asunto").oninput = guardarTxt; $("co_texto").oninput = guardarTxt;
+  $("co_adj").onchange = async () => {
+    for (const f of [...($("co_adj").files || [])]) {
+      if (!/^image\/|application\/pdf/.test(f.type)) { CO.msg = escape(f.name) + ": solo PDF o imágenes."; continue; }
+      if (CO.ADJ.length >= 5) { CO.msg = "Máximo 5 archivos."; break; }
+      if (CO.ADJ.reduce((t, a) => t + a.kb, 0) + f.size / 1024 > 7 * 1024) { CO.msg = "Los adjuntos pasan de 7 MB en total."; break; }
+      const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(f); });
+      CO.ADJ.push({ nombre: f.name, mime: f.type, b64, kb: f.size / 1024 });
     }
-    const vistos = new Set(), out = [];
-    L.forEach(c => { const m = String(bdV(c, "correo") || "").trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m) || vistos.has(m)) return; vistos.add(m); out.push({ correo: m, nombre: bdV(c, "nombre") || bdV(c, "razon") || "", nit: fiNit(bdV(c, "nit")) }); });
-    return { todos: L.length, con: out };
+    guardarTxt(); paintComunicados();
   };
-  const llenar = (t, c) => { const v = per ? cmVencimiento(c.nit, per) : null;
-    return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{periodo\}/g, per ? recPeriodoTxt(per) : "").replace(/\{vence\}/g, v ? djFechaTxt(v.iso) : "día de tu vencimiento").replace(/\{nit\}/g, c.nit || ""); };
-  const pl = CM_PLANTILLAS[grupo];
-  // Adjuntos (solo «Correo a activos»): PDF o imágenes, hasta 5 archivos y 7 MB en total
-  const ADJ = [], conAdj = grupo !== "norec";
-  const pintar = () => {
-    const L = lista();
-    caja.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><h3 style="margin:0">${grupo === "norec" ? "✉ Recordar a quienes no recepcionaron" : "✉ Correo a todos los clientes activos"}</h3><button class="mini" id="cmm_x">✕</button></div>
-      ${grupo === "norec" ? `<div class="field" style="margin-top:10px"><label>Período a declarar</label><input id="cmm_per" type="month" value="${per}"></div>` : ""}
-      <div class="note" style="margin:8px 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">Se enviará a <b>${L.con.length}</b> clientes con correo${L.todos - L.con.length > 0 ? ` (<b>${L.todos - L.con.length}</b> ${grupo === "norec" ? "activos sin recepcionar" : "activos"} no tienen correo válido)` : ""}. <a href="#" id="cmm_ver">Ver la lista</a><div id="cmm_lista" style="display:none;max-height:160px;overflow:auto;margin-top:6px;font-size:12px">${L.con.map(c => escape(c.nombre) + " · " + escape(c.correo)).join("<br>")}</div></div>
-      <div class="field"><label>Asunto</label><input id="cmm_asunto" value="${escape(pl.asunto)}"></div>
-      <div class="field"><label>Mensaje</label><textarea id="cmm_texto" style="min-height:190px;font-family:inherit">${escape(pl.texto)}</textarea>
-        <div class="note" style="margin:4px 0 0">Se reemplaza solo: <b>{nombre}</b>${grupo === "norec" ? ", <b>{periodo}</b>, <b>{vence}</b> (su fecha de vencimiento), <b>{nit}</b>" : ", <b>{nit}</b>"}. Sale con el logo de CONTAX y si el cliente responde, llega a ${escape("info@contaxbolivia.com")}.</div></div>
-      ${conAdj ? `<div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="cmm_adj" multiple accept="application/pdf,image/*">
-        <div id="cmm_adjl" class="note" style="margin:4px 0 0">${ADJ.length ? ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>` : ""}
-      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
-        <span class="msg" id="cmm_msg" style="margin:0 auto 0 0"></span>
-        <button class="btn sec" id="cmm_prueba" style="border:1px solid var(--line)">Enviarme una prueba</button>
-        <button class="btn" id="cmm_env" ${L.con.length ? "" : "disabled"}>Enviar a ${L.con.length}</button>
-      </div>`;
-    const $ = id => caja.querySelector("#" + id), msg = $("cmm_msg");
-    $("cmm_x").onclick = () => bg.remove();
-    const guardarTxt = () => { pl.asunto = $("cmm_asunto").value; pl.texto = $("cmm_texto").value; };
-    if ($("cmm_adj")) $("cmm_adj").onchange = async () => {
-      const fs = [...($("cmm_adj").files || [])];
-      for (const f of fs) {
-        if (!/^image\/|application\/pdf/.test(f.type)) { msg.className = "msg err"; msg.textContent = f.name + ": solo PDF o imágenes."; continue; }
-        if (ADJ.length >= 5) { msg.className = "msg err"; msg.textContent = "Máximo 5 archivos."; break; }
-        if (ADJ.reduce((t, a) => t + a.kb, 0) + f.size / 1024 > 7 * 1024) { msg.className = "msg err"; msg.textContent = "Los adjuntos pasan de 7 MB en total."; break; }
-        const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(f); });
-        ADJ.push({ nombre: f.name, mime: f.type, b64, kb: f.size / 1024 });
-      }
-      guardarTxt(); pintar();
-    };
-    caja.querySelectorAll("[data-qadj]").forEach(a => a.onclick = e => { e.preventDefault(); ADJ.splice(Number(a.dataset.qadj), 1); guardarTxt(); pintar(); });
-    $("cmm_ver").onclick = e => { e.preventDefault(); const l = $("cmm_lista"); l.style.display = l.style.display === "none" ? "" : "none"; };
-    if ($("cmm_per")) $("cmm_per").onchange = () => { pl.asunto = $("cmm_asunto").value; pl.texto = $("cmm_texto").value; per = $("cmm_per").value; pintar(); };
-    const mandar = async (dest, prueba) => {
-      const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
-      const asunto = $("cmm_asunto").value.trim(), texto = $("cmm_texto").value.trim();
-      if (!asunto || !texto) throw new Error("Escribe el asunto y el mensaje.");
-      let env = 0, fall = [];
-      for (let i = 0; i < dest.length; i += 40) {
-        const grupoL = dest.slice(i, i + 40).map(c => ({ correo: c.correo, asunto: llenar(asunto, prueba ? prueba : c), texto: llenar(texto, prueba ? prueba : c) }));
-        msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Enviando… ${env} de ${dest.length}`;
-        const idToken = await auth.currentUser.getIdToken();
-        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo, prueba: !!prueba, lista: grupoL, adjuntos: ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
-        if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
-        env += r.enviados; fall = fall.concat(r.fallidos || []);
-        if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos. Vuelve a intentar mañana." }); break; }
-      }
-      return { env, fall };
-    };
-    $("cmm_prueba").onclick = async () => {
-      const b = $("cmm_prueba"); b.disabled = true;
-      try { const ej = L.con[0] || { nombre: ME.name || "", nit: "" }; const o = await mandar([{ correo: ME.email }], ej); msg.className = o.env ? "msg ok" : "msg err"; msg.textContent = o.env ? "✓ Prueba enviada a " + ME.email + " (con los datos de " + (ej.nombre || "un cliente") + ")." : "No se pudo: " + ((o.fall[0] || {}).error || ""); }
-      catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
-      b.disabled = false;
-    };
-    let confirmar = false;
-    $("cmm_env").onclick = async () => {
-      const b = $("cmm_env");
-      if (!confirmar) { confirmar = true; b.textContent = "¿Seguro? Toca otra vez para enviar a " + L.con.length; b.style.background = "var(--danger)"; b.style.borderColor = "var(--danger)"; return; }
-      b.disabled = true; $("cmm_prueba").disabled = true;
-      try {
-        const o = await mandar(L.con, null);
-        msg.className = o.fall.length ? "msg err" : "msg ok";
-        msg.innerHTML = `✓ Enviados: <b>${o.env}</b> de ${L.con.length}.` + (o.fall.length ? ` No se enviaron ${o.fall.length}: ` + o.fall.slice(0, 5).map(f => escape((f.correo ? f.correo + " — " : "") + f.error)).join("; ") : "");
-        b.textContent = "Enviado";
-      } catch (e) { msg.className = "msg err"; msg.textContent = e.message; b.disabled = false; $("cmm_prueba").disabled = false; }
-    };
+  v.querySelectorAll("[data-qadj]").forEach(a => a.onclick = e => { e.preventDefault(); CO.ADJ.splice(Number(a.dataset.qadj), 1); guardarTxt(); paintComunicados(); });
+  const etiqueta = CO.grupo + (CO.grupo === "balance" ? "_" + F.gestion + (CO.precio ? "_" + CO.precio : "") : CO.grupo === "norec" ? "_" + CO.per : "");
+  const mandar = async (dest, prueba) => {
+    const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+    const asunto = $("co_asunto").value.trim(), texto = $("co_texto").value.trim();
+    if (!asunto || !texto) throw new Error("Escribe el asunto y el mensaje.");
+    if (CO.grupo === "balance" && !/\{precio\}/.test(asunto + texto) && !CO.precio) throw new Error("El mensaje no tiene {precio} y la lista mezcla precios: agrega {precio} o elige un solo precio.");
+    let env = 0, fall = [];
+    for (let i = 0; i < dest.length; i += 40) {
+      const grupoL = dest.slice(i, i + 40).map(c => ({ correo: c.correo, asunto: coLlenar(asunto, prueba || c), texto: coLlenar(texto, prueba || c) }));
+      msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Enviando… ${env} de ${dest.length}`;
+      const idToken = await auth.currentUser.getIdToken();
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: etiqueta, prueba: !!prueba, lista: grupoL, adjuntos: CO.ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
+      env += r.enviados; fall = fall.concat(r.fallidos || []);
+      if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos. Vuelve a intentar mañana." }); break; }
+    }
+    return { env, fall };
   };
-  pintar();
+  $("co_prueba").onclick = async () => {
+    const b = $("co_prueba"); b.disabled = true;
+    try { const ej = L.con[0] || { nombre: ME.name || "", nit: "", precio: 0 }; const o = await mandar([{ correo: ME.email }], ej); msg.className = o.env ? "msg ok" : "msg err"; msg.textContent = o.env ? "✓ Prueba enviada a " + ME.email + " (con los datos de " + (ej.nombre || "un cliente") + ")." : "No se envió: " + ((o.fall[0] || {}).error || ""); }
+    catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+    b.disabled = false;
+  };
+  let confirmar = false;
+  $("co_env").onclick = async () => {
+    const b = $("co_env");
+    if (!confirmar) { confirmar = true; b.textContent = "¿Seguro? Toca otra vez para enviar a " + L.con.length; b.style.background = "var(--danger)"; b.style.borderColor = "var(--danger)"; return; }
+    b.disabled = true; $("co_prueba").disabled = true;
+    try {
+      const o = await mandar(L.con, null);
+      msg.className = o.fall.length ? "msg err" : "msg ok";
+      msg.innerHTML = `✓ Enviados: <b>${o.env}</b> de ${L.con.length}.` + (o.fall.length ? ` No se enviaron ${o.fall.length}: ` + o.fall.slice(0, 5).map(f => escape((f.correo ? f.correo + " — " : "") + f.error)).join("; ") : "");
+      b.textContent = "Enviado";
+    } catch (e) { msg.className = "msg err"; msg.textContent = e.message; b.disabled = false; $("co_prueba").disabled = false; }
+  };
 }
 function primerNombreCM(n) { const t = String(n || "").trim(); if (!t) return "cliente"; return t.split(/\s+/).slice(0, 2).map(p => p.charAt(0) + p.slice(1).toLowerCase()).join(" "); }
 async function ltLoad(force) {
