@@ -22,6 +22,7 @@ header img{height:22px;display:block}
 main{flex:1;padding:20px}
 h1{margin:0;font-family:Akshar,"Arial Narrow",sans-serif;font-size:34px;line-height:36px;font-weight:700}
 h2{margin:0 0 4px;font-family:Akshar,"Arial Narrow",sans-serif;font-size:28px;line-height:32px;font-weight:600}
+.cliTop{font-size:13px;padding:8px 12px;margin:0 0 12px;border:1px solid var(--borde);border-radius:10px;background:var(--sup);overflow-wrap:anywhere}
 p{margin:0}.suave{color:var(--suave)}.chico{font-size:12px}.c13{font-size:13px}
 .pila{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--sup);border-radius:16px;padding:18px 20px;box-shadow:0 1px 2px rgba(5,31,32,.08)}
@@ -769,6 +770,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     h = h.replace(/^<div class="pila"( style="[^"]*")?>/, function (m0, st) { return '<div class="pila">' + fotoMovil() + '<div class="pila"' + (st || "") + ">"; }) + "</div>";
     if (S.paso === "fin") h = h.replace(/<\/div>$/, '<div class="galeria solo-movil">' + ["reunion-sala.jpg", "pitagoras-muestra-sistema.jpg", "apreton-arquimedes.jpg"].map(function (f) { return '<img src="' + FOTOS + f + '" alt="" loading="lazy">'; }).join("") + "</div>" + "</div>");
     h = h.replace(/<\/div>$/, (S.paso === "nit" ? '<div id="tutSlot">' + tutBtn() + "</div>" : "") + ayuda() + "</div>");
+    // Nombre del cliente arriba en todas las pantallas (menos el NIT y «Tus datos», que ya lo muestran)
+    var nomCli = (S.cli && S.cli.nombre) || (S.ext && S.ext.nombre) || "";
+    if (nomCli && S.paso !== "nit" && S.paso !== "datos" && S.paso !== "cuenta") h = '<div class="cliTop"><span class="suave">Cliente</span> <b>' + esc(nomCli) + '</b>' + (S.nit ? ' <span class="suave">· NIT ' + esc(S.nit) + "</span>" : "") + "</div>" + h;
     main.innerHTML = h;
     lado(); menu(); guardarEstado(); relojReserva(); relojCuenta(); barraCuenta();
     enlazar();
@@ -961,11 +965,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         S.cli = rs[0].cliente; S.cfg = rs[1]; ir(desdePortal ? "servicio" : "datos");
       });
     };
-    // Búsqueda automática: al dejar de escribir el NIT (1,2 s), se busca solo
-    if ($("nit")) $("nit").oninput = function () {
-      clearTimeout(nitT); var v = this.value.replace(/\D/g, "");
-      if (v.length >= 7) nitT = setTimeout(function () { var f = $("fNit"); if (f && $("nit") && $("nit").value.replace(/\D/g, "") === v) f.requestSubmit ? f.requestSubmit() : f.onsubmit({ preventDefault: function () {} }); }, 1200);
-    };
+    // Sin búsqueda automática: el NIT se busca solo al tocar «Continuar» (muchos lo escriben despacio)
     if ($("bSi")) $("bSi").onclick = function () { ir("servicio"); };
     if ($("bOtroNit")) $("bOtroNit").onclick = function () { S.error = ""; S.scNoEnc = ""; S.serv = ""; ir("nit"); };
     if ($("bScInfo")) $("bScInfo").onclick = function () { S.cli = null; S.scInact = false; S.scNoEnc = ""; S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; S.ext = S.ext || {}; ir("sc1"); };

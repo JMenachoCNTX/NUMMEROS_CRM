@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v91; puente versión 49). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v92; puente versión 49). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -66,3 +66,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v89 · Baja separada por tipo de suscriptor:** como en la pasarela, la declaración se recepciona por el mes anterior (período elegido, ej. oct-2026) y la facturación por el mes en curso (`cmPerFact(per)` = mes siguiente, ej. nov-2026). «No recepcionados» = activos sin ninguna de las dos recepciones; se divide en *Suscriptores de declaración* / *de facturación* (`bdSuscDe`) y la baja se hace por grupo, con su propio correo (`CM_BAJA_TXT` / `CM_BAJA_TXT_FACT`) y adjuntos (PDF/imágenes, máx. 5 y 7 MB). El lote guarda `grupo`.
 - **v90 · Imágenes en los correos (Comunicados y baja; puente versión 49):** opción «Imágenes como archivo adjunto» o «Imágenes dentro del mensaje» (`imgModo: 'dentro'` en `admin_correo_masivo`). Dentro: van incrustadas (`cid:adjImgN`) donde el texto dice `{imagen}`, o debajo del título si no está; los PDF siempre van adjuntos. `correoAvisoHTML_(x, logoC, logoN, imgs)`.
 - **v91 · Facturación → Repartidores Yango:** «Marcar emitida» es un solo clic (sin ventana): crea la factura en `portal-nummeros/facturas` con `numero: ""`, `semanas: [esa semana]`, importe de la lista y fecha de hoy (CONTROL la muestra sin N.º; en la planilla del banco ese N.º sale vacío). Filtro «Portal de Impuestos» (solo contraseña) / «Desktop · SIAT» (tiene contraseña SIAT). El buscador también busca por usuario y correo del cliente.
+- **v92 · Pasarela y enlace con NIT:** la pasarela ya no busca el NIT sola al escribir (solo con «Continuar»; con `?nit=` sigue entrando directo) y muestra «Cliente · NIT» arriba en todas las pantallas (`.cliTop`). Panel: `pasarelaUrl(nit)`; en la Ficha del cliente «🔗 Copiar enlace de la pasarela» y mensaje para WhatsApp; en Control del mes → No recepcionados, 🔗 junto a cada NIT.

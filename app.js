@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "91";
+const APP_VERSION = "92";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5282,6 +5282,8 @@ function fiTareasHTML(c) {
 }
 // Portal del Cliente: enlace y documentos (carpeta de Drive del cliente)
 const PORTAL_URL = location.origin + "/cliente.html";
+// Pasarela con el NIT en el enlace: el cliente entra directo a sus datos, sin escribir el NIT
+const pasarelaUrl = nit => "https://nummerospanel.contaxbolivia.com/pagos.html?nit=" + fiNit(nit);
 const FI_DOCS = {};
 function fiDocsPintar(c) {
   const box = el("fi_docs"); if (!box) return;
@@ -5294,6 +5296,8 @@ function fiDocsPintar(c) {
   box.innerHTML = `<div class="formcard" style="max-width:none;margin:0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0 auto 0 0">Portal del Cliente y documentos</h3>
       <button class="mini" id="fi_pver" style="background:var(--green);color:#fff;border-color:var(--green)">Ver su portal</button><button class="mini" id="fi_pcopy">Copiar enlace del portal</button><button class="mini" id="fi_pwa">Copiar mensaje para WhatsApp</button></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px"><b style="margin-right:auto">Pasarela de pagos con su NIT</b><button class="mini" id="fi_pas">🔗 Copiar enlace de la pasarela</button><button class="mini" id="fi_paswa">Copiar mensaje para WhatsApp</button></div>
+    <p class="note" style="margin:0 0 10px">Con este enlace entra directo con su NIT (sin escribirlo): <span class="mono">${escape(pasarelaUrl(nit))}</span></p>
     <p class="note" style="margin:0 0 10px">El cliente entra en <b>${escape(PORTAL_URL)}</b> con su <b>NIT</b> y su <b>C.I.</b>${ci ? "" : ` (no tiene C.I. en la Base de Datos: se usa el NIT sin los 3 últimos dígitos${nit.length >= 8 ? ", <b>" + escape(nit.slice(0, -3)) + "</b>" : ""}; si es empresa, carga su C.I. en la ficha de la Base de Datos)`}.</p>
     ${lista === null ? `<button class="btn sec" id="fi_dver" style="border:1px solid var(--line)">Ver documentos del cliente</button>` : lista === "cargando" ? `<p class="note"><span class="cx-spin"></span> Cargando documentos…</p>` : info.error ? `<p class="msg err">${escape(info.error)}</p>` : `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><a class="mini" href="${escape(info.carpetaContax)}" target="_blank" rel="noopener">Subir documentos para el cliente (Drive)</a><a class="mini" href="${escape(info.carpeta)}" target="_blank" rel="noopener">Abrir carpeta del cliente</a><button class="mini" id="fi_drel">Actualizar</button></div>
@@ -5315,6 +5319,8 @@ function fiDocsPintar(c) {
     b.disabled = false; b.textContent = "Ver su portal";
   };
   if (el("fi_pwa")) el("fi_pwa").onclick = e => cp(msgWa, e.target);
+  if (el("fi_pas")) el("fi_pas").onclick = e => cp(pasarelaUrl(nit), e.target);
+  if (el("fi_paswa")) el("fi_paswa").onclick = e => cp(`Hola ${nombre.split(" ")[0] || ""}, puedes pagar tu servicio de CONTAX con QR desde nuestra pasarela. Con este enlace entras directo con tu NIT:\n${pasarelaUrl(nit)}`, e.target);
   const cargar = async () => {
     FI_DOCS[nit] = { documentos: "cargando" }; fiDocsPintar(c);
     try {
@@ -5561,7 +5567,7 @@ function paintControl() {
       <p class="note" style="margin:0 0 10px">${esF ? `Suscriptores de <b>facturación</b> ACTIVOS que no recepcionaron la facturación de <b>${escape(recPeriodoTxt(perF))}</b> (se paga el mes en curso).` : `Suscriptores de <b>declaración</b> ACTIVOS que no recepcionaron la declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>.`} Toca el celular para escribirles por WhatsApp.</p>
       <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button>${isAdmin() ? `<button class="btn" id="cm_baja" style="background:var(--danger);border-color:var(--danger);padding:6px 12px" ${grpL.length ? "" : "disabled"}>⛔ Dar de baja a estos ${grpL.length} (${esF ? "facturación" : "declaración"})</button><button class="mini" id="cm_deshacer" title="Vuelve al estado anterior a los de la última baja masiva">↶ Deshacer última baja</button>` : ""}</div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
-      ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))}</td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
+      ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))} <button class="mini cm-pas" type="button" data-v="${escape(pasarelaUrl(bdV(c, "nit")))}" title="Copiar enlace de la pasarela con su NIT">🔗</button></td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
       </tbody></table></div>`;
     body += `<script type="text/plain" id="cm_cels">${escape(list.map(c => bdV(c, "celular")).filter(Boolean).join("\n"))}</script>`;
   } else if (CM_UI.tab === "pend") {
@@ -5599,6 +5605,7 @@ function paintControl() {
   el("cm_reload").onclick = async () => { await ltLoad(true); paintControl(); };
   if (el("cm_q")) el("cm_q").oninput = e => { CM_UI.q = e.target.value; clearTimeout(CM_UI._t); CM_UI._t = setTimeout(() => { paintControl(); const x = el("cm_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
   if (el("cm_baja")) el("cm_baja").onclick = () => cmBajaMasiva(CM_UI.grp === "fact" ? noRecFact : noRecDecl, CM_UI.grp === "fact" ? "fact" : "decl");
+  document.querySelectorAll(".cm-pas").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "🔗"; }, 1200); } catch (e) {} });
   document.querySelectorAll(".cm-grp").forEach(b => b.onclick = () => { CM_UI.grp = b.dataset.g; paintControl(); });
   if (el("cm_deshacer")) el("cm_deshacer").onclick = () => cmDeshacerBaja();
   if (el("cm_copycel")) el("cm_copycel").onclick = () => { try { navigator.clipboard.writeText(el("cm_cels").textContent); el("cm_copycel").textContent = "✓ Copiados"; } catch (e) {} };
