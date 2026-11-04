@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "90";
+const APP_VERSION = "91";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6207,7 +6207,7 @@ function paintRepFinanzas() {
 }
 
 // ---------- FACTURACIÓN (subpestañas) ----------
-const FAC_UI = { tab: "activos", per: "", q: "", fuente: "yango", ycont: "CONTAX", yver: "faltan" };
+const FAC_UI = { tab: "activos", per: "", q: "", fuente: "yango", ycont: "CONTAX", yver: "faltan", ytipo: "" };
 // ============================================================
 //  Lista de facturación de repartidores (la de CONTROL · Facturas)
 //  Se lee en vivo del Portal de repartidores (portal-nummeros) con la cuenta de CONTROL
@@ -6286,50 +6286,26 @@ const YF_EST = { falta: ["#B4453C", "Falta factura"], porEmitir: ["#235347", "Po
 function yfChip(e) { const x = YF_EST[e] || ["#5E7A70", e]; return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${x[0]}">${escape(x[1])}</span>`; }
 // «Marcar emitida»: CONTAX emitió la factura del repartidor → se crea en el Portal como «Emitida por CONTAX»
 // (origen 'contax', estado 'aprobada', emitidaDesde 'panel'). CONTROL, el Portal y el repartidor la ven al instante.
-function yfMarcarEmitida(clave) {
-  const x0 = (YF.filas || []).find(x => x.id + "|" + x.semana === clave); if (!x0) return;
-  const otras = YF.filas.filter(x => x.id === x0.id && !x.f);
-  const bg = document.createElement("div");
-  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
-  const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
-  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:520px;max-width:96vw;max-height:94vh;overflow:auto">
-    <h3 style="margin:0 0 4px">Marcar factura emitida por CONTAX</h3>
-    <p style="color:var(--muted);margin:0 0 12px">${escape(x0.nombre)} · ID ${escape(x0.id)}</p>
-    <label>Semanas que cubre la factura</label>
-    <div id="ye_sem" style="display:grid;gap:4px;margin:4px 0 12px">${otras.map(x => `<label style="font-weight:400;display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" value="${escape(x.semana)}" data-imp="${x.importe}" ${x === x0 ? "checked" : ""}> ${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? " (pagado con retención)" : x.tipo === "hoja" ? " (de la hoja CONTROL)" : ""} · ${fmtBsY(x.importe)}</label>`).join("")}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><label>N.º de factura</label><input id="ye_num" inputmode="numeric" maxlength="30"></div>
-      <div><label>Fecha de emisión</label><input id="ye_fecha" type="date" value="${hoy}"></div>
-      <div><label>Importe (Bs)</label><input id="ye_imp" readonly></div>
-      <div><label>Código de autorización (opcional)</label><input id="ye_aut" maxlength="80"></div>
-    </div>
-    <p class="msg" id="ye_msg" style="min-height:18px"></p>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="ye_no">Cancelar</button><button class="btn" id="ye_ok">Marcar emitida</button></div></div>`;
-  document.body.appendChild(bg);
-  const $ = id => bg.querySelector("#" + id), msg = $("ye_msg");
-  const marcadas = () => [...bg.querySelectorAll("#ye_sem input:checked")];
-  const suma = () => { $("ye_imp").value = fmtBsY(marcadas().reduce((t, c) => t + Number(c.dataset.imp), 0)); };
-  bg.querySelectorAll("#ye_sem input").forEach(c => c.onchange = suma); suma();
-  $("ye_no").onclick = () => bg.remove();
-  $("ye_ok").onclick = async () => {
-    const sem = marcadas().map(c => c.value), num = $("ye_num").value.trim(), fecha = $("ye_fecha").value;
-    const imp = Math.round(marcadas().reduce((t, c) => t + Number(c.dataset.imp), 0) * 100) / 100;
-    if (!sem.length) { msg.className = "msg err"; msg.textContent = "Marca al menos una semana."; return; }
-    if (!num) { msg.className = "msg err"; msg.textContent = "Escribe el N.º de factura."; return; }
-    $("ye_ok").disabled = true; msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Guardando…`;
-    try {
-      await yfConectar();
-      const quien = String(auth.currentUser.email || "");
-      const datos = { uid: x0.uid || yfUid(x0.id), id: x0.id, nombre: x0.nombre, semanas: sem, numero: num, importe: imp, fechaEmision: fecha,
-        autorizacion: $("ye_aut").value.trim(), estado: "aprobada", origen: "contax", emitidaDesde: "panel", conPdf: false, nombreArchivo: "",
-        subido: serverTimestamp(), revisado: serverTimestamp(), revisadoPor: quien, registradoPor: quien, motivo: "" };
-      const ref = doc(collection(YF.db, "facturas"));
-      await setDoc(ref, datos);
-      otras.filter(x => sem.includes(x.semana)).forEach(x => { x.f = { _id: ref.id, ...datos, fechaEmision: fecha }; x.estado = "contax"; x.tiene = true; });
-      try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "factura_yango_emitida", nombre: x0.nombre, detalle: "N.º " + num + " · " + sem.join(", ") + " · Bs " + imp, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || quien }); } catch (e) {}
-      bg.remove(); paintFacturacion();
-    } catch (e) { $("ye_ok").disabled = false; msg.className = "msg err"; msg.textContent = /permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso para registrar facturas (pide rol operador o admin)." : (e.message || String(e)); }
-  };
+// Un solo clic: registra en CONTROL (portal-nummeros/facturas) que CONTAX emitió la factura de esa semana, con el importe de la lista y la fecha de hoy
+async function yfMarcarEmitida(clave, btn) {
+  const x0 = (YF.filas || []).find(x => x.id + "|" + x.semana === clave); if (!x0 || x0.f) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="cx-spin"></span>`; }
+  try {
+    await yfConectar();
+    const quien = String(auth.currentUser.email || ""), fecha = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10), imp = Math.round(Number(x0.importe) * 100) / 100;
+    const datos = { uid: x0.uid || yfUid(x0.id), id: x0.id, nombre: x0.nombre, semanas: [x0.semana], numero: "", importe: imp, fechaEmision: fecha,
+      autorizacion: "", estado: "aprobada", origen: "contax", emitidaDesde: "panel", conPdf: false, nombreArchivo: "",
+      subido: serverTimestamp(), revisado: serverTimestamp(), revisadoPor: quien, registradoPor: quien, motivo: "" };
+    const ref = doc(collection(YF.db, "facturas"));
+    await setDoc(ref, datos);
+    x0.f = { _id: ref.id, ...datos, subido: { seconds: Math.floor(Date.now() / 1000) } }; x0.estado = "contax"; x0.tiene = true;
+    (YF.emitidas = YF.emitidas || []).push(x0.f);
+    try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "factura_yango_emitida", nombre: x0.nombre, detalle: x0.semana + " · Bs " + imp, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || quien }); } catch (e) {}
+    paintFacturacion();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "Marcar emitida"; }
+    alert(/permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso para registrar facturas (pide rol operador o admin)." : (e.message || String(e)));
+  }
 }
 // «No se pudo emitir»: motivo + comentario por semana en portal-nummeros/emisionContax ({uid}_{semana}).
 // El repartidor ve el motivo y el comentario en «Mis facturas» de su Portal; al equipo le sirve de seguimiento.
@@ -6397,9 +6373,11 @@ function yfHTML() {
   if (YF.err) return `<p class="msg err">No se pudo leer la lista de CONTROL: ${escape(YF.err)}</p><button class="btn" id="yf_rec">Reintentar</button>`;
   if (!YF.filas) return `<p class="lead"><span class="cx-spin"></span> Trayendo la lista de facturación de CONTROL…</p>`;
   const q = FAC_UI.q.toLowerCase(), todas = YF.filas.filter(x => x.contador === "CONTAX"), canEd = canEditClientes();
-  const v = FAC_UI.yver;
-  const l = todas.filter(x => (v === "" || (v === "faltan" ? !x.tiene : v === "nosepudo" ? x.estado === "noSePudo" : v === "poremitir" ? x.estado === "porEmitir" : x.tiene))
-    && (!q || [x.nombre, x.id, x.celular, x.semana, x.cli ? bdV(x.cli, "nit") : ""].join(" ").toLowerCase().includes(q)));
+  const v = FAC_UI.yver, tp = FAC_UI.ytipo;
+  // Portal de Impuestos = solo contraseña del portal; Desktop = tiene contraseña SIAT
+  const yfTipo = x => !x.cli ? "" : bdV(x.cli, "passSiat") ? "desktop" : bdV(x.cli, "password") ? "portal" : "";
+  const l = todas.filter(x => (!tp || yfTipo(x) === tp) && (v === "" || (v === "faltan" ? !x.tiene : v === "nosepudo" ? x.estado === "noSePudo" : v === "poremitir" ? x.estado === "porEmitir" : x.tiene))
+    && (!q || [x.nombre, x.id, x.celular, x.semana, x.cli ? bdV(x.cli, "nit") : "", x.cli ? bdV(x.cli, "usuario") : "", x.cli ? bdV(x.cli, "correo") : ""].join(" ").toLowerCase().includes(q)));
   const fmtF = v => { if (!v) return ""; if (v.seconds) return new Date(v.seconds * 1000).toLocaleDateString("es-BO"); const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return escape(m ? m[3] + "/" + m[2] + "/" + m[1] : String(v)); };
   const sinF = todas.filter(x => !x.tiene), noPudo = todas.filter(x => x.estado === "noSePudo");
   const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
@@ -6418,7 +6396,8 @@ function yfHTML() {
     <details style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:600">📊 Facturas emitidas por día y por persona</summary><div style="margin-top:8px">${yfResumenEmitidas()}</div></details>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
       <select id="yf_ver">${[["faltan", "Sin factura"], ["poremitir", "Por emitir"], ["nosepudo", "No se pudo emitir"], ["con", "Emitidas"], ["", "Todas"]].map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <input id="fac_q" placeholder="Buscar nombre, ID, celular, NIT o semana…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
+      <select id="yf_tipo">${[["", "Portal y Desktop"], ["portal", `Portal de Impuestos (${todas.filter(x => yfTipo(x) === "portal").length})`], ["desktop", `Desktop · SIAT (${todas.filter(x => yfTipo(x) === "desktop").length})`]].map(([k, t]) => `<option value="${k}" ${tp === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <input id="fac_q" placeholder="Buscar nombre, ID, celular, NIT, usuario, correo o semana…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
       <button class="btn ghost" id="yf_rec">↻ Actualizar</button>
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
@@ -6427,7 +6406,7 @@ function yfHTML() {
       <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
       ${canEd ? `<td>${cred(x.cli)}</td>` : ""}
-      <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">N.º ${escape(String(x.f.numero || ""))} · ${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
+      <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
       <td style="font-size:13px;min-width:160px">${comentario(x)}</td>
       <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
     </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}`;
@@ -6499,7 +6478,8 @@ function paintFacturacion() {
   el("v-facturacion").querySelectorAll("#facfuente .subtab").forEach(b => b.onclick = () => { FAC_UI.fuente = b.dataset.f; paintFacturacion(); });
   if (el("yf_cont")) el("yf_cont").onchange = e => { FAC_UI.ycont = e.target.value; paintFacturacion(); };
   if (el("yf_ver")) el("yf_ver").onchange = e => { FAC_UI.yver = e.target.value; paintFacturacion(); };
-  el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem));
+  if (el("yf_tipo")) el("yf_tipo").onchange = e => { FAC_UI.ytipo = e.target.value; paintFacturacion(); };
+  el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem, b));
   el("v-facturacion").querySelectorAll("[data-yfno]").forEach(b => b.onclick = () => yfNoEmitida(b.dataset.yfno));
   el("v-facturacion").querySelectorAll(".yf-cp").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "📋"; }, 1200); } catch (e) {} });
   if (el("yf_rec")) el("yf_rec").onclick = () => { YF.err = ""; YF.filas = null; paintFacturacion(); yfCargar(true).then(() => paintFacturacion(), () => paintFacturacion()); };
