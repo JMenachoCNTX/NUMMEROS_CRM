@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "87";
+const APP_VERSION = "88";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5373,6 +5373,118 @@ function cmActividadDias(decl) {
     <tbody>${filas}</tbody><tfoot><tr><td><b>Total</b></td><td>${celda(tot.cons)}</td><td>${celda(tot.fin)}</td><td>${celda(tot.decl)}</td></tr></tfoot></table></div>
     <p class="note">Cuenta todos los períodos. La persona sale de «RCV realizado por» y «Declarado por» de cada declaración (si nadie la elige, se pone sola quien usa el panel).</p>`;
 }
+// ---------- Baja masiva: activos que no recepcionaron la declaración del período → CLIENTE INACTIVO + correo ----------
+// Solo admin y supervisor. Se puede quitar a alguien de la lista antes de confirmar. No da de baja a quien tiene un pago
+// del período en revisión en la pasarela. Cada baja queda en bdlog y el lote completo en bdlog (accion 'baja_masiva')
+// para poder deshacerlo («↶ Deshacer última baja»: vuelve al estado anterior solo a quien sigue CLIENTE INACTIVO).
+const CM_BAJA_EST = "CLIENTE INACTIVO";
+const CM_BAJA_TXT = { asunto: "Suspensión de tu servicio en CONTAX", texto: "Estimado/a {nombre}:\n\nTe informamos que, al no haber renovado tu suscripción del mes de {mes} (declaración del período {periodo}), procedimos con la suspensión del servicio y tu cuenta quedó como cliente inactivo.\n\nSi deseas reactivarlo, puedes pagar desde nuestra pasarela: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\nApenas registremos tu pago, reactivamos tu servicio.\n\nSi crees que se trata de un error, responde a este correo o escríbenos por WhatsApp.\n\nSaludos cordiales,\nEquipo CONTAX" };
+async function cmBajaMasiva(noRec) {
+  const per = CM_UI.per, [y, m] = per.split("-").map(Number);
+  const mesPago = REC_MESES_CAP[m % 12].toLowerCase() + (m === 12 ? " " + (y + 1) : "");
+  // Pagos del período que aún están en revisión en la pasarela (no cuentan como recepcionados, pero ya pagaron)
+  let enRev = new Set();
+  try { enRev = new Set((await recSync()).filter(r => !r.eliminado && recCatDe(r) === "declaracion" && recPeriodoKey(r) === per).map(r => fiNit(r.nit)).filter(Boolean)); } catch (e) {}
+  const L = noRec.filter(c => c._docid).map(c => ({ c, nombre: bdV(c, "nombre") || bdV(c, "razon") || "", nit: fiNit(bdV(c, "nit")), correo: String(bdV(c, "correo") || "").trim().toLowerCase(), rev: enRev.has(fiNit(bdV(c, "nit"))) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const quitar = new Set(L.filter(x => x.rev).map(x => x.c._docid));
+  const txt = Object.assign({}, CM_BAJA_TXT);
+  const llenar = (t, x) => String(t).replace(/\{nombre\}/g, primerNombreCM(x.nombre)).replace(/\{cliente\}/g, x.nombre).replace(/\{nit\}/g, x.nit).replace(/\{mes\}/g, mesPago).replace(/\{periodo\}/g, recPeriodoTxt(per));
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:110;display:flex;align-items:center;justify-content:center;padding:20px";
+  document.body.appendChild(bg);
+  let confirmar = false;
+  const pintar = () => {
+    const sel = L.filter(x => !quitar.has(x.c._docid)), conMail = sel.filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.correo));
+    bg.innerHTML = `<div style="background:var(--panel);border:2px solid var(--danger);border-radius:14px;padding:22px;width:720px;max-width:96vw;max-height:94vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;gap:10px"><h3 style="margin:0;color:var(--danger)">⛔ Dar de baja a los que no recepcionaron ${escape(recPeriodoTxt(per))}</h3><button class="mini" id="cb_x">✕</button></div>
+      <p class="note" style="margin:8px 0">Pasarán a <b>${CM_BAJA_EST}</b> en la Base de Datos. Desmarca a quien no quieras dar de baja.${L.some(x => x.rev) ? " Los que tienen un pago del período <b>en revisión en la pasarela</b> ya vienen desmarcados." : ""}</p>
+      <div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px"><table style="font-size:12px"><thead><tr><th><input type="checkbox" id="cb_all" ${quitar.size ? "" : "checked"}></th><th>Cliente</th><th>NIT</th><th>Correo</th><th>Estado actual</th></tr></thead><tbody>
+        ${L.map((x, i) => `<tr><td><input type="checkbox" data-i="${i}" ${quitar.has(x.c._docid) ? "" : "checked"}></td><td>${escape(x.nombre)}${x.rev ? ' <span class="badge warn">pago en revisión</span>' : ""}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo || "—")}</td><td>${escape(bdV(x.c, "estado"))}</td></tr>`).join("")}
+      </tbody></table></div>
+      <label style="display:flex;gap:8px;align-items:center;margin:12px 0 6px;font-weight:600"><input type="checkbox" id="cb_mail" ${txt.enviar === false ? "" : "checked"}> Enviar el correo de suspensión (${conMail.length} con correo)</label>
+      <div id="cb_mailbox" style="${txt.enviar === false ? "display:none" : ""}">
+        <div class="field"><label>Asunto</label><input id="cb_asunto" value="${escape(txt.asunto)}"></div>
+        <div class="field"><label>Mensaje</label><textarea id="cb_texto" style="min-height:170px;font-family:inherit">${escape(txt.texto)}</textarea>
+          <div class="note" style="margin:4px 0 0">Variables: <b>{nombre}</b>, <b>{cliente}</b>, <b>{nit}</b>, <b>{mes}</b> (= ${escape(mesPago)}), <b>{periodo}</b> (= ${escape(recPeriodoTxt(per))}). <a href="#" id="cb_reset">↺ Restablecer</a></div></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <span class="msg" id="cb_msg" style="margin:0 auto 0 0"></span>
+        <button class="btn sec" id="cb_prueba" style="border:1px solid var(--line)">Enviarme el correo de prueba</button>
+        <button class="btn" id="cb_ok" style="background:var(--danger);border-color:var(--danger)" ${sel.length ? "" : "disabled"}>Dar de baja a ${sel.length}</button>
+      </div></div>`;
+    const $ = id => bg.querySelector("#" + id), msg = $("cb_msg");
+    const leer = () => { txt.asunto = $("cb_asunto").value; txt.texto = $("cb_texto").value; txt.enviar = $("cb_mail").checked; };
+    $("cb_x").onclick = () => bg.remove();
+    bg.querySelectorAll("[data-i]").forEach(c => c.onchange = () => { leer(); const id = L[Number(c.dataset.i)].c._docid; c.checked ? quitar.delete(id) : quitar.add(id); confirmar = false; pintar(); });
+    $("cb_all").onchange = () => { leer(); quitar.clear(); if (!$("cb_all").checked) L.forEach(x => quitar.add(x.c._docid)); confirmar = false; pintar(); };
+    $("cb_mail").onchange = () => { leer(); pintar(); };
+    $("cb_reset").onclick = e => { e.preventDefault(); txt.asunto = CM_BAJA_TXT.asunto; txt.texto = CM_BAJA_TXT.texto; pintar(); };
+    const mandar = async (dest, ej) => {
+      const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+      let env = 0, fall = [];
+      for (let i = 0; i < dest.length; i += 40) {
+        const lista = dest.slice(i, i + 40).map(x => ({ correo: x.correo, asunto: llenar(txt.asunto, ej || x), texto: llenar(txt.texto, ej || x) }));
+        const idToken = await auth.currentUser.getIdToken();
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: "baja_" + per, prueba: !!ej, lista, adjuntos: [] }) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
+        env += r.enviados; fall = fall.concat(r.fallidos || []);
+        if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos." }); break; }
+      }
+      return { env, fall };
+    };
+    $("cb_prueba").onclick = async () => {
+      leer(); const b = $("cb_prueba"); b.disabled = true;
+      try { const o = await mandar([{ correo: ME.email }], sel[0] || { nombre: ME.name || "", nit: "" }); msg.className = o.env ? "msg ok" : "msg err"; msg.textContent = o.env ? "✓ Prueba enviada a " + ME.email : "No se envió."; }
+      catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+      b.disabled = false;
+    };
+    $("cb_ok").onclick = async () => {
+      leer(); const b = $("cb_ok");
+      if (!confirmar) { confirmar = true; b.textContent = "¿Seguro? Toca otra vez: " + sel.length + " pasan a inactivo" + (txt.enviar ? " y reciben el correo" : ""); return; }
+      b.disabled = true; $("cb_prueba").disabled = true; bg.querySelectorAll("input,textarea").forEach(x => x.disabled = true);
+      const hdr = (bdKey2Header && bdKey2Header["estado"]) || BD_KEY2LBL["estado"];
+      const hechos = [], fallaron = [];
+      for (const x of sel) {
+        msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Dando de baja… ${hechos.length + fallaron.length} de ${sel.length}`;
+        const antes = bdV(x.c, "estado"), item = {}; item[hdr] = CM_BAJA_EST;
+        const ok = await bdSave({}, bdV(x.c, "codigoId"), item, x.c._docid);
+        if (ok) { try { x.c[hdr] = CM_BAJA_EST; } catch (e) {} hechos.push({ docid: x.c._docid, nombre: x.nombre, antes }); bdLog({ accion: "cambio_estado", nombre: x.nombre, estadoAnterior: antes, estadoNuevo: CM_BAJA_EST, detalle: "Baja por no recepcionar " + recPeriodoTxt(per) }); }
+        else fallaron.push(x.nombre);
+      }
+      try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "baja_masiva", nombre: "No recepcionaron " + recPeriodoTxt(per), estadoAnterior: "", estadoNuevo: CM_BAJA_EST, detalle: hechos.length + " clientes", lote: hechos, periodo: per, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || ME.email || "" }); } catch (e) {}
+      let res = `✓ <b>${hechos.length}</b> dados de baja.` + (fallaron.length ? ` No se pudo con ${fallaron.length}: ${escape(fallaron.slice(0, 5).join(", "))}.` : "");
+      if (txt.enviar) {
+        const dest = sel.filter(x => hechos.some(h => h.docid === x.c._docid) && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x.correo));
+        const vistos = new Set(), unicos = dest.filter(x => !vistos.has(x.correo) && vistos.add(x.correo));
+        try { msg.innerHTML = `<span class="cx-spin"></span> Enviando correos…`; const o = await mandar(unicos, null); res += ` Correos enviados: <b>${o.env}</b> de ${unicos.length}.` + (o.fall.length ? " Fallaron: " + o.fall.slice(0, 3).map(f => escape((f.correo ? f.correo + " — " : "") + f.error)).join("; ") : ""); }
+        catch (e) { res += " Los correos no se enviaron: " + escape(e.message); }
+      }
+      bdLoaded = false;
+      msg.className = fallaron.length ? "msg err" : "msg ok"; msg.innerHTML = res;
+      b.textContent = "Listo"; const x = $("cb_x"); x.onclick = () => { bg.remove(); paintControl(); };
+    };
+  };
+  pintar();
+}
+async function cmDeshacerBaja() {
+  let lotes = [];
+  try { (await getDocs(query(collection(db, "bdlog"), where("accion", "in", ["baja_masiva", "baja_masiva_deshecha"])))).forEach(d => lotes.push({ id: d.id, ...d.data() })); }
+  catch (e) { alert("No se pudo leer el historial: " + e.message); return; }
+  const deshechos = new Set(lotes.filter(x => x.accion === "baja_masiva_deshecha").map(x => x.loteId));
+  const l = lotes.filter(x => x.accion === "baja_masiva" && !deshechos.has(x.id)).sort((a, b) => String(b.fechaISO).localeCompare(String(a.fechaISO)))[0];
+  if (!l) { alert("No hay ninguna baja masiva para deshacer."); return; }
+  const hdr = (bdKey2Header && bdKey2Header["estado"]) || BD_KEY2LBL["estado"];
+  const vuelven = (l.lote || []).filter(h => { const c = BD.find(x => x._docid === h.docid); return c && esBaja(bdV(c, "estado")); });
+  if (!confirm(`Última baja masiva: ${l.nombre} (${djFechaTxt(String(l.fechaISO).slice(0, 10))}, por ${l.porNombre || "—"}).\n\n${vuelven.length} de ${(l.lote || []).length} clientes vuelven a su estado anterior (los que ya se reactivaron no se tocan). Los correos enviados no se pueden borrar.\n\n¿Deshacer?`)) return;
+  let ok = 0;
+  for (const h of vuelven) {
+    const c = BD.find(x => x._docid === h.docid), item = {}; item[hdr] = h.antes || "ACTIVO";
+    if (await bdSave({}, bdV(c, "codigoId"), item, h.docid)) { ok++; try { c[hdr] = item[hdr]; } catch (e) {} bdLog({ accion: "cambio_estado", nombre: h.nombre, estadoAnterior: bdV(c, "estado"), estadoNuevo: item[hdr], detalle: "Se deshizo la baja masiva" }); }
+  }
+  try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "baja_masiva_deshecha", loteId: l.id, nombre: l.nombre, estadoAnterior: CM_BAJA_EST, estadoNuevo: "", detalle: ok + " clientes", porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || ME.email || "" }); } catch (e) {}
+  bdLoaded = false; alert(`✓ ${ok} clientes volvieron a su estado anterior.`); paintControl();
+}
 function paintControl() {
   const decl = LT_DATA.filter(r => recCatDe(r) === "declaracion");
   const periodos = [...new Set(decl.map(recPeriodoKey).filter(Boolean))].sort().reverse();
@@ -5416,7 +5528,7 @@ function paintControl() {
       .sort((a, b) => (bdV(a, "nombre") || bdV(a, "razon")).localeCompare(bdV(b, "nombre") || bdV(b, "razon")));
     const wa = cel => { const d = fiNit(cel); return d ? `https://wa.me/${d.length === 8 ? "591" + d : d}` : ""; };
     body = `<p class="note" style="margin:0 0 10px">Clientes ACTIVOS que todavía no recepcionaron su declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>. Toca el celular para escribirles por WhatsApp.</p>
-      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button></div>
+      <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button>${isAdmin() ? `<button class="btn" id="cm_baja" style="background:var(--danger);border-color:var(--danger);padding:6px 12px" ${noRec.length ? "" : "disabled"}>⛔ Dar de baja a los no recepcionados</button><button class="mini" id="cm_deshacer" title="Vuelve al estado anterior a los de la última baja masiva">↶ Deshacer última baja</button>` : ""}</div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
       ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))}</td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
       </tbody></table></div>`;
@@ -5455,6 +5567,8 @@ function paintControl() {
   el("cm_per").onchange = e => { CM_UI.per = e.target.value; paintControl(); };
   el("cm_reload").onclick = async () => { await ltLoad(true); paintControl(); };
   if (el("cm_q")) el("cm_q").oninput = e => { CM_UI.q = e.target.value; clearTimeout(CM_UI._t); CM_UI._t = setTimeout(() => { paintControl(); const x = el("cm_q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 250); };
+  if (el("cm_baja")) el("cm_baja").onclick = () => cmBajaMasiva(noRec);
+  if (el("cm_deshacer")) el("cm_deshacer").onclick = () => cmDeshacerBaja();
   if (el("cm_copycel")) el("cm_copycel").onclick = () => { try { navigator.clipboard.writeText(el("cm_cels").textContent); el("cm_copycel").textContent = "✓ Copiados"; } catch (e) {} };
   V.querySelectorAll(".cm-dj").forEach(tr => tr.onclick = () => openDDJJ(LT_DATA.find(x => x.id === tr.dataset.id), paintControl));
 }
