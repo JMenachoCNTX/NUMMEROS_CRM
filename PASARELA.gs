@@ -1026,15 +1026,19 @@ function admCorreoMasivo_(yo, d) {
   var lista = (d.lista || []).slice(0, 40), enviados = 0, fallidos = [];
   var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
   if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
-  // Adjuntos (PDF o imágenes) que se mandan a todos; máx. 5 archivos
-  var adj = (d.adjuntos || []).slice(0, 5).filter(function (a) { return a && a.b64 && /^(image\/|application\/pdf)/.test(String(a.mime || "")); })
-    .map(function (a) { return Utilities.newBlob(Utilities.base64Decode(a.b64), a.mime, String(a.nombre || "adjunto").slice(0, 120)); });
+  // Adjuntos que se mandan a todos (máx. 5). Con imgModo "dentro" las imágenes van DENTRO del correo
+  // (donde diga {imagen} en el texto, o debajo del título); si no, todo va como archivo adjunto. Los PDF siempre van adjuntos.
+  var adj = [], imgs = [], dentro = d.imgModo === "dentro";
+  (d.adjuntos || []).slice(0, 5).filter(function (a) { return a && a.b64 && /^(image\/|application\/pdf)/.test(String(a.mime || "")); }).forEach(function (a) {
+    var b = Utilities.newBlob(Utilities.base64Decode(a.b64), a.mime, String(a.nombre || "adjunto").slice(0, 120));
+    if (dentro && /^image\//.test(a.mime)) { var cid = "adjImg" + imgs.length; inl[cid] = b; imgs.push(cid); } else adj.push(b);
+  });
   for (var i = 0; i < lista.length; i++) {
     var x = lista[i] || {}, para = String(x.correo || "").trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(para)) { fallidos.push({ correo: para, error: "correo no válido" }); continue; }
     try {
-      GmailApp.sendEmail(para, String(x.asunto || "Aviso de CONTAX").slice(0, 200), String(x.texto || ""),
-        { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_(x, !!bC, !!bN), inlineImages: inl, attachments: adj });
+      GmailApp.sendEmail(para, String(x.asunto || "Aviso de CONTAX").slice(0, 200), String(x.texto || "").replace(/\{imagen\}\n?/g, ""),
+        { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_(x, !!bC, !!bN, imgs), inlineImages: inl, attachments: adj });
       enviados++;
     } catch (e) {
       var msg = String(e && e.message || e); fallidos.push({ correo: para, error: msg });
@@ -1047,13 +1051,18 @@ function correoMasivoFin_(yo, d, enviados, fallidos, limite) {
   if (!d.prueba) try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "correo_masivo", nombre: String(d.grupo || ""), detalle: yo.nombre + " envió «" + String(((d.lista || [])[0] || {}).asunto || "").slice(0, 120) + "» a " + enviados + " clientes", porUid: yo.uid, porNombre: yo.nombre }); } catch (e) {}
   return { ok: true, enviados: enviados, fallidos: fallidos, limite: limite };
 }
-function correoAvisoHTML_(x, logoC, logoN) {
-  var cuerpo = esc(String(x.texto || "")).replace(/\n/g, "<br>");
+function correoAvisoHTML_(x, logoC, logoN, imgs) {
+  var bloque = (imgs || []).map(function (c) { return '<img src="cid:' + c + '" width="504" alt="" style="display:block;width:100%;max-width:504px;height:auto;border:0;border-radius:8px;margin:10px 0">'; }).join("");
+  var t = esc(String(x.texto || "")), conMarca = bloque && t.indexOf("{imagen}") >= 0;
+  if (conMarca) t = t.replace(/\{imagen\}\n?/, "\u0000").replace(/\{imagen\}\n?/g, "");   // las imágenes van donde está el primer {imagen}
+  else t = t.replace(/\{imagen\}\n?/g, "");
+  var cuerpo = t.replace(/\n/g, "<br>").replace("\u0000", bloque);
   return '<!doctype html><html><body style="margin:0;padding:0;background:#eef1f5">' +
   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f5;padding:24px 10px"><tr><td align="center">' +
   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:\'Century Gothic\',Helvetica,Arial,sans-serif">' +
     '<tr><td align="center" style="padding:28px 24px 18px"><img src="' + (logoC ? "cid:logoContax" : LOGOS.contax) + '" width="210" alt="CONTAX" style="display:block;width:210px;max-width:70%;height:auto;border:0"></td></tr>' +
     '<tr><td style="background:' + EMPRESA.navy + ';padding:16px 24px;text-align:center"><div style="color:#ffffff;font-size:19px;font-weight:700">' + esc(String(x.asunto || "Aviso de CONTAX")) + '</div></td></tr>' +
+    (bloque && !conMarca ? '<tr><td style="padding:20px 28px 0">' + bloque + '</td></tr>' : "") +
     '<tr><td style="padding:24px 28px;color:#1f2a3a;font-size:15px;line-height:1.6">' + cuerpo + '</td></tr>' +
     '<tr><td style="padding:16px 28px 24px;border-top:1px solid #e4e7ee;color:#55617a;font-size:12px;line-height:1.5;text-align:center">' +
       '<img src="' + (logoN ? "cid:logoNummeros" : LOGOS.nummeros) + '" width="120" alt="NUMMEROS by CONTAX" style="display:block;margin:0 auto 8px;width:120px;height:auto;border:0">' +

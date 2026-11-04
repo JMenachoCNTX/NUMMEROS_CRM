@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "89";
+const APP_VERSION = "90";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3965,7 +3965,7 @@ const CM_PLANTILLAS = {
 // Grupos: todos los activos, los que no recepcionaron la declaración de un período y los que no pagaron el balance
 // de la gestión que está a la venta. En «balance» cada cliente recibe SU precio ({precio}): repartidores = la fase
 // habilitada para él (como en Recepción y la pasarela); otros rubros = precio de otros rubros.
-const CO = { plantillas: [], plSel: {}, borrador: {}, grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], ver: false, fases: null, pagados: null, cargando: false, msg: "" };
+const CO = { plantillas: [], plSel: {}, borrador: {}, grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], imgModo: "adjunto", ver: false, fases: null, pagados: null, cargando: false, msg: "" };
 async function renderComunicados() {
   const v = el("v-comunicados");
   if (!isAdmin()) { v.innerHTML = `<h1>Comunicados</h1><p class="lead">Solo un administrador o supervisor puede enviar comunicados.</p>`; return; }
@@ -4023,7 +4023,7 @@ function paintComunicados() {
   const v = el("v-comunicados"), L = coLista(), pl = coBorrador(CO.grupo), F = CO.fases;
   const plGrupo = CO.plantillas.filter(x => x.grupo === CO.grupo), ej = L.con[0] || { nombre: "Juan Pérez", nit: "1234567", precio: 250 };
   const sel = (id, opts, val) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(val) === k ? "selected" : ""}>${escape(t)}</option>`).join("")}</select>`;
-  const vars = ["{nombre}", "{cliente}", "{nit}"].concat(CO.grupo === "norec" ? ["{periodo}", "{vence}"] : CO.grupo === "balance" ? ["{precio}", "{gestion}"] : []);
+  const vars = ["{nombre}", "{cliente}", "{nit}"].concat(CO.grupo === "norec" ? ["{periodo}", "{vence}"] : CO.grupo === "balance" ? ["{precio}", "{gestion}"] : []).concat(CO.imgModo === "dentro" ? ["{imagen}"] : []);
   v.innerHTML = `<h1>Comunicados</h1>
     <p class="note" style="margin:0 0 12px">Correos a clientes activos, enviados con el Gmail de CONTAX. Elige el grupo, ajusta los filtros, revisa la lista y mándate una prueba antes de enviar.</p>
     <div class="card" style="padding:14px;margin-bottom:12px">
@@ -4050,6 +4050,8 @@ function paintComunicados() {
     <div class="field"><label>Vista previa · así le llega a <b>${escape(ej.nombre || "un cliente")}</b></label>
       <div id="co_prev" style="border:1px dashed var(--line);border-radius:8px;padding:10px 12px;white-space:pre-wrap;font-size:13px;line-height:19px"></div></div>
     <div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="co_adj" multiple accept="application/pdf,image/*">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 2px;font-size:13px"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="co_imod" value="adjunto" ${CO.imgModo === "dentro" ? "" : "checked"}> Imágenes como archivo adjunto</label><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="co_imod" value="dentro" ${CO.imgModo === "dentro" ? "checked" : ""}> Imágenes dentro del mensaje</label></div>
+      ${CO.imgModo === "dentro" ? `<div class="note" style="margin:0 0 4px">La imagen sale donde escribas <b>{imagen}</b> en el mensaje (en medio del texto). Si no lo escribes, sale debajo del título. Los PDF siempre van como adjunto.</div>` : ""}
       <div class="note" style="margin:4px 0 0">${CO.ADJ.length ? CO.ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
       <span class="msg" id="co_msg" style="margin:0 auto 0 0">${CO.msg}</span>
@@ -4058,7 +4060,7 @@ function paintComunicados() {
     </div>`;
   CO.msg = "";
   const $ = id => v.querySelector("#" + id), msg = $("co_msg");
-  const prev = () => { $("co_prev").innerHTML = `<b>${escape(coLlenar($("co_asunto").value, ej))}</b>\n\n` + escape(coLlenar($("co_texto").value, ej)); };
+  const prev = () => { $("co_prev").innerHTML = `<b>${escape(coLlenar($("co_asunto").value, ej))}</b>\n\n` + escape(coLlenar($("co_texto").value, ej)).replace(/\{imagen\}/g, CO.imgModo === "dentro" && CO.ADJ.some(x => /^image\//.test(x.mime)) ? '<span style="display:block;margin:6px 0;padding:18px;border:1px dashed var(--line);border-radius:8px;text-align:center;color:var(--muted)">🖼 aquí va la imagen</span>' : ""); };
   const guardarTxt = () => { pl.asunto = $("co_asunto").value; pl.texto = $("co_texto").value; prev(); };
   prev();
   v.querySelectorAll(".co-var").forEach(b => b.onclick = () => { const t = $("co_texto"), a = t.selectionStart, z = t.selectionEnd; t.value = t.value.slice(0, a) + b.dataset.var + t.value.slice(z); t.focus(); t.selectionStart = t.selectionEnd = a + b.dataset.var.length; guardarTxt(); });
@@ -4087,6 +4089,7 @@ function paintComunicados() {
   cambia("co_grupo", "grupo"); cambia("co_per", "per"); cambia("co_rubro", "rubro"); cambia("co_susc", "susc"); cambia("co_precio", "precio");
   $("co_verl").onclick = e => { e.preventDefault(); guardarTxt(); CO.ver = !CO.ver; paintComunicados(); };
   $("co_asunto").oninput = guardarTxt; $("co_texto").oninput = guardarTxt;
+  v.querySelectorAll('[name="co_imod"]').forEach(r => r.onchange = () => { guardarTxt(); CO.imgModo = r.value; paintComunicados(); });
   $("co_adj").onchange = async () => {
     for (const f of [...($("co_adj").files || [])]) {
       if (!/^image\/|application\/pdf/.test(f.type)) { CO.msg = escape(f.name) + ": solo PDF o imágenes."; continue; }
@@ -4109,7 +4112,7 @@ function paintComunicados() {
       const grupoL = dest.slice(i, i + 40).map(c => ({ correo: c.correo, asunto: coLlenar(asunto, prueba || c), texto: coLlenar(texto, prueba || c) }));
       msg.className = "msg"; msg.innerHTML = `<span class="cx-spin"></span> Enviando… ${env} de ${dest.length}`;
       const idToken = await auth.currentUser.getIdToken();
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: etiqueta, prueba: !!prueba, lista: grupoL, adjuntos: CO.ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: etiqueta, prueba: !!prueba, lista: grupoL, imgModo: CO.imgModo, adjuntos: CO.ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
       if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
       env += r.enviados; fall = fall.concat(r.fallidos || []);
       if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos. Vuelve a intentar mañana." }); break; }
@@ -5410,8 +5413,10 @@ async function cmBajaMasiva(noRec, grp) {
       <div id="cb_mailbox" style="${txt.enviar === false ? "display:none" : ""}">
         <div class="field"><label>Asunto</label><input id="cb_asunto" value="${escape(txt.asunto)}"></div>
         <div class="field"><label>Mensaje</label><textarea id="cb_texto" style="min-height:170px;font-family:inherit">${escape(txt.texto)}</textarea>
-          <div class="note" style="margin:4px 0 0">Variables: <b>{nombre}</b>, <b>{cliente}</b>, <b>{nit}</b>, <b>{mes}</b> (= ${escape(mesPago)}), <b>{periodo}</b> (= ${escape(recPeriodoTxt(per))}). <a href="#" id="cb_reset">↺ Restablecer</a></div></div>
+          <div class="note" style="margin:4px 0 0">Variables: <b>{nombre}</b>, <b>{cliente}</b>, <b>{nit}</b>, <b>{mes}</b> (= ${escape(mesPago)}), <b>{periodo}</b> (= ${escape(recPeriodoTxt(per))})${txt.imgModo === "dentro" ? ", <b>{imagen}</b> (lugar de la imagen)" : ""}. <a href="#" id="cb_reset">↺ Restablecer</a></div></div>
         <div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="cb_adj" multiple accept="application/pdf,image/*">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 2px;font-size:13px"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="cb_imod" value="adjunto" ${txt.imgModo === "dentro" ? "" : "checked"}> Imágenes como archivo adjunto</label><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="cb_imod" value="dentro" ${txt.imgModo === "dentro" ? "checked" : ""}> Imágenes dentro del mensaje</label></div>
+      ${txt.imgModo === "dentro" ? `<div class="note" style="margin:0 0 4px">La imagen sale donde escribas <b>{imagen}</b> en el mensaje (en medio del texto). Si no lo escribes, sale debajo del título. Los PDF siempre van como adjunto.</div>` : ""}
           <div class="note" style="margin:4px 0 0">${ADJ.length ? ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
@@ -5425,6 +5430,7 @@ async function cmBajaMasiva(noRec, grp) {
     bg.querySelectorAll("[data-i]").forEach(c => c.onchange = () => { leer(); const id = L[Number(c.dataset.i)].c._docid; c.checked ? quitar.delete(id) : quitar.add(id); confirmar = false; pintar(); });
     $("cb_all").onchange = () => { leer(); quitar.clear(); if (!$("cb_all").checked) L.forEach(x => quitar.add(x.c._docid)); confirmar = false; pintar(); };
     $("cb_mail").onchange = () => { leer(); pintar(); };
+    bg.querySelectorAll('[name="cb_imod"]').forEach(r => r.onchange = () => { leer(); txt.imgModo = r.value; pintar(); });
     $("cb_adj").onchange = async () => {
       leer(); let aviso = "";
       for (const f of [...($("cb_adj").files || [])]) {
@@ -5444,7 +5450,7 @@ async function cmBajaMasiva(noRec, grp) {
       for (let i = 0; i < dest.length; i += 40) {
         const lista = dest.slice(i, i + 40).map(x => ({ correo: x.correo, asunto: llenar(txt.asunto, ej || x), texto: llenar(txt.texto, ej || x) }));
         const idToken = await auth.currentUser.getIdToken();
-        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: "baja_" + grp + "_" + (esF ? perF : per), prueba: !!ej, lista, adjuntos: ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_correo_masivo", idToken, grupo: "baja_" + grp + "_" + (esF ? perF : per), prueba: !!ej, lista, imgModo: txt.imgModo || "adjunto", adjuntos: ADJ.map(a => ({ nombre: a.nombre, mime: a.mime, b64: a.b64 })) }) }).then(x => x.json());
         if (!r.ok) throw new Error(r.error || "No se pudo enviar.");
         env += r.enviados; fall = fall.concat(r.fallidos || []);
         if (r.limite) { fall.push({ correo: "", error: "Gmail llegó a su límite de hoy: faltaron " + (dest.length - env) + " correos." }); break; }
