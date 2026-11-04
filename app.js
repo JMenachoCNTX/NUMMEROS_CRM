@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "86";
+const APP_VERSION = "87";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3965,7 +3965,7 @@ const CM_PLANTILLAS = {
 // Grupos: todos los activos, los que no recepcionaron la declaración de un período y los que no pagaron el balance
 // de la gestión que está a la venta. En «balance» cada cliente recibe SU precio ({precio}): repartidores = la fase
 // habilitada para él (como en Recepción y la pasarela); otros rubros = precio de otros rubros.
-const CO = { grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], ver: false, fases: null, pagados: null, cargando: false, msg: "" };
+const CO = { plantillas: [], plSel: {}, borrador: {}, grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], ver: false, fases: null, pagados: null, cargando: false, msg: "" };
 async function renderComunicados() {
   const v = el("v-comunicados");
   if (!isAdmin()) { v.innerHTML = `<h1>Comunicados</h1><p class="lead">Solo un administrador o supervisor puede enviar comunicados.</p>`; return; }
@@ -3975,6 +3975,7 @@ async function renderComunicados() {
     await Promise.all([new Promise(res => bdEnsureLoaded(() => res())), ltLoad()]);
     const [f, res, todos] = await Promise.all([eeffFasesCfg(), eeffReservasScript().catch(() => ({})), recSync()]);
     CO.fases = Object.assign(f, { recs: eeffRecsPorPrecio(f.gestion), res: res || {} });
+    try { const d = await getDoc(doc(db, "config", "comunicados")); CO.plantillas = (d.exists() && d.data().plantillas) || []; } catch (e) { CO.plantillas = []; }
     CO.pagados = new Set(todos.filter(r => recValida(r) && recCatDe(r) === "eeff" && eeffGestionDe(r) === String(f.gestion)).map(r => fiNit(r.nit)).filter(Boolean));
   } catch (e) { v.innerHTML = `<h1>Comunicados</h1><p class="msg err">No se pudo preparar la lista: ${escape(e.message || String(e))}</p>`; return; }
   paintComunicados();
@@ -4005,19 +4006,24 @@ function coLista() {
   });
   return { con, sinCorreo, sinPrecio, porPrecio };
 }
-const CO_PLANTILLAS = Object.assign(CM_PLANTILLAS, {
+const CO_ORIGINAL = Object.assign({}, CM_PLANTILLAS, {
   balance: { asunto: "Tus Estados Financieros {gestion}: Bs {precio}", texto: "Estimado/a {nombre}:\n\nTe recordamos que aún no registramos el pago de tus Estados Financieros (balance) de la gestión {gestion}.\n\nTu precio hoy es de Bs {precio}, vigente hasta agotar cupos.\n\nPuedes pagar con QR desde nuestra pasarela, donde siempre verás el precio vigente: https://nummerospanel.contaxbolivia.com/pagos.html?nit={nit}\n\nSi ya lo pagaste, por favor ignora este mensaje.\n\nSaludos cordiales,\nEquipo CONTAX" }
 });
+// Plantilla elegida para el grupo ("" = la original del sistema) y el borrador que se está escribiendo
+function coBase(g) { const id = CO.plSel[g] || "", p = id && CO.plantillas.find(x => x.id === id); return p ? { asunto: p.asunto, texto: p.texto } : Object.assign({}, CO_ORIGINAL[g]); }
+function coBorrador(g) { if (!CO.borrador[g]) CO.borrador[g] = coBase(g); return CO.borrador[g]; }
+async function coGuardarPlantillas() { await setDoc(doc(db, "config", "comunicados"), { plantillas: CO.plantillas, actualizado: new Date().toISOString(), por: (ME && ME.email) || "" }); }
 function coLlenar(t, c) {
   const v = CO.grupo === "norec" && CO.per ? cmVencimiento(c.nit, CO.per) : null;
-  return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{periodo\}/g, CO.per ? recPeriodoTxt(CO.per) : "")
+  return String(t).replace(/\{nombre\}/g, primerNombreCM(c.nombre)).replace(/\{cliente\}/g, c.nombre || "").replace(/\{periodo\}/g, CO.per ? recPeriodoTxt(CO.per) : "")
     .replace(/\{vence\}/g, v ? djFechaTxt(v.iso) : "día de tu vencimiento").replace(/\{nit\}/g, c.nit || "")
     .replace(/\{precio\}/g, c.precio ? String(c.precio) : "").replace(/\{gestion\}/g, CO.fases ? CO.fases.gestion : "");
 }
 function paintComunicados() {
-  const v = el("v-comunicados"), L = coLista(), pl = CO_PLANTILLAS[CO.grupo], F = CO.fases;
+  const v = el("v-comunicados"), L = coLista(), pl = coBorrador(CO.grupo), F = CO.fases;
+  const plGrupo = CO.plantillas.filter(x => x.grupo === CO.grupo), ej = L.con[0] || { nombre: "Juan Pérez", nit: "1234567", precio: 250 };
   const sel = (id, opts, val) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(val) === k ? "selected" : ""}>${escape(t)}</option>`).join("")}</select>`;
-  const vars = CO.grupo === "norec" ? "{nombre}, {periodo}, {vence}, {nit}" : CO.grupo === "balance" ? "{nombre}, {precio}, {gestion}, {nit}" : "{nombre}, {nit}";
+  const vars = ["{nombre}", "{cliente}", "{nit}"].concat(CO.grupo === "norec" ? ["{periodo}", "{vence}"] : CO.grupo === "balance" ? ["{precio}", "{gestion}"] : []);
   v.innerHTML = `<h1>Comunicados</h1>
     <p class="note" style="margin:0 0 12px">Correos a clientes activos, enviados con el Gmail de CONTAX. Elige el grupo, ajusta los filtros, revisa la lista y mándate una prueba antes de enviar.</p>
     <div class="card" style="padding:14px;margin-bottom:12px">
@@ -4033,9 +4039,16 @@ function paintComunicados() {
     <div class="note" style="margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">Se enviará a <b>${L.con.length}</b> clientes con correo${L.sinCorreo.length ? ` (<b>${L.sinCorreo.length}</b> sin correo válido)` : ""}. <a href="#" id="co_verl">${CO.ver ? "Ocultar" : "Ver"} la lista</a>
       ${CO.ver ? `<div style="max-height:320px;overflow:auto;margin-top:8px"><table style="font-size:12px"><thead><tr><th>Cliente</th><th>NIT</th><th>Correo</th><th>Rubro</th>${CO.grupo === "balance" ? '<th style="text-align:right">Precio</th>' : ""}</tr></thead><tbody>
         ${L.con.map(x => `<tr><td>${escape(x.nombre)}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo)}</td><td>${x.rep ? "Repartidor" : "Otro rubro"}</td>${CO.grupo === "balance" ? `<td class="mono" style="text-align:right"><b>Bs ${x.precio}</b><div style="color:var(--muted)">${escape(x.fase)}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : ""}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:0 0 10px">
+      <div class="field" style="margin:0;flex:1;min-width:220px"><label>Plantilla</label><select id="co_pl"><option value="">Original del sistema</option>${plGrupo.map(x => `<option value="${escape(x.id)}" ${CO.plSel[CO.grupo] === x.id ? "selected" : ""}>${escape(x.nombre)}</option>`).join("")}</select></div>
+      <button class="btn sec" id="co_reset" style="border:1px solid var(--line)" title="Volver al texto de la plantilla elegida">↺ Restablecer</button>
+      ${isAdminStrict() ? `<button class="btn sec" id="co_guardar" style="border:1px solid var(--line)">💾 Guardar como plantilla</button>${CO.plSel[CO.grupo] ? `<button class="btn sec" id="co_actualizar" style="border:1px solid var(--line)">Actualizar plantilla</button><button class="btn sec" id="co_borrar" style="border:1px solid var(--line)" title="Borrar esta plantilla">🗑</button>` : ""}` : ""}
+    </div>
     <div class="field"><label>Asunto</label><input id="co_asunto" value="${escape(pl.asunto)}"></div>
     <div class="field"><label>Mensaje</label><textarea id="co_texto" style="min-height:220px;font-family:inherit">${escape(pl.texto)}</textarea>
-      <div class="note" style="margin:4px 0 0">Se reemplaza solo: <b>${vars}</b>. Sale con el logo de CONTAX y si el cliente responde, llega a info@contaxbolivia.com.</div></div>
+      <div class="note" style="margin:4px 0 0">Variables (toca una para ponerla donde está el cursor; cada cliente recibe sus propios datos): ${vars.map(x => `<button class="mini co-var" type="button" data-var="${x}">${x}</button>`).join(" ")}<br><b>{nombre}</b> = primer nombre · <b>{cliente}</b> = nombre completo. El enlace con <b>{nit}</b> también se arma solo para cada cliente.</div></div>
+    <div class="field"><label>Vista previa · así le llega a <b>${escape(ej.nombre || "un cliente")}</b></label>
+      <div id="co_prev" style="border:1px dashed var(--line);border-radius:8px;padding:10px 12px;white-space:pre-wrap;font-size:13px;line-height:19px"></div></div>
     <div class="field"><label>Adjuntos (PDF o imágenes · opcional)</label><input type="file" id="co_adj" multiple accept="application/pdf,image/*">
       <div class="note" style="margin:4px 0 0">${CO.ADJ.length ? CO.ADJ.map((a, i) => `📎 ${escape(a.nombre)} (${Math.round(a.kb)} KB) <a href="#" data-qadj="${i}">quitar</a>`).join("<br>") : "Hasta 5 archivos y 7 MB en total."}</div></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;margin-top:10px">
@@ -4045,7 +4058,31 @@ function paintComunicados() {
     </div>`;
   CO.msg = "";
   const $ = id => v.querySelector("#" + id), msg = $("co_msg");
-  const guardarTxt = () => { pl.asunto = $("co_asunto").value; pl.texto = $("co_texto").value; };
+  const prev = () => { $("co_prev").innerHTML = `<b>${escape(coLlenar($("co_asunto").value, ej))}</b>\n\n` + escape(coLlenar($("co_texto").value, ej)); };
+  const guardarTxt = () => { pl.asunto = $("co_asunto").value; pl.texto = $("co_texto").value; prev(); };
+  prev();
+  v.querySelectorAll(".co-var").forEach(b => b.onclick = () => { const t = $("co_texto"), a = t.selectionStart, z = t.selectionEnd; t.value = t.value.slice(0, a) + b.dataset.var + t.value.slice(z); t.focus(); t.selectionStart = t.selectionEnd = a + b.dataset.var.length; guardarTxt(); });
+  $("co_pl").onchange = () => { CO.plSel[CO.grupo] = $("co_pl").value; CO.borrador[CO.grupo] = coBase(CO.grupo); paintComunicados(); };
+  $("co_reset").onclick = () => { CO.borrador[CO.grupo] = coBase(CO.grupo); paintComunicados(); };
+  if ($("co_guardar")) $("co_guardar").onclick = async () => {
+    const nombre = (prompt("Nombre de la plantilla (ej.: Balance repartidores fase 1):") || "").trim(); if (!nombre) return;
+    const id = "pl" + Date.now();
+    CO.plantillas.push({ id, nombre: nombre.slice(0, 80), grupo: CO.grupo, asunto: $("co_asunto").value, texto: $("co_texto").value });
+    try { await coGuardarPlantillas(); CO.plSel[CO.grupo] = id; CO.msg = "✓ Plantilla guardada."; } catch (e) { CO.plantillas.pop(); CO.msg = "No se pudo guardar: " + escape(e.message || ""); }
+    paintComunicados();
+  };
+  if ($("co_actualizar")) $("co_actualizar").onclick = async () => {
+    const p = CO.plantillas.find(x => x.id === CO.plSel[CO.grupo]); if (!p || !confirm("¿Reemplazar la plantilla «" + p.nombre + "» con este texto?")) return;
+    const viejo = { asunto: p.asunto, texto: p.texto }; p.asunto = $("co_asunto").value; p.texto = $("co_texto").value;
+    try { await coGuardarPlantillas(); CO.msg = "✓ Plantilla actualizada."; } catch (e) { Object.assign(p, viejo); CO.msg = "No se pudo guardar: " + escape(e.message || ""); }
+    paintComunicados();
+  };
+  if ($("co_borrar")) $("co_borrar").onclick = async () => {
+    const i = CO.plantillas.findIndex(x => x.id === CO.plSel[CO.grupo]); if (i < 0 || !confirm("¿Borrar la plantilla «" + CO.plantillas[i].nombre + "»?")) return;
+    const quitada = CO.plantillas.splice(i, 1)[0];
+    try { await coGuardarPlantillas(); CO.plSel[CO.grupo] = ""; CO.borrador[CO.grupo] = coBase(CO.grupo); CO.msg = "Plantilla borrada."; } catch (e) { CO.plantillas.splice(i, 0, quitada); CO.msg = "No se pudo borrar: " + escape(e.message || ""); }
+    paintComunicados();
+  };
   const cambia = (id, k) => { if ($(id)) $(id).onchange = () => { guardarTxt(); CO[k] = $(id).value; if (k === "grupo" || k === "rubro" || k === "susc") CO.precio = ""; paintComunicados(); }; };
   cambia("co_grupo", "grupo"); cambia("co_per", "per"); cambia("co_rubro", "rubro"); cambia("co_susc", "susc"); cambia("co_precio", "precio");
   $("co_verl").onclick = e => { e.preventDefault(); guardarTxt(); CO.ver = !CO.ver; paintComunicados(); };
@@ -4095,6 +4132,8 @@ function paintComunicados() {
       msg.className = o.fall.length ? "msg err" : "msg ok";
       msg.innerHTML = `✓ Enviados: <b>${o.env}</b> de ${L.con.length}.` + (o.fall.length ? ` No se enviaron ${o.fall.length}: ` + o.fall.slice(0, 5).map(f => escape((f.correo ? f.correo + " — " : "") + f.error)).join("; ") : "");
       b.textContent = "Enviado";
+      CO.borrador[CO.grupo] = coBase(CO.grupo); CO.ADJ = [];   // el próximo comunicado empieza desde la plantilla
+      const nb = coBorrador(CO.grupo); $("co_asunto").value = nb.asunto; $("co_texto").value = nb.texto; prev();
     } catch (e) { msg.className = "msg err"; msg.textContent = e.message; b.disabled = false; $("co_prueba").disabled = false; }
   };
 }
