@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "99";
+const APP_VERSION = "100";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6512,8 +6512,8 @@ async function yfCargar(forzar) {
     const facDe = {};
     fac.docs.forEach(d => { const f = { _id: d.id, ...d.data() }; if (f.estado === "anulada") return; const t = f.subido && f.subido.seconds || 0;
       (f.semanas || []).forEach(sm => { const k = String(f.id) + "|" + sm, p = facDe[k]; if (!p || t > (p.subido && p.subido.seconds || 0)) facDe[k] = f; }); });
-    // Clientes «Activos» de la Base de Datos → por celular y por nombre
-    const act = BD.filter(r => yfNorm(bdV(r, "estado")) === "ACTIVO");
+    // Clientes «Activos» de la Base de Datos (también SUSCRIPCIÓN FACTURACIÓN) → por NIT, celular y nombre
+    const act = BD.filter(r => /^(ACTIVO|SUSCRIPCION (DE )?FACTURACION)$/.test(yfNorm(bdV(r, "estado"))));
     const porCel = {}, porNit = {}; act.forEach(r => { const c = String(bdV(r, "celular")).replace(/\D/g, "").slice(-8); if (c.length === 8) porCel[c] = r; const n = fiNit(bdV(r, "nit")); if (n) porNit[n] = r; });
     const nomCli = act.map(r => ({ r, set: new Set(yfPal(bdV(r, "nombre") || bdV(r, "razon"))) }));
     const cacheCli = {};
