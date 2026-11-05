@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v98; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v99; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -87,4 +87,5 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Panel:** Pasarela → Premios → «Referidos y billeteras» (`paRefHTML`): retiros por pagar, referidos (asignar a mano / anular), «Quiero ser cliente» y billeteras (Ajustar, solo admin). Acciones del puente `admin_referidos`, `admin_ref_asignar`, `admin_retiro`, `admin_billetera_ajuste`. Las colecciones nuevas solo las toca el puente (no hace falta cambiar reglas).
 
 ### v98 · Facturación → Repartidores Yango
-- La lista vuelve a leer la BD cada vez que se carga (antes usaba la BD de memoria: un cliente reactivado por la pasarela u otra compañera no salía hasta apretar F5) y se renueva sola después de 10 min. El Panel reconoce al cliente **por nombre** (`semanas` no guarda celular): una semana sin nombre no se reconoce.
+- La lista vuelve a leer la BD cada vez que se carga (antes usaba la BD de memoria: un cliente reactivado por la pasarela u otra compañera no salía hasta apretar F5) y se renueva sola después de 10 min. 
+- **v99:** el Panel lee BDYango por el puente (`yfBDYango`, acción `admin_ctrl_hoja`) y reconoce al cliente por NIT, teléfono o nombre, igual que CONTROL. Hacía falta porque `semanas` no guarda celular y hay semanas sin nombre (22 semanas de 14 clientes no salían).

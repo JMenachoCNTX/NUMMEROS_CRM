@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "98";
+const APP_VERSION = "99";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6470,16 +6470,38 @@ const yfUid = id => String(id == null ? "" : id).trim().replace(/[^a-zA-Z0-9._-]
 const yfNorm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 const yfPal = t => yfNorm(t).split(/[^A-Z]+/).filter(w => w.length >= 3);
 const yfSemN = s => { const m = String(s || "").match(/(\d{1,2})\D*G?\D*(\d{2,4})?/i); return m ? (Number(m[2] ? (m[2].length === 2 ? "20" + m[2] : m[2]) : 0) * 100 + Number(m[1])) : 0; };
+// BDYango (la misma hoja que lee CONTROL): nombre, NIT y teléfono por ID de Yango. Hay semanas sin nombre y ninguna guarda celular.
+async function yfBDYango() {
+  try {
+    const url = await recibosUrlGet(), idToken = await auth.currentUser.getIdToken();
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "admin_ctrl_hoja", idToken, hoja: "bdyango" }) }).then(x => x.json());
+    if (!r.ok) throw new Error(r.error || "BDYango");
+    const m = {}, txt = v => String(v == null ? "" : v).trim();
+    (r.hojas || []).forEach(h => {
+      const enc = (h.filas[0] || []).map(t => yfNorm(t).trim()), c = re => enc.findIndex(t => re.test(t));
+      const k = { id: c(/^ID\b/), nom: c(/^NOMBRE \(COMPLETO\)|^NOMBRE$/), ape: c(/^APELLIDO/), nit: c(/^NIT$/), tel: c(/^TELEFONO/) };
+      if (k.id < 0) return;
+      h.filas.slice(1).forEach(f => {
+        const id = txt(f[k.id]).replace(/\.0+$/, ""); if (!/^\d{4,}$/.test(id)) return;
+        const x = m[id] || (m[id] = {}), nombre = [k.nom >= 0 ? f[k.nom] : "", k.ape >= 0 ? f[k.ape] : ""].join(" ").replace(/\s+/g, " ").trim();
+        const nit = k.nit >= 0 ? txt(f[k.nit]).replace(/\D/g, "") : "", tel = k.tel >= 0 ? txt(f[k.tel]).replace(/\D/g, "") : "";
+        if (nombre) x.nombre = nombre; if (nit) x.nit = nit; if (tel) x.tel = tel;
+      });
+    });
+    return m;
+  } catch (e) { console.warn("BDYango:", e); return {}; }
+}
 async function yfCargar(forzar) {
   if (!forzar && YF.filas && Date.now() - YF.at < 10 * 60e3) return YF.filas;
   if (YF.cargando) return YF.cargando;
   YF.cargando = (async () => {
     bdLoaded = false;   // la BD se relee: un cliente reactivado (pasarela u otra compañera) debe salir como CONTAX sin apretar F5
     await Promise.all([yfConectar(), new Promise(res => bdEnsureLoaded(() => res()))]);
-    const [sem, fac, hist] = await Promise.all([
+    const [sem, fac, hist, bdy] = await Promise.all([
       getDocs(query(collection(YF.db, "semanas"), where("estado", "==", "pendiente"))),
       getDocs(collection(YF.db, "facturas")),
-      getDocs(collection(YF.db, "historialPagos"))
+      getDocs(collection(YF.db, "historialPagos")),
+      yfBDYango()
     ]);
     // Motivo / comentario de CONTAX por semana (emisionContax). Si las reglas aún no lo permiten, se sigue sin eso.
     const emiDe = {};
@@ -6492,19 +6514,20 @@ async function yfCargar(forzar) {
       (f.semanas || []).forEach(sm => { const k = String(f.id) + "|" + sm, p = facDe[k]; if (!p || t > (p.subido && p.subido.seconds || 0)) facDe[k] = f; }); });
     // Clientes «Activos» de la Base de Datos → por celular y por nombre
     const act = BD.filter(r => yfNorm(bdV(r, "estado")) === "ACTIVO");
-    const porCel = {}; act.forEach(r => { const c = String(bdV(r, "celular")).replace(/\D/g, "").slice(-8); if (c.length === 8) porCel[c] = r; });
+    const porCel = {}, porNit = {}; act.forEach(r => { const c = String(bdV(r, "celular")).replace(/\D/g, "").slice(-8); if (c.length === 8) porCel[c] = r; const n = fiNit(bdV(r, "nit")); if (n) porNit[n] = r; });
     const nomCli = act.map(r => ({ r, set: new Set(yfPal(bdV(r, "nombre") || bdV(r, "razon"))) }));
     const cacheCli = {};
-    const clienteDe = (id, nombre, cel) => {
+    const clienteDe = (id, nombre, cel, nit) => {
       if (id in cacheCli) return cacheCli[id];
-      const c8 = String(cel || "").replace(/\D/g, "").slice(-8); let r = c8.length === 8 ? porCel[c8] : null;
+      const c8 = String(cel || "").replace(/\D/g, "").slice(-8); let r = (nit && porNit[nit]) || (c8.length === 8 ? porCel[c8] : null);
       if (!r) { const p = yfPal(nombre); if (p.length >= 2) { let l = nomCli.filter(x => p.every(w => x.set.has(w))); if (l.length > 1) l = l.filter(x => x.set.size === p.length); if (l.length >= 1 && l.every(x => x.set.size === l[0].set.size)) r = l[0].r; } }
       if (r) cacheCli[id] = r; return r || null;
     };
     const filas = [], ya = {};
     const agregar = (id, nombre, cel, semana, importe, tipo, extra) => {
       id = String(id); const k = id + "|" + semana; if (ya[k] || !(Number(importe) > 0)) return; ya[k] = 1;
-      const f = facDe[k] || null, cli = clienteDe(id, nombre, cel), emi = emiDe[k] || null;
+      const y = bdy[id] || {}; nombre = nombre || y.nombre || ""; cel = cel || y.tel || "";
+      const f = facDe[k] || null, cli = clienteDe(id, nombre, cel, y.nit), emi = emiDe[k] || null;
       const estado = !f ? (cli ? (emi && emi.estado === "noSePudo" ? "noSePudo" : "porEmitir") : "falta") : f.origen === "contax" ? "contax" : f.estado === "aprobada" ? "aprobada" : f.estado === "recibida" ? "subida" : "observada";
       filas.push({ id, nombre: nombre || "", celular: cel || "", semana, importe: Number(importe) || 0, tipo, f, cli, contador: cli ? "CONTAX" : "OTRO", estado, emi,
         tiene: estado === "aprobada" || estado === "contax" || estado === "subida", ...(extra || {}) });
