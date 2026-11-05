@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "94";
+const APP_VERSION = "95";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -2952,6 +2952,7 @@ async function postRecibo(rec) {
 
 // ---------- RECEPCIÓN (completa) ----------
 let recCli = null; // cliente seleccionado para autollenado
+let recFocoBuscar = false, recBuscarT = null;
 let recSubtab = "form", recListFilter = "", recListSort = "fecha", recLastRec = null, recListDir = -1, recFull = false;
 let recFijar = (() => { try { return Number(localStorage.getItem("rec-fijar") || 0); } catch (e) { return 0; } })();
 // Columnas de la lista: [clave de orden, título, valor para ordenar]
@@ -3294,7 +3295,10 @@ function paintRecepcion() {
       }
     }
     if (recSubtab === "list") {
-      const bq = el("r_buscar"); if (bq) bq.oninput = () => { recListFilter = bq.value; const pane = el("r_pane_list"); /* re-render solo lista */ paintRecepcion(); const nb = el("r_buscar"); if (nb) { nb.focus(); nb.setSelectionRange(nb.value.length, nb.value.length); } };
+      // El repintado es asíncrono (espera la config): el foco se devuelve DESPUÉS de dibujar, y se espera a que deje de teclear
+      const bq = el("r_buscar");
+      if (bq && recFocoBuscar) { recFocoBuscar = false; bq.focus(); const n = bq.value.length; bq.setSelectionRange(n, n); }
+      if (bq) bq.oninput = () => { recListFilter = bq.value; clearTimeout(recBuscarT); recBuscarT = setTimeout(() => { recFocoBuscar = true; paintRecepcion(); }, 300); };
       el("v-recepcion").querySelectorAll("th[data-ord]").forEach(th => th.onclick = () => {
         const k = th.dataset.ord;
         if (recListSort === k) recListDir = -recListDir; else { recListSort = k; recListDir = (k === "cliente" || k === "servicio" || k === "atencion" || k === "pago") ? 1 : -1; }
