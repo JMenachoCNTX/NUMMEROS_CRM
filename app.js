@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "97";
+const APP_VERSION = "98";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6474,6 +6474,7 @@ async function yfCargar(forzar) {
   if (!forzar && YF.filas && Date.now() - YF.at < 10 * 60e3) return YF.filas;
   if (YF.cargando) return YF.cargando;
   YF.cargando = (async () => {
+    bdLoaded = false;   // la BD se relee: un cliente reactivado (pasarela u otra compañera) debe salir como CONTAX sin apretar F5
     await Promise.all([yfConectar(), new Promise(res => bdEnsureLoaded(() => res()))]);
     const [sem, fac, hist] = await Promise.all([
       getDocs(query(collection(YF.db, "semanas"), where("estado", "==", "pendiente"))),
@@ -6691,7 +6692,7 @@ function paintFacturacion() {
       </tbody></table></div>`;
   } else if (FAC_UI.fuente === "yango") {
     body = yfHTML();
-    if (!YF.filas && !YF.err && !YF.cargando) yfCargar().then(() => { if (FAC_UI.tab === "pendientes" && FAC_UI.fuente === "yango") paintFacturacion(); }, () => paintFacturacion());
+    if ((!YF.filas || Date.now() - YF.at > 10 * 60e3) && !YF.err && !YF.cargando) yfCargar().then(() => { if (FAC_UI.tab === "pendientes" && FAC_UI.fuente === "yango") paintFacturacion(); }, () => paintFacturacion());
   } else {
     const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
     body = `
