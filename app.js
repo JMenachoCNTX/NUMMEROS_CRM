@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "93";
+const APP_VERSION = "94";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3067,7 +3067,7 @@ function paintRecepcion() {
        <td class="mono">${escape(r.fecha || fmtFecha(r.fechaISO))}${r.hora ? `<div style="color:var(--muted);font-size:11px">${escape(r.hora)}</div>` : ''}</td>
        <td class="mono">${escape(String(r.nroRecepcion || "—"))}</td>
        <td class="mono">${escape(String(r.nroComprobante || "—"))}</td>
-       <td><b>${escape(r.clienteNombre || "—")}</b>${recCatDe(r) === "declaracion" ? iueBadge(r.nit) : ""}${r.nit ? `<div style="color:var(--muted);font-size:11px">NIT ${escape(r.nit)}</div>` : ''}</td>
+       <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}${recCatDe(r) === "declaracion" ? iueBadge(r.nit) : ""}${r.nit ? `<div style="color:var(--muted);font-size:11px">NIT ${escape(r.nit)}</div>` : ''}</td>
        <td>${escape(r.servicio || r.servicioNombre || "—")}${r.detalleServicio ? `<div style="color:var(--muted);font-size:11px">${escape(r.detalleServicio)}</div>` : ''}</td>
        <td>${escape(r.mesRecepcion || "—")}</td>
        <td>${escape(r.fechaPago || "—")}</td>
@@ -3882,7 +3882,7 @@ function paintLista(tipo, viewId, titulo) {
     const ctrl = canEdit ? `<select class="mini" data-estado="${r.id}">${ESTADOS_LISTA.map(([v, l]) => `<option value="${v}" ${v === est ? 'selected' : ''}>${l}</option>`).join('')}</select>` : `<span class="badge ${est === 'entregado' ? 'ok' : 'off'}">${est}</span>`;
     return `<tr>
       <td class="mono">${escape(fmtFecha(r.fechaISO))}</td>
-      <td><b>${escape(r.clienteNombre || "—")}</b>${r.clienteCelular ? `<div style="color:var(--muted);font-size:12px">${escape(r.clienteCelular)}</div>` : ''}</td>
+      <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}${r.clienteCelular ? `<div style="color:var(--muted);font-size:12px">${escape(r.clienteCelular)}</div>` : ''}</td>
       <td>${escape(r.servicioNombre || "—")}</td>
       <td class="mono" style="text-align:right">${money(r.importe)}</td>
       <td>${ctrl}</td></tr>`;
@@ -4042,7 +4042,7 @@ function paintComunicados() {
     </div>
     <div class="note" style="margin:0 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">Se enviará a <b>${L.con.length}</b> clientes con correo${L.sinCorreo.length ? ` (<b>${L.sinCorreo.length}</b> sin correo válido)` : ""}. <a href="#" id="co_verl">${CO.ver ? "Ocultar" : "Ver"} la lista</a>
       ${CO.ver ? `<div style="max-height:320px;overflow:auto;margin-top:8px"><table style="font-size:12px"><thead><tr><th>Cliente</th><th>NIT</th><th>Correo</th><th>Rubro</th>${CO.grupo === "balance" ? '<th style="text-align:right">Precio</th>' : ""}</tr></thead><tbody>
-        ${L.con.map(x => `<tr><td>${escape(x.nombre)}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo)}</td><td>${x.rep ? "Repartidor" : "Otro rubro"}</td>${CO.grupo === "balance" ? `<td class="mono" style="text-align:right"><b>Bs ${x.precio}</b><div style="color:var(--muted)">${escape(x.fase)}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : ""}</div>
+        ${L.con.map(x => `<tr><td>${escape(x.nombre)}${fichaOjo(x.nit)}</td><td class="mono">${escape(x.nit)}</td><td>${escape(x.correo)}</td><td>${x.rep ? "Repartidor" : "Otro rubro"}</td>${CO.grupo === "balance" ? `<td class="mono" style="text-align:right"><b>Bs ${x.precio}</b><div style="color:var(--muted)">${escape(x.fase)}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : ""}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:0 0 10px">
       <div class="field" style="margin:0;flex:1;min-width:220px"><label>Plantilla</label><select id="co_pl"><option value="">Original del sistema</option>${plGrupo.map(x => `<option value="${escape(x.id)}" ${CO.plSel[CO.grupo] === x.id ? "selected" : ""}>${escape(x.nombre)}</option>`).join("")}</select></div>
       <button class="btn sec" id="co_reset" style="border:1px solid var(--line)" title="Volver al texto de la plantilla elegida">↺ Restablecer</button>
@@ -4190,7 +4190,7 @@ function paintListaTrabajo(tipo, viewId, titulo) {
   const rows = list.map(r => `<tr>
       <td class="mono">${escape(r.fecha || fmtFecha(r.fechaISO))}</td>
       <td class="mono">${escape(String(r.nroRecepcion || "—"))}</td>
-      <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.rubro ? " · " + escape(r.rubro) : ""}</div></td>
+      <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.rubro ? " · " + escape(r.rubro) : ""}</div></td>
       <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
       <td>${escape(perTxt(perDe(r)))}</td>
       <td>${ltFila(r, "estadoTrabajo", ESTADOS_TRABAJO, canEdit)}</td></tr>`).join("");
@@ -4302,7 +4302,7 @@ function paintListaEEFF() {
     const c = r._bd, pass = c ? bdV(c, "password") : "", fNit = c ? bdV(c, "fechaNit") : (r.aperturaNit || "");
     return `<tr${eeSi(r.ee_finalizado) ? ' style="background:rgba(46,125,91,.07)"' : ""}>
       <td class="mono" style="white-space:nowrap">BG${escape(r._eeG)}/${r._eeN}</td>
-      <td><b>${escape(r.clienteNombre || "—")}</b><div style="font-size:11px;color:var(--muted)">${escape(r.detalleServicio || "")}${r.pasarela && r.pasarela.balance ? " · " + escape(r.pasarela.balance) : ""}</div></td>
+      <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div style="font-size:11px;color:var(--muted)">${escape(r.detalleServicio || "")}${r.pasarela && r.pasarela.balance ? " · " + escape(r.pasarela.balance) : ""}</div></td>
       <td class="mono">${escape(String(r.nit || ""))}</td>
       <td style="font-size:12px">${escape(r.clienteCorreo || (c ? bdV(c, "correo") : ""))}</td>
       <td class="mono" style="font-size:12px">${pass ? (verClave ? `<span class="ee-pass" data-p="${escape(pass)}" title="Toca para ver">••••••</span>` : "••••••") : ""}</td>
@@ -4484,7 +4484,7 @@ function paintDDJJ() {
   const rows = list.map((r, i) => `<tr class="dj-row" data-id="${r.id}" style="cursor:pointer">
       <td class="mono">${i + 1}</td>
       <td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
-      <td><b>${escape(r.clienteNombre || "—")}</b>${iueBadge(r.nit)}<div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
+      <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}${iueBadge(r.nit)}<div style="color:var(--muted);font-size:11.5px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")}</div></td>
       <td style="font-size:12px">${escape(r.detalleServicio || "—")}<div style="color:var(--muted);font-size:11px">${escape(r.fecha || djFechaTxt(r.fechaISO))}</div></td>
       <td>${escape(r.dj_rcvPor || "—")}</td>
       <td style="text-align:center">${ck(r.dj_rcvIniciado)} ${ck(r.dj_rcvFinalizado)}${r.dj_rcvConsolidado ? `<div style="font-size:10.5px;color:var(--ok);font-weight:700" title="Consolidado sin multa">CONSOL.</div>` : ""}</td>
@@ -4721,7 +4721,7 @@ function openDDJJ(r, alGuardar) {
   bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px";
   bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:860px;max-width:96vw;max-height:94vh;overflow:auto">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">
-      <div><h3 style="margin:0">${escape(r.clienteNombre || "—")}</h3>
+      <div><h3 style="margin:0">${escape(r.clienteNombre || "—")}${fichaOjo(r.nit)}</h3>
         <div class="note" style="margin:2px 0 0">NIT <b class="mono">${escape(String(r.nit || "—"))}</b>${r.nit ? ` <button class="mini" id="dj_nitcopy" title="Copiar NIT" type="button">📋</button>` : ""}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
       <button class="mini" id="dj_x">✕</button></div>
     <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? "🔑 Cargando accesos del cliente…" : "🔑 Accesos visibles solo para quienes pueden editar."}</div>
@@ -5171,6 +5171,42 @@ async function djLeerIA(tipo, dataUrl) {
 // ---------- FICHA DEL CLIENTE (antes "HistorialClientes" en Sheets) ----------
 const FI_UI = { nit: "", anio: String(new Date().getFullYear()), recs: [], cargando: false };
 function fiNit(v) { return String(v == null ? "" : v).replace(/\D/g, ""); }
+// 👁 Ficha rápida: datos del cliente en un panel lateral, sin cambiar de pestaña. Va en cada lista donde sale un cliente.
+const fichaOjo = nit => fiNit(nit) ? `<button type="button" class="mini fi-ojo" data-fnit="${fiNit(nit)}" title="Ver ficha del cliente" style="padding:1px 6px;margin-left:4px;vertical-align:middle">👁</button>` : "";
+function fichaRapida(nit) {
+  nit = fiNit(nit); if (!nit) return;
+  document.querySelectorAll(".fr-bg").forEach(x => x.remove());
+  const bg = document.createElement("div"); bg.className = "fr-bg";
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:120;display:flex;justify-content:flex-end";
+  bg.innerHTML = `<div class="fr-box" style="background:var(--panel);width:440px;max-width:100vw;height:100%;overflow:auto;padding:18px 18px 30px;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.2)"><p class="lead"><span class="cx-spin"></span> Cargando…</p></div>`;
+  document.body.appendChild(bg);
+  const cerrar = () => { bg.remove(); document.removeEventListener("keydown", esc); };
+  const esc = e => { if (e.key === "Escape") cerrar(); };
+  document.addEventListener("keydown", esc);
+  bg.onclick = e => { if (e.target === bg) cerrar(); };
+  bdEnsureLoaded(() => {
+    const box = bg.querySelector(".fr-box"); if (!box) return;
+    const c = BD.find(x => fiNit(bdV(x, "nit")) === nit);
+    const canEd = canEditClientes();
+    const fila = (lbl, v, secreto) => v ? `<div style="display:flex;gap:6px;align-items:flex-start;padding:4px 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted);flex:0 0 130px;font-size:12px">${escape(lbl)}</span><b style="flex:1;font-size:13px;overflow-wrap:anywhere">${escape(v)}</b><button type="button" class="mini fr-cp" data-v="${escape(v)}" title="Copiar" style="padding:1px 6px">📋</button></div>` : "";
+    let h = `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px"><div style="flex:1"><h3 style="margin:0">${escape(c ? (bdV(c, "nombre") || bdV(c, "razon")) : "NIT " + nit)}</h3>${c ? `<div style="margin-top:4px"><span class="badge ${bdIsActivo(c) ? "ok" : "off"}">${escape(bdV(c, "estado") || "—")}</span></div>` : ""}</div><button class="mini" id="fr_x">✕</button></div>`;
+    if (!c) h += `<p class="note">Este NIT no está en la Base de Datos.</p>`;
+    else BD_GROUPS.forEach(g => {
+      const campos = BD_FIELDS.filter(f => f[2] === g && (f[3] !== "secret" || canEd)).map(f => fila(f[1], bdV(c, f[0]))).join("");
+      if (campos) h += `<h4 style="margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">${escape(g)}</h4>${campos}`;
+    });
+    // Últimas recepciones (si ya están cargadas)
+    const recs = (LT_DATA || []).filter(r => fiNit(r.nit) === nit).sort((a, b) => String(b.fechaISO || "").localeCompare(String(a.fechaISO || ""))).slice(0, 8);
+    if (recs.length) h += `<h4 style="margin:14px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Últimas recepciones</h4>` + recs.map(r => `<div style="padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px"><b>${escape(r.servicio || "")}</b> · ${escape(r.mesRecepcion || "")} · ${money(r.importe)}<div class="note" style="margin:0">N° ${escape(String(r.nroRecepcion || ""))} · ${escape(r.fecha || "")}</div></div>`).join("");
+    h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px"><button class="btn" id="fr_full">Abrir ficha completa</button><button class="mini" id="fr_pas">🔗 Copiar enlace de la pasarela</button></div>`;
+    box.innerHTML = h;
+    box.querySelector("#fr_x").onclick = cerrar;
+    box.querySelectorAll(".fr-cp").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "📋"; }, 1200); } catch (e) {} });
+    box.querySelector("#fr_pas").onclick = e => { try { navigator.clipboard.writeText(pasarelaUrl(nit)); e.target.textContent = "✓ Copiado"; } catch (er) {} };
+    box.querySelector("#fr_full").onclick = () => { cerrar(); const b = document.querySelector('nav.tabs button[data-v="ficha"]'); switchView("ficha", b); fiCargar(nit); };
+  });
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest(".fi-ojo"); if (b) { e.preventDefault(); e.stopPropagation(); fichaRapida(b.dataset.fnit); } }, true);
 async function renderFicha() {
   el("v-ficha").innerHTML = `<h1>Ficha del cliente</h1><p class="lead"><span class="cx-spin"></span> Cargando clientes…</p>`;
   bdEnsureLoaded(ok => {
@@ -5571,7 +5607,7 @@ function paintControl() {
       <p class="note" style="margin:0 0 10px">${esF ? `Suscriptores de <b>facturación</b> ACTIVOS que no recepcionaron la facturación de <b>${escape(recPeriodoTxt(perF))}</b> (se paga el mes en curso).` : `Suscriptores de <b>declaración</b> ACTIVOS que no recepcionaron la declaración de <b>${escape(recPeriodoTxt(CM_UI.per))}</b>.`} Toca el celular para escribirles por WhatsApp.</p>
       <div style="display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap"><input id="cm_q" placeholder="Buscar…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"><button class="mini" id="cm_copycel">📋 Copiar celulares</button>${isAdmin() ? `<button class="btn" id="cm_baja" style="background:var(--danger);border-color:var(--danger);padding:6px 12px" ${grpL.length ? "" : "disabled"}>⛔ Dar de baja a estos ${grpL.length} (${esF ? "facturación" : "declaración"})</button><button class="mini" id="cm_deshacer" title="Vuelve al estado anterior a los de la última baja masiva">↶ Deshacer última baja</button>` : ""}</div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Brinda servicios a</th><th>Vence</th></tr></thead><tbody>
-      ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))} <button class="mini cm-pas" type="button" data-v="${escape(pasarelaUrl(bdV(c, "nit")))}" title="Copiar enlace de la pasarela con su NIT">🔗</button></td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
+      ${list.map((c, i) => { const v = cmVencimiento(bdV(c, "nit"), CM_UI.per); const cel = bdV(c, "celular"); return `<tr><td class="mono">${i + 1}</td><td><b>${escape(bdV(c, "nombre") || bdV(c, "razon"))}</b>${fichaOjo(bdV(c, "nit"))}${bdV(c, "codigoId") ? `<div class="note" style="margin:0">ID ${escape(bdV(c, "codigoId"))}</div>` : ""}</td><td class="mono">${escape(bdV(c, "nit"))} <button class="mini cm-pas" type="button" data-v="${escape(pasarelaUrl(bdV(c, "nit")))}" title="Copiar enlace de la pasarela con su NIT">🔗</button></td><td>${cel ? `<a href="${wa(cel)}" target="_blank" rel="noopener">${escape(cel)}</a>` : "—"}</td><td>${escape(bdV(c, "brinda") || "—")}</td><td class="mono">${v ? "día " + v.dia : "—"}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">¡Todos los activos recepcionaron! 🎉</td></tr>`}
       </tbody></table></div>`;
     body += `<script type="text/plain" id="cm_cels">${escape(list.map(c => bdV(c, "celular")).filter(Boolean).join("\n"))}</script>`;
   } else if (CM_UI.tab === "pend") {
@@ -5585,7 +5621,7 @@ function paintControl() {
         <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Vence</th><th>Cliente</th><th>NIT</th><th>Estado</th><th>RCV por</th><th>Estado RCV</th></tr></thead><tbody>
         ${list.map(r => { const v = r._v, dd = v ? dias(v.iso) : null; const col = dd == null ? "" : dd < 0 ? "var(--danger)" : dd <= 3 ? "var(--warn)" : "var(--txt)";
           return `<tr class="cm-dj" data-id="${r.id}" style="cursor:pointer"><td class="mono" style="color:${col};font-weight:700">${v ? djFechaTxt(v.iso) : "—"}<div class="note" style="margin:0;color:${col}">${dd == null ? "" : dd < 0 ? "Vencido hace " + (-dd) + " d" : dd === 0 ? "Vence hoy" : "Faltan " + dd + " d"}</div></td>
-          <td><b>${escape(r.clienteNombre || "—")}</b></td><td class="mono">${escape(String(r.nit || ""))}</td><td>${djEstadoBadge(djEstado(r))}</td><td>${escape(r.dj_rcvPor || "—")}</td><td style="font-size:12px">${escape(r.dj_estadoRcv || "")}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">Sin pendientes. 🎉</td></tr>`}
+          <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}</td><td class="mono">${escape(String(r.nit || ""))}</td><td>${djEstadoBadge(djEstado(r))}</td><td>${escape(r.dj_rcvPor || "—")}</td><td style="font-size:12px">${escape(r.dj_estadoRcv || "")}</td></tr>`; }).join("") || `<tr><td colspan="6" class="note">Sin pendientes. 🎉</td></tr>`}
         </tbody></table></div>`;
     }
   } else if (CM_UI.tab === "persona") {
@@ -5595,7 +5631,7 @@ function paintControl() {
     const list = delPer.filter(r => !q || [r.clienteNombre, r.nit, r.atencion, r.detalleServicio].join(" ").toLowerCase().includes(q)).sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""));
     body = `<div style="display:flex;gap:8px;margin:0 0 10px"><input id="cm_q" placeholder="Buscar por cliente, NIT o persona…" value="${escape(CM_UI.q)}" style="flex:1;min-width:200px"></div>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>#</th><th>Fecha rec.</th><th>Cliente</th><th>Presta servicios a</th><th>Tipo de servicio</th><th>NIT</th><th>Atención</th></tr></thead><tbody>
-      ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td><b>${escape(r.clienteNombre || "—")}</b></td><td>${escape(r.rubro || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td class="mono">${escape(String(r.nit || ""))}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Sin recepciones.</td></tr>`}
+      ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td><td class="mono">${escape(r.fecha || djFechaTxt(r.fechaISO))}</td><td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}</td><td>${escape(r.rubro || "—")}</td><td style="font-size:12px">${escape(r.detalleServicio || "—")}</td><td class="mono">${escape(String(r.nit || ""))}</td><td>${escape(r.atencion || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Sin recepciones.</td></tr>`}
       </tbody></table></div>`;
   }
   el("v-control").innerHTML = `<h1>Control del mes</h1>
@@ -5756,7 +5792,7 @@ function eeffFasesHTML(cupos, recs, reservas, opts) {
       <td class="mono"><b>${ind.length}</b></td><td class="note">—</td><td class="note">—</td><td>${scAbierto ? `<span class="badge ok">Hasta ${escape(isNaN(scT) ? "" : new Date(scT).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit" }))}</span>` : '<span class="badge" style="background:#B42318;color:#fff">Cerrado</span>'}</td>
       ${conM ? `<td class="note" style="text-align:right">—</td><td class="mono" style="text-align:right">${money(indCob)}</td><td class="note" style="text-align:right">—</td>` : ""}
       <td style="white-space:nowrap"><button class="mini ef-ver" data-fase="ind" ${ind.length ? "" : "disabled"}>Ver (${ind.length})</button></td></tr>
-    <tr class="ef-det" data-fase="ind" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${ind.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th><th>Celular</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Estado del pago</th></tr></thead><tbody>${ind.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${fIso(r)}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b></td><td class="mono">${escape(String(r.nit || ""))}</td><td class="mono">${escape(r.clienteCelular || "")}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${(r.pasarela && r.pasarela.estado === "revision") ? '<span style="color:var(--warn);font-weight:600">En revisión</span>' : "Aprobado"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó este balance.</span>'}</td></tr>
+    <tr class="ef-det" data-fase="ind" style="display:none"><td colspan="${conM ? 11 : 7}" style="background:var(--panel2)">${ind.length ? `<table style="font-size:12.5px;margin:4px 0"><thead><tr><th>#</th><th>Fecha</th><th>N° Recep.</th><th>Cliente</th><th>NIT</th><th>Celular</th>${conM ? '<th style="text-align:right">Importe</th>' : ""}<th>Estado del pago</th></tr></thead><tbody>${ind.map((r, k) => `<tr><td class="mono">${k + 1}</td><td class="mono">${fIso(r)}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b>${fichaOjo(r.nit)}</td><td class="mono">${escape(String(r.nit || ""))}</td><td class="mono">${escape(r.clienteCelular || "")}</td>${conM ? `<td class="mono" style="text-align:right">${money(r.importe)}</td>` : ""}<td>${(r.pasarela && r.pasarela.estado === "revision") ? '<span style="color:var(--warn);font-weight:600">En revisión</span>' : "Aprobado"}</td></tr>`).join("")}</tbody></table>` : '<span class="note">Todavía nadie pagó este balance.</span>'}</td></tr>
     <tr style="font-weight:700"><td colspan="3">Total general (fases + ${escape(sc.nombre)})</td><td class="mono">${tVen + ind.length}</td><td colspan="3"></td>${conM ? `<td></td><td class="mono" style="text-align:right">${money(tCob + indCob)}</td><td></td>` : ""}<td></td></tr>` : "";
   recs = recsF;
   const fuera = Object.keys(recs).filter(k => precios.indexOf(k) < 0);
@@ -5885,14 +5921,14 @@ function paCumpleHTML(conCumple, canEdit) {
   return `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">🎂 Mes de cumpleaños sin cobro</h3>
     <p class="note" style="margin:0 0 10px">Plan Estándar y Premium: una vez al año por NIT y por documento. La IA lee la fecha de nacimiento del C.I. o la licencia, revisa que el nombre sea del titular y que coincida con la fecha guardada en la Base de Datos. Revisa la foto y márcala; si es <b>sospechoso</b>, cóbrale el precio normal.</p>
     ${conCumple.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Documento</th><th>Nació</th><th>Período</th><th style="text-align:right">Precio normal</th><th>Foto</th><th>Revisión</th></tr></thead><tbody>
-      ${conCumple.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td>
+      ${conCumple.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b>${fichaOjo(r.nit)}<div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td>
         <td style="font-size:12px">${escape(r.cumpleTipoDoc || "")} ${escape(r.cumpleDoc || "")}<div class="note" style="margin:0">${escape(r.cumpleNombreDoc || "")}</div></td><td class="mono">${escape(r.cumpleFechaNac || "")}</td><td>${escape(r.mesRecepcion || "")}</td>
         <td class="mono" style="text-align:right">${money(r.cumplePrecioNormal || 0)}</td><td>${r.cumpleFotoUrl ? `<a href="${escape(r.cumpleFotoUrl)}" target="_blank" rel="noopener">Ver foto</a>` : "—"}</td>
         <td><select class="pa-cumrev" data-id="${escape(r.id)}" ${canEdit ? "" : "disabled"}>${REV.map(([k, t]) => `<option value="${k}" ${(r.cumpleRevision || "pendiente") === k ? "selected" : ""}>${t}</option>`).join("")}</select>${r.cumpleRevisadoPor ? `<div class="note" style="margin:0">${escape(r.cumpleRevisadoPor)}</div>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="note">Todavía nadie usó el beneficio.</p>`}
     <h4 style="margin:14px 0 6px">Cumplen años en ${escape(REC_MESES_CAP[mes - 1].toLowerCase())} (clientes activos con fecha de nacimiento en la Base de Datos)</h4>
     ${delMes === null ? `<button class="mini" id="pa_cumbd">Ver la lista (carga la Base de Datos)</button>` : delMes.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Día</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Beneficio ${anio}</th></tr></thead><tbody>
-      ${delMes.map(x => `<tr><td class="mono">${x.n.d}</td><td><b>${escape(bdV(x.c, "nombre") || bdV(x.c, "razon"))}</b></td><td class="mono">${escape(bdV(x.c, "nit"))}</td><td class="mono">${escape(bdV(x.c, "celular") || "")}</td><td>${usaron.has(fiNit(bdV(x.c, "nit"))) ? '<span class="badge ok">Ya lo usó</span>' : '<span class="note" style="margin:0">Disponible</span>'}</td></tr>`).join("")}
+      ${delMes.map(x => `<tr><td class="mono">${x.n.d}</td><td><b>${escape(bdV(x.c, "nombre") || bdV(x.c, "razon"))}</b>${fichaOjo(bdV(x.c, "nit"))}</td><td class="mono">${escape(bdV(x.c, "nit"))}</td><td class="mono">${escape(bdV(x.c, "celular") || "")}</td><td>${usaron.has(fiNit(bdV(x.c, "nit"))) ? '<span class="badge ok">Ya lo usó</span>' : '<span class="note" style="margin:0">Disponible</span>'}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="note">Ningún cliente activo con fecha de nacimiento en ${escape(REC_MESES_CAP[mes - 1].toLowerCase())}. La fecha se va llenando sola cuando los clientes suben su C.I. o licencia.</p>`}
   </div>`;
 }
@@ -5916,7 +5952,7 @@ function paintPasarela() {
     body = `<p class="note" style="margin:0 0 10px">La IA no pudo confirmar estos comprobantes. Revisa la imagen y apruébalos (pasan a la lista que corresponde y se envía el correo) o recházalos.</p>
       <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Esperado</th><th style="text-align:right">Leído</th><th>Motivo</th><th></th></tr></thead><tbody>
       ${revision.map(r => `<tr><td class="mono">${escape(r.fecha || "")}<div class="note" style="margin:0">N° ${escape(String(r.nroRecepcion || ""))}</div></td>
-        <td><b>${escape(r.clienteNombre || "—")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div>${r.aperturaNit ? `<div class="note" style="margin:0">NIT abierto: <b>${escape(String(r.aperturaNit).slice(0, 10))}</b></div>` : ""}${r.balanceNombre ? `<div class="note" style="margin:0">${escape(r.balanceNombre)}</div>` : ""}</td>
+        <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div>${r.aperturaNit ? `<div class="note" style="margin:0">NIT abierto: <b>${escape(String(r.aperturaNit).slice(0, 10))}</b></div>` : ""}${r.balanceNombre ? `<div class="note" style="margin:0">${escape(r.balanceNombre)}</div>` : ""}</td>
         <td style="font-size:12px">${escape(r.detalleServicio || r.servicio || "")}<div class="note" style="margin:0">${escape(r.mesRecepcion || "")}</div></td>
         <td class="mono" style="text-align:right">${money(r.pasarela.montoEsperado)}</td><td class="mono" style="text-align:right">${money(r.pasarela.montoLeido)}</td>
         <td style="color:var(--warn);font-weight:600;font-size:12px">${escape((r.pasarela.motivos || []).join(", "))}</td>
@@ -5926,7 +5962,7 @@ function paintPasarela() {
     const ult = pas.slice().sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || "")).slice(0, 60);
     const est = r => { const e = (r.pasarela && r.pasarela.estado) || "aprobado"; return e === "aprobado" ? `<span class="badge ok">Aprobado</span>` : e === "revision" ? `<span class="badge off" style="color:var(--warn)">En revisión</span>` : `<span class="badge danger">Rechazado</span>`; };
     body = `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Importe</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${ult.map(r => `<tr><td class="mono">${escape((r.fecha || "") + " " + (r.hora || ""))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b></td><td style="font-size:12px">${escape(r.detalleServicio || "")} · ${escape(r.mesRecepcion || "")}</td><td class="mono" style="text-align:right">${money(r.importe)}</td><td>${est(r)}</td><td>${r.compUrl ? `<a href="${escape(r.compUrl)}" target="_blank" rel="noopener">Comprobante</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Todavía no hay pagos por la pasarela.</td></tr>`}
+      ${ult.map(r => `<tr><td class="mono">${escape((r.fecha || "") + " " + (r.hora || ""))}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b>${fichaOjo(r.nit)}</td><td style="font-size:12px">${escape(r.detalleServicio || "")} · ${escape(r.mesRecepcion || "")}</td><td class="mono" style="text-align:right">${money(r.importe)}</td><td>${est(r)}</td><td>${r.compUrl ? `<a href="${escape(r.compUrl)}" target="_blank" rel="noopener">Comprobante</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="note">Todavía no hay pagos por la pasarela.</td></tr>`}
       </tbody></table></div>`;
   } else if (PA_UI.tab === "config") {
     const dis = admin ? "" : "disabled";
@@ -6024,7 +6060,7 @@ function paintPasarela() {
     body = paCumpleHTML(conCumple, canEdit) + `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
         <p class="note" style="margin:0 0 10px">Clientes que ganaron un premio al pagar por la pasarela. Marca "Entregado" cuando les hagas la devolución o les des el beneficio.</p>
         ${conPremio.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Celular</th><th>Servicio</th><th style="text-align:right">Pagó</th><th>Premio</th><th>Entregado</th></tr></thead><tbody>
-          ${conPremio.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td><td class="mono">${escape(r.clienteCelular || "")}</td>
+          ${conPremio.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b>${fichaOjo(r.nit)}<div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td><td class="mono">${escape(r.clienteCelular || "")}</td>
             <td style="font-size:12px">${escape(r.balanceNombre || r.detalleServicio || r.servicio || "")}</td><td class="mono" style="text-align:right">${money(r.importe)}</td>
             <td>${r.premios.map(p => `<div><span class="badge ${p.tipo === "azar" ? "ok" : ""}">${p.tipo === "azar" ? "Azar" : "Fijo"}</span> <b>${escape(p.nombre)}</b></div>`).join("")}</td>
             <td><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="pa-ent" data-id="${escape(r.id)}" ${r.premiosEntregado ? "checked" : ""} ${canEdit ? "" : "disabled"} style="width:auto">${r.premiosEntregado ? `<span class="note" style="margin:0">${escape(r.premiosEntregadoPor || "")}</span>` : ""}</label></td></tr>`).join("")}
@@ -6442,7 +6478,7 @@ function yfHTML() {
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
     <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th>${canEd ? "<th>Accesos SIN</th>" : ""}<th>Estado</th><th>Comentarios</th><th></th></tr></thead><tbody>
-    ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b><div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
+    ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b>${x.cli ? fichaOjo(bdV(x.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
       <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
       ${canEd ? `<td>${cred(x.cli)}</td>` : ""}
@@ -6485,7 +6521,7 @@ function paintFacturacion() {
       </div>
       <div style="overflow:auto"><table><thead><tr><th>#</th><th>Suscriptor</th><th>Celular</th><th>Servicio</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
       ${list.map((r, i) => `<tr><td class="mono">${i + 1}</td>
-        <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""}</div></td>
+        <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""}</div></td>
         <td>${escape(r.clienteCelular || "—")}</td>
         <td>${escape(r.detalleServicio || r.servicio || "—")}</td>
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
@@ -6501,7 +6537,7 @@ function paintFacturacion() {
       <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
       <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
       ${list.map(r => `<tr><td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
-        <td><b>${escape(r.clienteNombre || "—")}</b><div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
+        <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
         <td>${escape(r.clienteCelular || "—")}</td>
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
         <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted)">¡Sin facturas pendientes! 🎉</td></tr>`}
