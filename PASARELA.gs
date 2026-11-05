@@ -265,7 +265,7 @@ function pasConfigPublica() {
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
     beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "", sinContador: pasSinCont_(c),
-    cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1], minPagos: PAS_CUMPLE_MIN_PAGOS },
+    cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1], mesAntTexto: PAS_MESES[(hoy.mes + 10) % 12], minPagos: PAS_CUMPLE_MIN_PAGOS },
     premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
@@ -907,14 +907,19 @@ function pasCumple(d) {
   // Si ya teníamos su fecha de nacimiento, debe ser la misma
   var guardada = pasNacISO_(cli.nacimiento);
   if (guardada && (guardada.d !== nac.d || guardada.m !== nac.m || guardada.y !== nac.y)) return no("La fecha de nacimiento no coincide con la registrada en CONTAX. Escríbenos por WhatsApp.");
-  if (nac.m !== hoy.mes) return no("Según tu documento, tu cumpleaños es en " + PAS_MESES[nac.m - 1].toLowerCase() + ". El beneficio se aplica solo en el mes de tu cumpleaños.");
+  // Vale en el mes del cumpleaños (al pagar ese mes) o al mes siguiente (cuando se declara el mes del cumpleaños).
+  // anioCu = año de ESE cumpleaños, así un cumpleaños de diciembre no se cobra dos veces (diciembre y enero).
+  var perM = cot.periodo && Number(cot.periodo.mes), perA = cot.periodo && Number(cot.periodo.anio), anioCu;
+  if (nac.m === hoy.mes) anioCu = hoy.anio;
+  else if (nac.m === perM && perA) anioCu = perA;
+  else return no("Según tu documento, tu cumpleaños es en " + PAS_MESES[nac.m - 1].toLowerCase() + ". El beneficio se pide al pagar en el mes de tu cumpleaños o al pagar la declaración de ese mes.");
   var doc = String(x.numeroDoc || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
-  if (pasCumpleUsado_(nit, doc, hoy.anio)) return no("Este documento ya usó el beneficio de cumpleaños este año.");
+  if (pasCumpleUsado_(nit, doc, anioCu)) return no("Ya usaste el beneficio de este cumpleaños. Puedes pagar normalmente con el QR.");
   var precioNormal = cot.monto;
   cot.monto = 0; cot.resumen += " · Mes de tu cumpleaños (sin cobro)";
   var token = Utilities.getUuid();
   pasCachePut_("v_" + token, { nit: nit, cot: cot, x: {}, motivos: [], aprobado: true, img: img,
-    cumple: { anio: hoy.anio, doc: doc, tipoDoc: x.tipoDoc === "LICENCIA" ? "Licencia" : "C.I.", fechaNac: fechaNac, nombreDoc: String(x.nombre || "").slice(0, 120), precioNormal: precioNormal } }, 1800);
+    cumple: { anio: anioCu, doc: doc, tipoDoc: x.tipoDoc === "LICENCIA" ? "Licencia" : "C.I.", fechaNac: fechaNac, nombreDoc: String(x.nombre || "").slice(0, 120), precioNormal: precioNormal } }, 1800);
   var r = pasConfirmar(token);
   if (r.ok) r.aprobado = true;
   return r;

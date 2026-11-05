@@ -543,7 +543,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var cu = S.cfg && S.cfg.cumple;
     if (!cu || !cu.activo || S.serv !== "decl" || !q || (q.plan !== "estandar" && q.plan !== "premium") || (S.cli && S.cli.externo)) return "";
     if (!S.cli || !S.cli.antig || !S.cli.antig.cumple) return "";   // solo aparece a quienes ya tienen 12 meses pagados
-    return '<div class="card pila cumpleBox" style="gap:8px"><b style="font-size:16px">🎂 ¿Cumples años en ' + esc(String(cu.mesTexto || "").toLowerCase()) + '?</b>' +
+    return '<div class="card pila cumpleBox" style="gap:8px"><b style="font-size:16px">🎂 ¿Cumples años en ' + esc(String((S.per && S.per.mes && S.per.mes !== cu.mes ? MESES_N[S.per.mes - 1] + " o " : "") + (cu.mesTexto || "")).toLowerCase()) + '?</b>' +
       '<p class="c13 suave" style="line-height:19px">Como ya llevas <b>más de un año</b> con CONTAX, este mes tu declaración es <b>sin cobro</b> (una vez al año). Sube una foto de tu <b>C.I.</b> o de tu <b>licencia de conducir</b> donde se vea tu fecha de nacimiento y no pagas nada.</p>' +
       (S.cumpleMsg ? '<div class="aviso warn" role="alert">' + esc(S.cumpleMsg) + "</div>" : "") +
       '<label class="subir" for="fCumple">' + ICON.subir + "Subir foto de mi C.I. o licencia</label><input type=\"file\" id=\"fCumple\" accept=\"image/*\" class=\"oculto\">" +

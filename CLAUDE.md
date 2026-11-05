@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v96; puente versión 51). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v96; puente versión 52). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -75,3 +75,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v96 · Listas desplegables en la BD:** `BD_LISTA` (campos que se eligen de una lista: opciones = valores ya usados, sin repetir mayúsculas/tildes, + fijas; "✎ Otro" para escribir uno nuevo) y `BD_FECHA` (calendario; se guarda dd/mm/aaaa y si no se cambió queda el texto original). Ver `bdCampoHTML` / `bdCampoValor` en `openBDModal`.
 - **v96 · Aviso de nueva versión:** `version-aviso.js` (incluido en index.html, pagos.html y cliente.html). Cada 3 min compara la página y sus .js/.css del mismo sitio; si cambian muestra "Hay una nueva versión · Actualizar ahora". No hay que tocar nada al publicar. El mismo archivo sirve para CONTROL y PortalNUMMEROS.
 - **v96 · Antigüedad (puente 51):** meses DISTINTOS con declaración o facturación pagada (no hace falta que sean seguidos; no cuentan DEUDOR, en revisión ni rechazados). `pasAntiguedad_` en PASARELA.gs (`PAS_CUMPLE_MIN_PAGOS = 12`) y `antigCalc` en app.js (`ANTIG_MIN`). El cumpleaños sin cobro exige 12. Se ve en la pasarela (barra del cliente), Portal del Cliente (Mis datos), Panel → Ficha, ficha rápida 👁 y Recepción al elegir cliente.
+- **Puente 52 · Cumpleaños:** vale al pagar en el mes del cumpleaños o al pagar la declaración de ese mes (mes siguiente). `cumpleAnio` = año de ese cumpleaños (evita cobrarlo 2 veces en dic/ene). La caja de la pasarela solo aparece con 12 meses pagados.
