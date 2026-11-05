@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "100";
+const APP_VERSION = "101";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6445,7 +6445,7 @@ function paintRepFinanzas() {
 }
 
 // ---------- FACTURACIÓN (subpestañas) ----------
-const FAC_UI = { tab: "activos", per: "", q: "", fuente: "yango", ycont: "CONTAX", yver: "faltan", ytipo: "" };
+const FAC_UI = { tab: "activos", per: "", q: "", ycont: "CONTAX", yver: "faltan", ytipo: "", yfull: false };
 // ============================================================
 //  Lista de facturación de repartidores (la de CONTROL · Facturas)
 //  Se lee en vivo del Portal de repartidores (portal-nummeros) con la cuenta de CONTROL
@@ -6631,6 +6631,7 @@ function yfResumenEmitidas() {
     <tr><td><b>Total (todo)</b></td>${per.map(p => `<td class="mono" style="text-align:right"><b>${l.filter(f => yfQuien(f.registradoPor || f.revisadoPor) === p).length}</b></td>`).join("")}<td class="mono" style="text-align:right"><b>${l.length}</b></td></tr>
   </tbody></table></div>`;
 }
+const yfProblema = x => x.estado === "noSePudo" || x.estado === "observada";
 function yfHTML() {
   if (YF.err) return `<p class="msg err">No se pudo leer la lista de CONTROL: ${escape(YF.err)}</p><button class="btn" id="yf_rec">Reintentar</button>`;
   if (!YF.filas) return `<p class="lead"><span class="cx-spin"></span> Trayendo la lista de facturación de CONTROL…</p>`;
@@ -6638,10 +6639,11 @@ function yfHTML() {
   const v = FAC_UI.yver, tp = FAC_UI.ytipo;
   // Portal de Impuestos = solo contraseña del portal; Desktop = tiene contraseña SIAT
   const yfTipo = x => !x.cli ? "" : bdV(x.cli, "passSiat") ? "desktop" : bdV(x.cli, "password") ? "portal" : "";
-  const l = todas.filter(x => (!tp || yfTipo(x) === tp) && (v === "" || (v === "faltan" ? !x.tiene : v === "nosepudo" ? x.estado === "noSePudo" : v === "poremitir" ? x.estado === "porEmitir" : x.tiene))
+  const l = todas.filter(x => (!tp || yfTipo(x) === tp) && (v === "" || (v === "faltan" ? !x.tiene : v === "nosepudo" ? yfProblema(x) : v === "poremitir" ? x.estado === "porEmitir" : x.tiene))
     && (!q || [x.nombre, x.id, x.celular, x.semana, x.cli ? bdV(x.cli, "nit") : "", x.cli ? bdV(x.cli, "usuario") : "", x.cli ? bdV(x.cli, "correo") : ""].join(" ").toLowerCase().includes(q)));
   const fmtF = v => { if (!v) return ""; if (v.seconds) return new Date(v.seconds * 1000).toLocaleDateString("es-BO"); const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return escape(m ? m[3] + "/" + m[2] + "/" + m[1] : String(v)); };
-  const sinF = todas.filter(x => !x.tiene), noPudo = todas.filter(x => x.estado === "noSePudo");
+  // Lo que CONTAX debe emitir: Total = Emitidas (desde el inicio) + Faltan + Con problema. Las que sube el repartidor no cuentan.
+  const faltan = todas.filter(x => x.estado === "porEmitir"), problema = todas.filter(yfProblema), emitidas = (YF.emitidas || []).length;
   const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
   const hoyN = (YF.emitidas || []).filter(f => f.subido && f.subido.seconds && new Date(f.subido.seconds * 1000 - 4 * 3600e3).toISOString().slice(0, 10) === hoy).length;
   const kpi = (n, t, c) => `<div class="kpi"><div class="n"${c ? ` style="color:${c}"` : ""}>${n}</div><div class="l">${t}</div></div>`;
@@ -6652,27 +6654,31 @@ function yfHTML() {
   };
   const comentario = x => { const e = x.emi; if (!e || (!e.comentario && !e.motivo)) return "";
     return `${e.estado === "noSePudo" && e.motivo ? `<b style="color:#B4453C">${escape(e.motivo)}</b><br>` : ""}${escape(e.comentario || "")}<div style="color:var(--muted);font-size:11px">${escape(yfQuien(e.por))} · ${fmtF(e.fecha || e.fechaISO)}</div>`; };
-  return `<p class="note" style="margin:0 0 10px">Solo los repartidores que son <b>clientes activos de CONTAX</b> (lista de facturación de CONTROL, mismos importes). Copia los accesos para entrar al SIAT y luego marca la factura como emitida o explica por qué no se pudo; el repartidor verá el motivo en su Portal. Se actualiza cada 10 minutos.</p>
+  return `<div id="yf_caja"${FAC_UI.yfull ? ` class="rec-full"` : ""}>
+    <p class="note" style="margin:0 0 10px">Solo los repartidores que son <b>clientes activos de CONTAX</b> (lista de facturación de CONTROL, mismos importes). Copia los accesos para entrar al SIAT y luego marca la factura como emitida o explica por qué no se pudo; el repartidor verá el motivo en su Portal. Se actualiza cada 10 minutos.</p>
     ${YF.sinEmi ? `<p class="msg err" style="margin:0 0 10px">Los motivos y comentarios todavía no se pueden leer: faltan publicar las reglas del Portal de repartidores.</p>` : ""}
-    <div class="kpis">${kpi(sinF.length, "Sin factura · " + fmtBsY(sinF.reduce((s, x) => s + x.importe, 0)))}${kpi(noPudo.length, "No se pudo emitir", "#B4453C")}${kpi(hoyN, "Emitidas hoy", "var(--ok)")}${kpi((YF.emitidas || []).length, "Emitidas por CONTAX (total)")}</div>
+    <div class="kpis">${kpi(emitidas + faltan.length + problema.length, "Total que CONTAX debe emitir")}${kpi(emitidas, "Emitidas · " + hoyN + " hoy", "var(--ok)")}${kpi(faltan.length, "Faltan emitir · " + fmtBsY(faltan.reduce((s, x) => s + x.importe, 0)))}${kpi(problema.length, "Con problema", "#B4453C")}</div>
+    <p class="note" style="margin:0 0 10px">Total = Emitidas + Faltan emitir + Con problema. Emitidas cuenta desde que empezó el sistema, también las de semanas ya pagadas. No cuentan las facturas que sube el propio repartidor.</p>
     <details style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:600">📊 Facturas emitidas por día y por persona</summary><div style="margin-top:8px">${yfResumenEmitidas()}</div></details>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
-      <select id="yf_ver">${[["faltan", "Sin factura"], ["poremitir", "Por emitir"], ["nosepudo", "No se pudo emitir"], ["con", "Emitidas"], ["", "Todas"]].map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <select id="yf_ver">${[["faltan", "Faltan y con problema"], ["poremitir", "Faltan emitir"], ["nosepudo", "Con problema"], ["con", "Con factura (semanas sin pagar)"], ["", "Todas"]].map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>
       <select id="yf_tipo">${[["", "Portal y Desktop"], ["portal", `Portal de Impuestos (${todas.filter(x => yfTipo(x) === "portal").length})`], ["desktop", `Desktop · SIAT (${todas.filter(x => yfTipo(x) === "desktop").length})`]].map(([k, t]) => `<option value="${k}" ${tp === k ? "selected" : ""}>${t}</option>`).join("")}</select>
       <input id="fac_q" placeholder="Buscar nombre, ID, celular, NIT, usuario, correo o semana…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px">
       <button class="btn ghost" id="yf_rec">↻ Actualizar</button>
+      <button class="btn ghost" id="yf_full">${FAC_UI.yfull ? "✕ Salir (Esc)" : "⛶ Pantalla completa"}</button>
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
-    <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th>${canEd ? "<th>Accesos SIN</th>" : ""}<th>Estado</th><th>Comentarios</th><th></th></tr></thead><tbody>
-    ${l.slice(0, 500).map(x => `<tr><td><b>${escape(x.nombre || "—")}</b>${x.cli ? fichaOjo(bdV(x.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
+    <div style="overflow:auto"><table><thead><tr><th>#</th><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th>${canEd ? "<th>Accesos SIN</th>" : ""}<th>Estado</th><th>Comentarios</th><th></th></tr></thead><tbody>
+    ${l.slice(0, 500).map((x, i) => `<tr><td class="mono">${i + 1}</td><td><b>${escape(x.nombre || "—")}</b>${x.cli ? fichaOjo(bdV(x.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
       <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
       ${canEd ? `<td>${cred(x.cli)}</td>` : ""}
       <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
       <td style="font-size:13px;min-width:160px">${comentario(x)}</td>
-      <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
-    </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}`;
+      <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
+    </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}</div>`;
 }
+document.addEventListener("keydown", e => { if (e.key === "Escape" && FAC_UI.yfull && el("yf_caja") && !document.querySelector("#yn_mot")) { FAC_UI.yfull = false; paintFacturacion(); } });
 async function renderFacturacion() {
   el("v-facturacion").innerHTML = `<h1>Facturación</h1><p class="lead"><span class="cx-spin"></span> Cargando…</p>`;
   await ltLoad();
@@ -6681,7 +6687,6 @@ async function renderFacturacion() {
 function paintFacturacion() {
   const canEdit = canEditClientes();
   const todos = LT_DATA.filter(r => recCatDe(r) === "facturacion");
-  const enCorte = todos.filter(r => enListaTrabajo(r, "facturacion"));
   const periodos = [...new Set(todos.map(recPeriodoKey).filter(Boolean))].sort().reverse();
   if (!FAC_UI.per) {
     const hoy = new Date(); const actual = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0");
@@ -6689,7 +6694,6 @@ function paintFacturacion() {
   }
   const q = FAC_UI.q.toLowerCase();
   const filtQ = l => q ? l.filter(r => [r.clienteNombre, r.nit, r.clienteCelular, r.detalleServicio, r.idcli, r.clienteId].join(" ").toLowerCase().includes(q)) : l;
-  const pendientes = enCorte.filter(r => (r.estadoFactura || "pendiente") !== "facturado");
   let body = "";
   if (FAC_UI.tab === "activos") {
     const list = filtQ(todos.filter(r => recPeriodoKey(r) === FAC_UI.per)).sort((a, b) => String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
@@ -6713,31 +6717,19 @@ function paintFacturacion() {
         <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
         <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="6" style="color:var(--muted)">No hay suscriptores para este mes.</td></tr>`}
       </tbody></table></div>`;
-  } else if (FAC_UI.fuente === "yango") {
-    body = yfHTML();
-    if ((!YF.filas || Date.now() - YF.at > 10 * 60e3) && !YF.err && !YF.cargando) yfCargar().then(() => { if (FAC_UI.tab === "pendientes" && FAC_UI.fuente === "yango") paintFacturacion(); }, () => paintFacturacion());
   } else {
-    const list = filtQ(pendientes).sort((a, b) => recPeriodoKey(a).localeCompare(recPeriodoKey(b)) || String(a.clienteNombre || "").localeCompare(String(b.clienteNombre || "")));
-    body = `
-      <p class="note" style="margin:0 0 10px">Facturas por emitir de los suscriptores activos (período Octubre 2026 en adelante). Al marcar <b>Facturado</b> sale de esta lista. <i>Esta sección se desarrollará a detalle más adelante.</i></p>
-      <div style="display:flex;gap:8px;margin:0 0 12px"><input id="fac_q" placeholder="Buscar suscriptor, NIT, celular…" value="${escape(FAC_UI.q)}" style="flex:1;min-width:200px"></div>
-      <div style="overflow:auto"><table><thead><tr><th>Período</th><th>Suscriptor</th><th>Celular</th><th>Fecha pago</th><th>Factura</th></tr></thead><tbody>
-      ${list.map(r => `<tr><td>${escape(recPeriodoTxt(recPeriodoKey(r)))}</td>
-        <td><b>${escape(r.clienteNombre || "—")}</b>${fichaOjo(r.nit)}<div style="color:var(--muted);font-size:12px">NIT ${escape(String(r.nit || "—"))}</div></td>
-        <td>${escape(r.clienteCelular || "—")}</td>
-        <td class="mono">${escape(r.fechaPago || r.fecha || fmtFecha(r.fechaISO))}</td>
-        <td>${ltFila(r, "estadoFactura", ESTADOS_FACTURA, canEdit)}</td></tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted)">¡Sin facturas pendientes! 🎉</td></tr>`}
-      </tbody></table></div>`;
+    body = yfHTML();
+    if ((!YF.filas || Date.now() - YF.at > 10 * 60e3) && !YF.err && !YF.cargando) yfCargar().then(() => { if (FAC_UI.tab === "pendientes") paintFacturacion(); }, () => paintFacturacion());
   }
+  const sc = el("yf_caja") ? el("yf_caja").scrollTop : 0;
   el("v-facturacion").innerHTML = `<h1>Facturación</h1>
     <div class="subtabs" id="factabs">
       <button class="subtab ${FAC_UI.tab === "activos" ? "on" : ""}" data-tab="activos">Suscriptores Activos</button>
       <button class="subtab ${FAC_UI.tab === "pendientes" ? "on" : ""}" data-tab="pendientes">Facturas pendientes</button>
-    </div>${FAC_UI.tab === "pendientes" ? `<div class="subtabs" id="facfuente" style="margin-top:-4px">
-      <button class="subtab ${FAC_UI.fuente === "yango" ? "on" : ""}" data-f="yango">Repartidores Yango CONTAX${YF.filas ? " · " + YF.filas.filter(x => !x.tiene && x.contador === "CONTAX").length + " sin factura" : ""}</button>
-      <button class="subtab ${FAC_UI.fuente === "susc" ? "on" : ""}" data-f="susc">Suscriptores de facturación (${pendientes.length})</button></div>` : ""}${body}`;
+    </div>${body}`;
+  if (el("yf_caja")) el("yf_caja").scrollTop = sc;
   el("v-facturacion").querySelectorAll("#factabs .subtab").forEach(b => b.onclick = () => { FAC_UI.tab = b.dataset.tab; paintFacturacion(); });
-  el("v-facturacion").querySelectorAll("#facfuente .subtab").forEach(b => b.onclick = () => { FAC_UI.fuente = b.dataset.f; paintFacturacion(); });
+  if (el("yf_full")) el("yf_full").onclick = () => { FAC_UI.yfull = !FAC_UI.yfull; paintFacturacion(); };
   if (el("yf_cont")) el("yf_cont").onchange = e => { FAC_UI.ycont = e.target.value; paintFacturacion(); };
   if (el("yf_ver")) el("yf_ver").onchange = e => { FAC_UI.yver = e.target.value; paintFacturacion(); };
   if (el("yf_tipo")) el("yf_tipo").onchange = e => { FAC_UI.ytipo = e.target.value; paintFacturacion(); };

@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v100; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v101; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -90,3 +90,4 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - La lista vuelve a leer la BD cada vez que se carga (antes usaba la BD de memoria: un cliente reactivado por la pasarela u otra compañera no salía hasta apretar F5) y se renueva sola después de 10 min. 
 - **v99:** el Panel lee BDYango por el puente (`yfBDYango`, acción `admin_ctrl_hoja`) y reconoce al cliente por NIT, teléfono o nombre, igual que CONTROL. Hacía falta porque `semanas` no guarda celular y hay semanas sin nombre (22 semanas de 14 clientes no salían).
 - **v100:** la lista cuenta como cliente CONTAX a los estados ACTIVO y SUSCRIPCIÓN FACTURACIÓN (cualquier tipo de suscriptor). CONTROL 2.4.5 hace lo mismo.
+- **v101 · Facturación → Facturas pendientes:** ahora es solo la lista de Repartidores Yango CONTAX (se quitó «Suscriptores de facturación»; lo de cada mes sigue en Suscriptores Activos). Filas numeradas, botón «Pantalla completa» (`FAC_UI.yfull`, Esc para salir). Cuadros: Total = Emitidas (`YF.emitidas`, desde el inicio) + Faltan emitir (`porEmitir`) + Con problema (`yfProblema`: `noSePudo` y `observada`). Las que sube el repartidor no cuentan.
