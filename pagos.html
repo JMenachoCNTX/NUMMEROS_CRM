@@ -489,7 +489,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ir(p, "", true);
   });
   try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
-  function reiniciarServicio() { S.eeffFase = 0; S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; }
+  function reiniciarServicio() { S.eeffFase = 0; S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; S.cumpleMsg = ""; }
   var relojT = null;
   function relojReserva() {
     clearInterval(relojT);
@@ -528,16 +528,36 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function cargando(txt) { main.innerHTML = '<div class="pila" style="padding-top:60px;text-align:center"><div class="spin"></div><p class="suave">' + esc(txt) + "</p></div>"; }
   // Animación de marca NUMMEROS (verificación en el banco y envío del recibo)
   function animHtml(tipo) {
-    var env = tipo === "envio", nit = tipo === "nit";
+    var env = tipo === "envio", nit = tipo === "nit", cum = tipo === "cumple";
     return '<div class="animN' + (env ? " env" : "") + '" role="status" aria-live="polite"><div class="anC"><svg class="anArc" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="54"/></svg>' +
       '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" class="anLogo">' +
       (env ? '<span class="anOk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span>' : "") + "</div>" +
-      "<b>" + (env ? "Te estamos enviando tu recibo de pago" : nit ? "Buscando tus datos en CONTAX" : "Tu pago se está verificando en el banco") + "</b>" +
-      "<span>" + (env ? "Lo recibirás en tu correo electrónico. Revisa tu bandeja de entrada (y la de spam)." : nit ? "Con tu NIT completamos tus datos, sin registros ni contraseñas." : "Esto toma solo unos segundos. No cierres esta página.") + "</span>" +
+      "<b>" + (cum ? "Revisando tu documento" : env ? "Te estamos enviando tu recibo de pago" : nit ? "Buscando tus datos en CONTAX" : "Tu pago se está verificando en el banco") + "</b>" +
+      "<span>" + (cum ? "Verificamos tu fecha de nacimiento. Esto toma solo unos segundos." : env ? "Lo recibirás en tu correo electrónico. Revisa tu bandeja de entrada (y la de spam)." : nit ? "Con tu NIT completamos tus datos, sin registros ni contraseñas." : "Esto toma solo unos segundos. No cierres esta página.") + "</span>" +
       '<i class="anBar"><i></i></i></div>';
   }
   var nitT = null;
   function espera(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // Mes de cumpleaños sin cobro (Plan Estándar y Premium): foto del C.I. o licencia, una vez al año
+  function cumpleHtml(q) {
+    var cu = S.cfg && S.cfg.cumple;
+    if (!cu || !cu.activo || S.serv !== "decl" || !q || (q.plan !== "estandar" && q.plan !== "premium") || (S.cli && S.cli.externo)) return "";
+    return '<div class="card pila cumpleBox" style="gap:8px"><b style="font-size:16px">🎂 ¿Cumples años en ' + esc(String(cu.mesTexto || "").toLowerCase()) + '?</b>' +
+      '<p class="c13 suave" style="line-height:19px">Con tu plan, el mes de tu cumpleaños tu declaración es <b>sin cobro</b> (una vez al año). Sube una foto de tu <b>C.I.</b> o de tu <b>licencia de conducir</b> donde se vea tu fecha de nacimiento y no pagas nada.</p>' +
+      (S.cumpleMsg ? '<div class="aviso warn" role="alert">' + esc(S.cumpleMsg) + "</div>" : "") +
+      '<label class="subir" for="fCumple">' + ICON.subir + "Subir foto de mi C.I. o licencia</label><input type=\"file\" id=\"fCumple\" accept=\"image/*\" class=\"oculto\">" +
+      '<p class="chico suave">La usamos solo para verificar tu fecha de nacimiento. Debe ser el documento del titular del NIT.</p></div>';
+  }
+  function pedirCumple(img) {
+    main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("cumple") + "</div>"; window.scrollTo(0, 0);
+    var d = { action: "pas_cumple", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: img, aceptaTerminos: S.acepta === true };
+    if (S.per) { d.anio = S.per.anio; d.mes = S.per.mes; }
+    Promise.all([api(d), espera(3000)]).then(function (x) {
+      var r = x[0];
+      if (r.ok && r.aprobado) { S.cumpleMsg = ""; S.fin = r; ir("fin"); return; }
+      S.cumpleMsg = (r && (r.motivo || r.error)) || "No pudimos verificar tu documento."; ir("pago");
+    });
+  }
   function verificarComprobante() {
     main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("banco") + "</div>"; window.scrollTo(0, 0);
     var d = { action: "pas_verificar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "", imagen: S.img, aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
@@ -727,7 +747,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       h = '<div class="pila"><h2>Paga con QR</h2>' + resHtml + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
         (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
               : '<div class="aviso warn">El QR de este monto no está disponible en este momento. <a href="' + wa("Hola, quiero pagar " + q.resumen + " (" + bs(q.monto) + ") y no me aparece el QR.") + '" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>.</div>') +
-        '</div><div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura o el PDF del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
+        '</div>' + cumpleHtml(q) + '<div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura o el PDF del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
         (S.img ? (S.img.indexOf("data:application/pdf") === 0 ? '<div class="card" style="text-align:center"><b>PDF del comprobante listo</b><p class="chico suave">' + esc(S.imgNombre || "comprobante.pdf") + "</p></div>" : '<img class="prev" src="' + S.img + '" alt="Comprobante subido">') : "") + errHtml() +
         '<label class="subir" for="fComp">' + ICON.subir + (S.img ? "Cambiar comprobante" : "Subir comprobante") + '</label><input type="file" id="fComp" accept="image/*,application/pdf" class="oculto">' +
         (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Puedes subir la captura o el PDF del comprobante. Al subirlo verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
@@ -759,7 +779,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     } else if (S.paso === "fin") {
       var f = S.fin, ok = f.estado === "aprobado";
       h = '<div class="pila" style="text-align:center;padding-top:16px"><div class="check' + (ok ? "" : " rev") + '">' + (ok ? ICON.big : ICON.reloj) + "</div>" +
-        "<h2>" + (ok ? "¡Listo!" : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? "Tu pago fue recepcionado." : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
+        "<h2>" + (ok ? (f.cumple ? "¡Feliz cumpleaños! 🎂" : "¡Listo!") : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? (f.cumple ? "Este mes tu declaración es sin cobro. Ya la recepcionamos." : "Tu pago fue recepcionado.") : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
         premiosHtml(f.premios) +
@@ -1059,6 +1079,10 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       comprimir(f).then(function (d) { S.img = d; S.imgNombre = ""; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
     };
     if ($("bVerif")) $("bVerif").onclick = verificarComprobante;
+    if ($("fCumple")) $("fCumple").onchange = function () {
+      var f = this.files && this.files[0]; if (!f) return;
+      comprimir(f).then(pedirCumple).catch(function (e) { S.cumpleMsg = e.message; pintar(); });
+    };
     if ($("bOtra")) $("bOtra").onclick = function () { S.img = ""; ir("pago"); };
     if ($("bConf")) $("bConf").onclick = function () {
       this.disabled = true;

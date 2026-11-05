@@ -172,6 +172,7 @@ function pasarelaHandle_(d) {
   if (a === "pas_reservar") { var rr = pasReservar(d); if (rr.ok) rr.qr = pasQR_(rr.monto); return rr; }
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
+  if (a === "pas_cumple") return pasCumple(d);
   if (String(a || "").indexOf("portal_") === 0) return portalHandle_(d);
   if (String(a || "").indexOf("sis_") === 0) return sistemaHandle_(d);
   return { ok: false, error: "accion_desconocida" };
@@ -264,6 +265,7 @@ function pasConfigPublica() {
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
     beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "", sinContador: pasSinCont_(c),
+    cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1] },
     premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
@@ -306,10 +308,11 @@ function pasClave_(h) {
   if (n.replace(/[^a-z]/g, "") === "ci" || n.indexOf("carnet") >= 0 || n.indexOf("cedula") >= 0) return "ci";
   if (n.indexOf("costo") >= 0) return "costo";
   if (n.indexOf("suscriptor") >= 0) return "suscriptor";
+  if (n.indexOf("nacimiento") >= 0) return "nacimiento";
   return "";
 }
 // Tipo de suscriptor: el guardado en la BD, o según el costo mensual (20 = facturación; 30 o más = declaración)
-var SUSC_DECL = "SUSCRIPTOR DE DECLARACIÓN", SUSC_FACT = "SUSCRIPTOR DE FACTURACIÓN", SUSC_CAMPO = "22. Tipo de Suscriptor";
+var SUSC_DECL = "SUSCRIPTOR DE DECLARACIÓN", SUSC_FACT = "SUSCRIPTOR DE FACTURACIÓN", SUSC_CAMPO = "22. Tipo de Suscriptor", NAC_CAMPO = "23. Fecha de Nacimiento";
 function pasSuscDe_(guardado, costo) {
   var g = String(guardado || "").toUpperCase();
   if (/FACTURAC/.test(g)) return SUSC_FACT;
@@ -357,7 +360,7 @@ function pasClientePorNit_(nit) {
     nombre: v("nombre") || v("razon"),
     codigoId: v("codigoId"), celular: v("celular"), correo: /@/.test(v("correo")) ? v("correo") : "",
     tipo: v("tipo"), brinda: v("brinda"), actP: v("actP"), fechaNit: v("fechaNit"), estMat: v("estMat"), estado: v("estado"),
-    ci: v("ci"), costo: v("costo"),
+    ci: v("ci"), costo: v("costo"), nacimiento: v("nacimiento"), campoNac: campos.nacimiento || NAC_CAMPO,
     campoSusc: campos.suscriptor || SUSC_CAMPO, suscGuardado: v("suscriptor"), suscriptor: pasSuscDe_(v("suscriptor"), v("costo"))
   };
 }
@@ -722,16 +725,20 @@ function pasModelosIA_(key, preferido) {
   return lista.filter(function (m, i, a) { return m && a.indexOf(m) === i; });
 }
 function pasLeerComprobante_(dataUrl) {
-  var app = pasCfgApp();
-  var key = String(app.visionKey || app.aiKey || app.geminiKey || "").trim();
-  if (!key) return { error: "sin_clave" };
-  var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
-  var b64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
   var prompt = "Eres un asistente contable en Bolivia. El archivo (imagen o PDF) es un comprobante de pago QR o transferencia bancaria. " +
     "Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin ```), con estas claves exactas: " +
     '{"banco":"","bancoDestino":"","importe":"","moneda":"","depositante":"","destino":"","cuentaDestino":"","fecha":"","hora":"","nroOperacion":"","glosa":"","pareceEditado":false}. ' +
     "importe solo el número (ej. 50.00). fecha en formato dd/mm/aaaa. destino = nombre del beneficiario. cuentaDestino = número de cuenta del beneficiario tal como aparece (con asteriscos si está oculto). banco = banco o app desde donde se pagó; bancoDestino = banco del beneficiario si aparece. " +
     "pareceEditado=true si ves señales de que la imagen fue alterada. Si un dato no aparece, cadena vacía.";
+  return pasIALeer_(dataUrl, prompt, "Comprobante");
+}
+// Lee una imagen o PDF con Gemini y devuelve { data: JSON } o { error }
+function pasIALeer_(dataUrl, prompt, etiqueta) {
+  var app = pasCfgApp();
+  var key = String(app.visionKey || app.aiKey || app.geminiKey || "").trim();
+  if (!key) return { error: "sin_clave" };
+  var mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
+  var b64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
   // Rápido: sin "pensamiento" (thinkingBudget 0) y respuesta directa en JSON. Con una clave de pago
   // (facturación activa en Google AI Studio) no hay esperas por límite de uso.
   var contents = [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }];
@@ -751,7 +758,7 @@ function pasLeerComprobante_(dataUrl) {
         var txt = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(function (p) { return p.text || ""; }).join("").trim();
         txt = txt.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```\s*$/, "").trim();
         var ms = Date.now() - t0;
-        console.log("Comprobante leído con " + modelos[i] + " en " + ms + " ms (" + intentos.join(", ") + ")");
+        console.log((etiqueta || "Archivo") + " leído con " + modelos[i] + " en " + ms + " ms (" + intentos.join(", ") + ")");
         try { return { data: JSON.parse(txt), ms: ms, modelo: modelos[i] }; } catch (e) { var m = txt.match(/\{[\s\S]*\}/); if (m) { try { return { data: JSON.parse(m[0]), ms: ms, modelo: modelos[i] }; } catch (e2) {} } }
         return { error: "no_interpretado" };
       }
@@ -776,10 +783,12 @@ function pasConfirmar(token) {
     var x = v.x || {}, cot = v.cot, hoy = pasHoy_();
     var nro = String(x.nroOperacion || "").replace(/\s/g, "");
     if (v.aprobado && nro && fsQuery_("recepciones", [["compNroOperacion", "EQUAL", nro]], 1).length) { v.aprobado = false; v.motivos = ["Comprobante ya usado"]; }
+    var cu = v.cumple || null;
+    if (cu && pasCumpleUsado_(v.nit, cu.doc, cu.anio)) return { ok: false, error: "El beneficio de cumpleaños ya se usó este año." };
     var nroRec = fsContador_("nextRecep", 7048);
     var nroCom = fsContador_("nextRecibo", 7784);
     var url = "";
-    try { url = pasGuardarDrive_(v.img, v.nit + "_" + hoy.iso + "_" + nroRec); } catch (e) {}
+    try { url = pasGuardarDrive_(v.img, v.nit + "_" + hoy.iso + "_" + nroRec + (cu ? "_documento_cumple" : "")); } catch (e) {}
     var estadoPas = v.aprobado ? "aprobado" : "revision";
     var rec = {
       nroRecepcion: nroRec, nroComprobante: nroCom,
@@ -790,10 +799,10 @@ function pasConfirmar(token) {
       servicio: cot.servicio, servicioNombre: cot.servicio, detalleServicio: cot.detalle,
       mesRecepcion: cot.periodo.texto, periodoTipo: cot.periodo.tipo, periodoMes: cot.periodo.mes, periodoAnio: cot.periodo.anio,
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
-      importe: cot.monto, tipoPago: "QR", atencion: "PASARELA",
-      comentarios: (cli.externo ? "NO CLIENTE (Balance Independiente) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (Balance Independiente) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
+      importe: cot.monto, tipoPago: cu ? "CUMPLEAÑOS" : "QR", atencion: "PASARELA",
+      comentarios: cu ? "Mes de cumpleaños sin cobro (" + cu.tipoDoc + " verificado por IA, nació el " + cu.fechaNac + ")" : (cli.externo ? "NO CLIENTE (Balance Independiente) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (Balance Independiente) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
       clienteExterno: !!cli.externo, clienteCI: cli.ci || "", sinContador: !!cot.sinContador,
-      compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: url,
+      compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: cu ? "" : url,
       tipo: cot.tipo, balanceNombre: cot.balance || "", estado: "pendiente", estadoDeuda: "sin_deuda",
       reciboNro: String(nroCom), reciboEnviado: false,
       registradoPorUid: "", registradoPorNombre: "Pasarela (cliente)", origen: "pasarela",
@@ -801,8 +810,13 @@ function pasConfirmar(token) {
       pasarela: { estado: estadoPas, motivos: v.motivos, montoEsperado: cot.monto, montoLeido: pasNum_(x.importe), leido: x, cupo: cot.cupo || "" },
       _upd: Date.now()
     };
+    if (cu) {
+      rec.cumple = true; rec.cumpleAnio = cu.anio; rec.cumpleDoc = cu.doc; rec.cumpleTipoDoc = cu.tipoDoc; rec.cumpleFechaNac = cu.fechaNac;
+      rec.cumpleNombreDoc = cu.nombreDoc; rec.cumpleFotoUrl = url; rec.cumpleRevision = "pendiente"; rec.cumplePrecioNormal = cu.precioNormal;
+      try { pasGuardarNacimiento_(cli, cu.fechaNac); } catch (e) { console.error(e); }
+    }
     var premios = [];
-    if (v.aprobado) { try { premios = pasPremiosGanados_(cot); } catch (e) { console.error(e); } }
+    if (v.aprobado && !cu) { try { premios = pasPremiosGanados_(cot); } catch (e) { console.error(e); } }
     if (premios.length) { rec.premios = premios; rec.premiosEntregado = false; }
     fsCreate_("recepciones", rec);
     if (cot.tipo === "eeff") {
@@ -818,7 +832,7 @@ function pasConfirmar(token) {
           action: "recibo", to: cli.correo, nombre: cli.nombre, nit: v.nit, idCliente: cli.codigoId, celular: cli.celular, correo: cli.correo,
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
-          tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: "QR", atencion: "PASARELA", comentarios: "",
+          tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: cu ? "SIN COBRO (MES DE CUMPLEAÑOS)" : "QR", atencion: "PASARELA", comentarios: "",
           terminos: (cot.sinContador ? PAS_TERMINOS.sinContador.concat(PAS_TERMINOS.eeff.filter(function (t) { return !PAS_TER_SOLO_CUPOS.test(t); })) : (PAS_TERMINOS[cot.tipo] || [])).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []),
           premios: premios, terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
@@ -826,10 +840,81 @@ function pasConfirmar(token) {
         enviado = true;
       } catch (e) {}
     }
-    var out = { ok: true, premios: premios, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail") };
+    var out = { ok: true, cumple: !!cu, premios: premios, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail") };
     pasCachePut_("hecho_" + token, out, 1800);
     return out;
   } finally { lock.releaseLock(); }
+}
+// ---------------- Mes de cumpleaños sin cobro (Plan Estándar y Premium) ----------------
+// El beneficio está activo mientras el Plan Estándar lo anuncie en sus beneficios ("Mes de tu cumpleaños sin cobro").
+function pasCumpleActivo_(c) {
+  var b = Object.assign({}, PAS_DEF.beneficios, (c || pasCfg()).beneficios || {});
+  return (b.estandar || []).some(function (t) { return /cumplea/i.test(String(t)); });
+}
+// Una vez al año: por NIT y por número de documento (así no sirve el mismo carnet con otro NIT)
+function pasCumpleUsado_(nit, doc, anio) {
+  if (fsQuery_("recepciones", [["cumpleAnio", "EQUAL", anio], ["nit", "EQUAL", nit]], 1).length) return true;
+  return !!doc && fsQuery_("recepciones", [["cumpleAnio", "EQUAL", anio], ["cumpleDoc", "EQUAL", doc]], 1).length > 0;
+}
+function pasNacISO_(t) {
+  var m = String(t || "").match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4})/);
+  if (!m) { var m2 = String(t || "").match(/(\d{4})-(\d{2})-(\d{2})/); return m2 ? { d: Number(m2[3]), m: Number(m2[2]), y: Number(m2[1]) } : null; }
+  return { d: Number(m[1]), m: Number(m[2]), y: Number(m[3]) };
+}
+function pasNacTxt_(n) { return ("0" + n.d).slice(-2) + "/" + ("0" + n.m).slice(-2) + "/" + n.y; }
+// La fecha de nacimiento leída queda en la Base de Datos (solo si estaba vacía)
+function pasGuardarNacimiento_(cli, fechaNac) {
+  if (!cli || !cli.docId || cli.nacimiento) return;
+  var campo = cli.campoNac || NAC_CAMPO, f = {}; f[campo] = { stringValue: fechaNac }; f._upd = { integerValue: String(Date.now()) };
+  fsReq_(fsBase_() + "/bdclientes/" + cli.docId + "?updateMask.fieldPaths=" + encodeURIComponent(fsCampo_(campo)) + "&updateMask.fieldPaths=_upd", "patch", { fields: f });
+  try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "fecha_nacimiento", nombre: cli.nombre, estadoAnterior: "", estadoNuevo: fechaNac, porUid: "pasarela", porNombre: "Pasarela de pagos", detalle: "Leída del documento al pedir el beneficio de cumpleaños" }); } catch (e) {}
+  CacheService.getScriptCache().remove("cli_" + String(cli.nitBuscado || ""));
+}
+function pasCumple(d) {
+  var nit = String(d.nit || "").replace(/\D/g, ""), c = pasCfg(), hoy = pasHoy_();
+  var no = function (t) { return { ok: true, aprobado: false, motivo: t }; };
+  if (!pasCumpleActivo_(c)) return no("El beneficio de cumpleaños no está disponible en este momento.");
+  var cli = pasClienteCache_(nit);
+  if (!cli || cli.externo || !pasPermitido_(cli)) return no("El beneficio de cumpleaños es solo para clientes de CONTAX.");
+  if (d.servicio !== "decl") return no("El beneficio de cumpleaños es para la declaración mensual.");
+  var cot = pasCotizar(d);
+  if (!cot.ok) return cot;
+  if (cot.plan !== "estandar" && cot.plan !== "premium") return no("El mes de cumpleaños sin cobro es del Plan Estándar y del Plan Premium.");
+  if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
+  if (pasCumpleUsado_(nit, "", hoy.anio)) return no("Ya usaste tu mes de cumpleaños sin cobro este año. Puedes pagar normalmente con el QR.");
+  var img = String(d.imagen || "");
+  if (img.indexOf("data:image/") !== 0) return { ok: false, error: "Sube una foto de tu C.I. o de tu licencia de conducir." };
+  if (img.length > 3500000) return { ok: false, error: "La foto es muy pesada. Toma una más pequeña." };
+  var lect = pasIALeer_(img, "Eres un asistente en Bolivia. La imagen debería ser una cédula de identidad (C.I.) o una licencia de conducir boliviana. " +
+    "Responde ÚNICAMENTE con un JSON válido con estas claves exactas: " +
+    '{"esDocumento":false,"tipoDoc":"","numeroDoc":"","nombre":"","fechaNacimiento":"","legible":false,"pareceEditado":false}. ' +
+    "esDocumento=true solo si es un C.I. o una licencia de conducir real (no una captura de otra cosa). tipoDoc: \"CI\" o \"LICENCIA\". numeroDoc = número de C.I. o de la licencia (solo el número, sin extensión ni complemento). " +
+    "nombre = nombres y apellidos completos. fechaNacimiento en formato dd/mm/aaaa. legible=true solo si la fecha de nacimiento se lee con total claridad. " +
+    "pareceEditado=true si ves señales de que la imagen fue alterada o es una pantalla con otra imagen. Si un dato no aparece, cadena vacía.", "Documento");
+  if (lect.error) return no(lect.error === "ia_no_disponible" ? "No pudimos revisar tu documento en este momento. Intenta en unos minutos o paga normalmente con el QR." : "No pudimos leer tu documento. Toma otra foto clara, sin reflejos y con la fecha de nacimiento visible.");
+  var x = lect.data || {}, nac = pasNacISO_(x.fechaNacimiento);
+  if (!x.esDocumento) return no("La foto no parece un C.I. ni una licencia de conducir. Toma una foto del documento completo.");
+  if (x.pareceEditado) return no("No pudimos validar tu documento. Toma una foto directa del documento original (no de una pantalla).");
+  if (!x.legible || !nac || nac.m < 1 || nac.m > 12 || nac.d < 1 || nac.d > 31 || nac.y < 1920 || nac.y > hoy.anio - 14) return no("No se lee bien tu fecha de nacimiento. Toma otra foto clara, sin reflejos.");
+  // El nombre del documento debe coincidir con el del cliente (al menos 2 palabras)
+  var norm = function (t) { return String(t || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z ]+/g, " ").trim().split(/\s+/).filter(function (w) { return w.length >= 3; }); };
+  var pCli = norm(cli.nombre), pDoc = norm(x.nombre), comunes = pCli.filter(function (w) { return pDoc.indexOf(w) >= 0; }).length;
+  if (comunes < Math.min(2, pCli.length)) return no("El nombre del documento no coincide con el titular de este NIT. El beneficio es solo para el titular.");
+  var fechaNac = pasNacTxt_(nac);
+  // Si ya teníamos su fecha de nacimiento, debe ser la misma
+  var guardada = pasNacISO_(cli.nacimiento);
+  if (guardada && (guardada.d !== nac.d || guardada.m !== nac.m || guardada.y !== nac.y)) return no("La fecha de nacimiento no coincide con la registrada en CONTAX. Escríbenos por WhatsApp.");
+  if (nac.m !== hoy.mes) return no("Según tu documento, tu cumpleaños es en " + PAS_MESES[nac.m - 1].toLowerCase() + ". El beneficio se aplica solo en el mes de tu cumpleaños.");
+  var doc = String(x.numeroDoc || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  if (pasCumpleUsado_(nit, doc, hoy.anio)) return no("Este documento ya usó el beneficio de cumpleaños este año.");
+  var precioNormal = cot.monto;
+  cot.monto = 0; cot.resumen += " · Mes de tu cumpleaños (sin cobro)";
+  var token = Utilities.getUuid();
+  pasCachePut_("v_" + token, { nit: nit, cot: cot, x: {}, motivos: [], aprobado: true, img: img,
+    cumple: { anio: hoy.anio, doc: doc, tipoDoc: x.tipoDoc === "LICENCIA" ? "Licencia" : "C.I.", fechaNac: fechaNac, nombreDoc: String(x.nombre || "").slice(0, 120), precioNormal: precioNormal } }, 1800);
+  var r = pasConfirmar(token);
+  if (r.ok) r.aprobado = true;
+  return r;
 }
 // ---------------- Premios (fijos y al azar) ----------------
 // Azar: para cada premio se sortean de antemano N posiciones ganadoras entre los próximos M pagos que califican.

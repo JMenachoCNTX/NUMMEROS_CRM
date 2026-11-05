@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "92";
+const APP_VERSION = "93";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1326,6 +1326,7 @@ const BD_FIELDS = [
   ["codigoId", "Codigo de ID", "Cliente", "text"],
   ["nit", "NIT", "Cliente", "text"],
   ["ci", "C.I.", "Cliente", "text"],
+  ["nacimiento", "Fecha de Nacimiento", "Cliente", "text"],
   ["razon", "Nombre o Razón Social", "Cliente", "text"],
   ["celular", "Celular", "Cliente", "text"],
   ["correo", "Correo Electrónico", "Cliente", "text"],
@@ -1363,6 +1364,7 @@ function bdHeaderToKey(h) {
   if (n.includes("estado") && n.includes("usuario")) return "estado";
   if (n.includes("costo")) return "costo";
   if (n.includes("suscriptor")) return "suscriptor";
+  if (n.includes("nacimiento")) return "nacimiento";
   if (n.includes("matricula")) return "estMat";
   if (n.includes("apertura") && n.includes("nit")) return "fechaNit";
   if (n.replace(/[^a-z]/g, "") === "ci" || n.includes("carnet") || n.includes("cedula")) return "ci";
@@ -1424,6 +1426,8 @@ async function bdLoadFirebase(cb, forzarTodo) {
     BD = rows.filter(r => (bdV(r, "nombre") || bdV(r, "razon") || bdV(r, "codigoId") || bdV(r, "nit")));
     // Tipo de suscriptor: columna nueva; si el cliente aún no lo tiene guardado, se calcula con el costo mensual
     if (!bdKey2Header.suscriptor) { bdHeader.push(SUSC_LBL); bdBuildKeyMap(); }
+    // Fecha de nacimiento (la llena la pasarela al leer el C.I. o la licencia del beneficio de cumpleaños)
+    if (!bdKey2Header.nacimiento) { bdHeader.push("23. Fecha de Nacimiento"); bdBuildKeyMap(); }
     BD.forEach(r => { const h = bdKey2Header.suscriptor; r._suscGuardado = !!String(r[h] || "").trim(); if (!r._suscGuardado) r[h] = bdSuscDe(r); });
     bdEnFirebaseFlag = true; bdLoaded = true; cb(true);
   } catch (e) { cb(false, e.message || e); }
@@ -5871,6 +5875,27 @@ async function eeffSincronizarConteo(g, forzar) {
   }
   return remoto || local;
 }
+// Pasarela → Premios → Cumpleaños: quién usó el mes sin cobro (con la foto de su documento) y quién cumple este mes según la BD
+function paCumpleHTML(conCumple, canEdit) {
+  const mes = new Date(Date.now() - 4 * 3600e3).getUTCMonth() + 1, anio = new Date(Date.now() - 4 * 3600e3).getUTCFullYear();
+  const nac = t => { const m = String(t || "").match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4})/); return m ? { d: +m[1], m: +m[2], y: +m[3] } : null; };
+  const REV = [["pendiente", "Por revisar"], ["ok", "Revisado ✓"], ["sospechoso", "⚠️ Sospechoso"]];
+  const usaron = new Set(conCumple.filter(r => Number(r.cumpleAnio) === anio).map(r => fiNit(r.nit)));
+  const delMes = bdLoaded ? BD.filter(c => bdIsActivo(c)).map(c => ({ c, n: nac(bdV(c, "nacimiento")) })).filter(x => x.n && x.n.m === mes).sort((a, b) => a.n.d - b.n.d) : null;
+  return `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">🎂 Mes de cumpleaños sin cobro</h3>
+    <p class="note" style="margin:0 0 10px">Plan Estándar y Premium: una vez al año por NIT y por documento. La IA lee la fecha de nacimiento del C.I. o la licencia, revisa que el nombre sea del titular y que coincida con la fecha guardada en la Base de Datos. Revisa la foto y márcala; si es <b>sospechoso</b>, cóbrale el precio normal.</p>
+    ${conCumple.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Documento</th><th>Nació</th><th>Período</th><th style="text-align:right">Precio normal</th><th>Foto</th><th>Revisión</th></tr></thead><tbody>
+      ${conCumple.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td>
+        <td style="font-size:12px">${escape(r.cumpleTipoDoc || "")} ${escape(r.cumpleDoc || "")}<div class="note" style="margin:0">${escape(r.cumpleNombreDoc || "")}</div></td><td class="mono">${escape(r.cumpleFechaNac || "")}</td><td>${escape(r.mesRecepcion || "")}</td>
+        <td class="mono" style="text-align:right">${money(r.cumplePrecioNormal || 0)}</td><td>${r.cumpleFotoUrl ? `<a href="${escape(r.cumpleFotoUrl)}" target="_blank" rel="noopener">Ver foto</a>` : "—"}</td>
+        <td><select class="pa-cumrev" data-id="${escape(r.id)}" ${canEdit ? "" : "disabled"}>${REV.map(([k, t]) => `<option value="${k}" ${(r.cumpleRevision || "pendiente") === k ? "selected" : ""}>${t}</option>`).join("")}</select>${r.cumpleRevisadoPor ? `<div class="note" style="margin:0">${escape(r.cumpleRevisadoPor)}</div>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="note">Todavía nadie usó el beneficio.</p>`}
+    <h4 style="margin:14px 0 6px">Cumplen años en ${escape(REC_MESES_CAP[mes - 1].toLowerCase())} (clientes activos con fecha de nacimiento en la Base de Datos)</h4>
+    ${delMes === null ? `<button class="mini" id="pa_cumbd">Ver la lista (carga la Base de Datos)</button>` : delMes.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Día</th><th>Cliente</th><th>NIT</th><th>Celular</th><th>Beneficio ${anio}</th></tr></thead><tbody>
+      ${delMes.map(x => `<tr><td class="mono">${x.n.d}</td><td><b>${escape(bdV(x.c, "nombre") || bdV(x.c, "razon"))}</b></td><td class="mono">${escape(bdV(x.c, "nit"))}</td><td class="mono">${escape(bdV(x.c, "celular") || "")}</td><td>${usaron.has(fiNit(bdV(x.c, "nit"))) ? '<span class="badge ok">Ya lo usó</span>' : '<span class="note" style="margin:0">Disponible</span>'}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="note">Ningún cliente activo con fecha de nacimiento en ${escape(REC_MESES_CAP[mes - 1].toLowerCase())}. La fecha se va llenando sola cuando los clientes suben su C.I. o licencia.</p>`}
+  </div>`;
+}
 function paintPasarela() {
   const admin = isAdmin(), canEdit = canEditClientes();
   const todos = RC.docs || [];
@@ -5884,7 +5909,8 @@ function paintPasarela() {
   const usadosEeff = conteo.total;
   const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "pagos.html";
   const conPremio = todos.filter(r => r.premios && r.premios.length).sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
-  const tabs = [["revision", `Pagos en revisión (${revision.length})`], ["ultimos", "Últimos pagos"], ["config", "Precios y cupos"], ["balances", "Balances y beneficios"], ["premios", `Premios (${conPremio.filter(r => !r.premiosEntregado).length} por entregar)`], ["nocli", `No clientes (${(PA_UI.noCli || []).length})`], ["qr", "QR por importe"]];
+  const conCumple = todos.filter(r => r.cumple).sort((a, b) => (b.fechaISO || "").localeCompare(a.fechaISO || ""));
+  const tabs = [["revision", `Pagos en revisión (${revision.length})`], ["ultimos", "Últimos pagos"], ["config", "Precios y cupos"], ["balances", "Balances y beneficios"], ["premios", `Premios (${conPremio.filter(r => !r.premiosEntregado).length} por entregar${conCumple.filter(r => (r.cumpleRevision || "pendiente") === "pendiente").length ? " · 🎂 " + conCumple.filter(r => (r.cumpleRevision || "pendiente") === "pendiente").length : ""})`], ["nocli", `No clientes (${(PA_UI.noCli || []).length})`], ["qr", "QR por importe"]];
   let body = "";
   if (PA_UI.tab === "revision") {
     body = `<p class="note" style="margin:0 0 10px">La IA no pudo confirmar estos comprobantes. Revisa la imagen y apruébalos (pasan a la lista que corresponde y se envía el correo) o recházalos.</p>
@@ -5995,7 +6021,7 @@ function paintPasarela() {
     PA_UI.premios = PA_UI.premios || JSON.parse(JSON.stringify(c.premios && c.premios.length && !premViejos ? c.premios : PAS_PREM_DEF));
     const nFases = PA_UI.cupos.length;
     const opt = (v, l, sel) => `<option value="${v}" ${String(sel) === String(v) ? "selected" : ""}>${l}</option>`;
-    body = `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
+    body = paCumpleHTML(conCumple, canEdit) + `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
         <p class="note" style="margin:0 0 10px">Clientes que ganaron un premio al pagar por la pasarela. Marca "Entregado" cuando les hagas la devolución o les des el beneficio.</p>
         ${conPremio.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Celular</th><th>Servicio</th><th style="text-align:right">Pagó</th><th>Premio</th><th>Entregado</th></tr></thead><tbody>
           ${conPremio.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b><div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td><td class="mono">${escape(r.clienteCelular || "")}</td>
@@ -6088,6 +6114,13 @@ function paintPasarela() {
       m.className = "msg ok"; m.textContent = "Guardado.";
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
+  V.querySelectorAll(".pa-cumrev").forEach(c => c.onchange = async () => {
+    const quien = (ME && (ME.name || ME.email)) || "";
+    const datos = { cumpleRevision: c.value, cumpleRevisadoPor: quien, cumpleRevisadoAt: Date.now(), _upd: Date.now() };
+    try { await setDoc(doc(db, "recepciones", c.dataset.id), datos, { merge: true }); rcPoner(c.dataset.id, datos); paintPasarela(); }
+    catch (e) { alert("No se pudo guardar: " + (e.code || e.message)); }
+  });
+  if (el("pa_cumbd")) el("pa_cumbd").onclick = () => { el("pa_cumbd").disabled = true; bdEnsureLoaded(() => paintPasarela()); };
   V.querySelectorAll(".pa-ent").forEach(c => c.onchange = async () => {
     const quien = (ME && (ME.name || ME.email)) || "";
     const datos = { premiosEntregado: c.checked, premiosEntregadoPor: c.checked ? quien : "", premiosEntregadoAt: c.checked ? Date.now() : 0, _upd: Date.now() };
