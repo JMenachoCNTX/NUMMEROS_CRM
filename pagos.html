@@ -543,10 +543,15 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var cu = S.cfg && S.cfg.cumple;
     if (!cu || !cu.activo || S.serv !== "decl" || !q || (q.plan !== "estandar" && q.plan !== "premium") || (S.cli && S.cli.externo)) return "";
     return '<div class="card pila cumpleBox" style="gap:8px"><b style="font-size:16px">🎂 ¿Cumples años en ' + esc(String(cu.mesTexto || "").toLowerCase()) + '?</b>' +
-      '<p class="c13 suave" style="line-height:19px">Con tu plan, el mes de tu cumpleaños tu declaración es <b>sin cobro</b> (una vez al año). Sube una foto de tu <b>C.I.</b> o de tu <b>licencia de conducir</b> donde se vea tu fecha de nacimiento y no pagas nada.</p>' +
+      (function () {
+        var an = S.cli && S.cli.antig, min = cu.minPagos || 12;
+        if (!an || an.cumple) return "";
+        var f = Math.max(0, min - an.pagos);
+        return '<p class="c13 suave" style="line-height:19px">Este beneficio es para clientes con <b>' + min + ' meses pagados</b> con CONTAX (no hace falta que sean seguidos). Llevas <b>' + an.pagos + '</b>: te ' + (f === 1 ? "falta <b>1 mes</b>" : "faltan <b>" + f + " meses</b>") + ". ¡Sigue con nosotros!</p></div>";
+      })() || ('<p class="c13 suave" style="line-height:19px">Con tu plan, el mes de tu cumpleaños tu declaración es <b>sin cobro</b> (una vez al año). Sube una foto de tu <b>C.I.</b> o de tu <b>licencia de conducir</b> donde se vea tu fecha de nacimiento y no pagas nada.</p>' +
       (S.cumpleMsg ? '<div class="aviso warn" role="alert">' + esc(S.cumpleMsg) + "</div>" : "") +
       '<label class="subir" for="fCumple">' + ICON.subir + "Subir foto de mi C.I. o licencia</label><input type=\"file\" id=\"fCumple\" accept=\"image/*\" class=\"oculto\">" +
-      '<p class="chico suave">La usamos solo para verificar tu fecha de nacimiento. Debe ser el documento del titular del NIT.</p></div>';
+      '<p class="chico suave">La usamos solo para verificar tu fecha de nacimiento. Debe ser el documento del titular del NIT.</p></div>');
   }
   function pedirCumple(img) {
     main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("cumple") + "</div>"; window.scrollTo(0, 0);
@@ -792,7 +797,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     h = h.replace(/<\/div>$/, (S.paso === "nit" ? '<div id="tutSlot">' + tutBtn() + "</div>" : "") + ayuda() + "</div>");
     // Nombre del cliente arriba en todas las pantallas (menos el NIT y «Tus datos», que ya lo muestran)
     var nomCli = (S.cli && S.cli.nombre) || (S.ext && S.ext.nombre) || "";
-    if (nomCli && S.paso !== "nit" && S.paso !== "datos" && S.paso !== "cuenta") h = '<div class="cliTop"><span class="suave">Cliente</span> <b>' + esc(nomCli) + '</b>' + (S.nit ? ' <span class="suave">· NIT ' + esc(S.nit) + "</span>" : "") + "</div>" + h;
+    if (nomCli && S.paso !== "nit" && S.paso !== "datos" && S.paso !== "cuenta") h = '<div class="cliTop"><span class="suave">Cliente</span> <b>' + esc(nomCli) + '</b>' + (S.nit ? ' <span class="suave">· NIT ' + esc(S.nit) + "</span>" : "") + (S.cli && S.cli.antig && S.cli.antig.desdeTxt ? '<div class="chico suave" style="margin-top:2px">🗓 Cliente de CONTAX desde <b>' + esc(S.cli.antig.desdeTxt) + "</b> · " + S.cli.antig.pagos + (S.cli.antig.pagos === 1 ? " mes pagado" : " meses pagados") + "</div>" : "") + "</div>" + h;
     main.innerHTML = h;
     lado(); menu(); guardarEstado(); relojReserva(); relojCuenta(); barraCuenta();
     enlazar();
@@ -1200,5 +1205,6 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   });
 })();
 </script>
+<script src="version-aviso.js" defer></script>
 </body>
 </html>

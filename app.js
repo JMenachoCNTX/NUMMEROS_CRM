@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "95";
+const APP_VERSION = "96";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1836,6 +1836,48 @@ function bdNextCodigo() {
   BD.forEach(ver); ((typeof BDC !== "undefined" && BDC.docs) || []).forEach(ver);
   return String(max + 1);
 }
+// Campos que se ELIGEN de una lista (evita errores de escritura). Las opciones salen de los valores que ya
+// existen en la Base de Datos (sin repetir mayúsculas/espacios, el más usado primero) + las fijas; "Otro" permite escribir uno nuevo.
+const BD_LISTA = {
+  tipo: [], actP: [], actS: [], brinda: [], estMat: [], costo: [],
+  estado: ["ACTIVO", "CLIENTE INACTIVO", "INACTIVO SOLICITADO", "LISTA NEGRA", "SUSCRIPCIÓN FACTURACIÓN"],
+  suscriptor: [SUSC_DECL, SUSC_FACT]
+};
+const BD_FECHA = { nacimiento: 1, fechaNit: 1, fechaInact: 1 };
+function bdNormOp(v) { return String(v || "").trim().replace(/\s+/g, " ").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+function bdOpciones(key) {
+  const cnt = {}, forma = {};
+  BD.forEach(r => { const v = String(bdV(r, key) || "").trim().replace(/\s+/g, " "); if (!v) return; const n = bdNormOp(v); cnt[n] = (cnt[n] || 0) + 1; forma[n] = forma[n] || {}; forma[n][v] = (forma[n][v] || 0) + 1; });
+  const out = [], vistos = new Set();
+  (BD_LISTA[key] || []).forEach(v => { const n = bdNormOp(v); if (!vistos.has(n)) { vistos.add(n); out.push(v); } });
+  Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || a.localeCompare(b)).forEach(n => {
+    if (vistos.has(n)) return; vistos.add(n);
+    const f = forma[n]; out.push(Object.keys(f).sort((a, b) => f[b] - f[a])[0]);
+  });
+  return out;
+}
+// dd/mm/aaaa (o aaaa-mm-dd) → aaaa-mm-dd para el calendario; "" si no se entiende
+function bdFechaISO(v) {
+  const t = String(v || "").trim(); let m;
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+  if ((m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/))) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  return "";
+}
+function bdCampoHTML(key, label, valRaw, dis) {
+  const val = String(valRaw || "");
+  if (BD_FECHA[key] && (!val || bdFechaISO(val))) return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" type="date" data-orig="${escape(val)}" value="${bdFechaISO(val)}" ${dis}></div>`;
+  if (!BD_LISTA[key]) return "";
+  const ops = bdOpciones(key), actual = ops.find(o => bdNormOp(o) === bdNormOp(val)) || val;
+  if (val && !ops.includes(actual)) ops.push(actual);
+  return `<div class="field"><label>${escape(label)}</label><select id="bf_${key}" class="bf-lista" data-orig="${escape(val)}" ${dis}><option value="">— elegir —</option>${ops.map(o => `<option${o === actual ? " selected" : ""}>${escape(o)}</option>`).join("")}<option value="__otro">✎ Otro (escribir)…</option></select><input id="bf_${key}_otro" placeholder="Escribe el nuevo valor" style="display:none;margin-top:6px" ${dis}></div>`;
+}
+// Lee el valor de un campo del formulario (lista, "Otro", calendario o texto)
+function bdCampoValor(bg, key) {
+  const i = bg.querySelector("#bf_" + key); if (!i) return "";
+  if (i.tagName === "SELECT" && i.value === "__otro") { const o = bg.querySelector("#bf_" + key + "_otro"); return o ? o.value.trim().replace(/\s+/g, " ") : ""; }
+  if (i.type === "date") { const orig = i.dataset.orig || ""; if (!i.value) return ""; if (bdFechaISO(orig) === i.value) return orig; const [y, m, d] = i.value.split("-"); return d + "/" + m + "/" + y; }
+  return i.value.trim();
+}
 function openBDModal(row) {
   const canEdit = canEditClientes();
   const bg = document.createElement("div");
@@ -1847,7 +1889,7 @@ function openBDModal(row) {
       const dis = canEdit ? "" : "disabled";
       if (type === "textarea") return `<div class="field" style="grid-column:1/-1"><label>${escape(label)}</label><textarea id="bf_${key}" style="min-height:70px" ${dis}>${val}</textarea></div>`;
       if (type === "secret") return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" type="password" value="${val}" ${dis}><span class="reveal note" data-rev="bf_${key}" style="font-size:11px">mostrar</span></div>`;
-      if (type === "estado") return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" value="${val}" list="bf_estlist" placeholder="ACTIVO" ${dis}></div>`;
+      const lista = bdCampoHTML(key, label, row ? bdV(row, key) : "", dis); if (lista) return lista;
       if (key === "codigoId" && !row) return `<div class="field"><label>${escape(label)} <span class="note" style="font-size:11px">(automático, correlativo)</span></label><input id="bf_${key}" value="${escape(bdNextCodigo())}" ${dis}></div>`;
       return `<div class="field"><label>${escape(label)}</label><input id="bf_${key}" value="${val}" ${dis}></div>`;
     }).join("");
@@ -1870,11 +1912,12 @@ function openBDModal(row) {
   bg.querySelector("#bf_x").onclick = close;
   bg.querySelector("#bf_cancel").onclick = close;
   bg.querySelectorAll("[data-rev]").forEach(s =>s.onclick = () => { const i = bg.querySelector("#" + s.dataset.rev); if (i) { i.type = i.type === "password" ? "text" : "password"; s.textContent = i.type === "password" ? "mostrar" : "ocultar"; } });
+  bg.querySelectorAll(".bf-lista").forEach(sel => sel.onchange = () => { const o = bg.querySelector("#" + sel.id + "_otro"); if (o) { o.style.display = sel.value === "__otro" ? "" : "none"; if (sel.value === "__otro") o.focus(); } });
   const saveBtn = bg.querySelector("#bf_save");
   if (saveBtn) saveBtn.onclick = async () => {
     const item = {}, itemByHeader = {};
     BD_FIELDS.forEach(([key, label]) => {
-      const i = bg.querySelector("#bf_" + key); const val = i ? i.value.trim() : "";
+      const val = bdCampoValor(bg, key);
       item[label] = val;
       const hdr = (bdKey2Header && bdKey2Header[key]) || label; // clave real de la fila (ej. "20. ESTADO USUARIO")
       itemByHeader[hdr] = val;
@@ -3431,6 +3474,9 @@ function recPintarEstado() {
         <button type="button" class="btn" id="r_setactivo" style="background:#2E7D5B;border-color:#2E7D5B;color:#fff;padding:7px 14px;font-size:13px" title="Cambiar a ACTIVO en la Base de Datos">✓ Marcar ACTIVO</button></div>`
     : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
     <span style="color:var(--muted)">Estado:</span> <span class="badge ${cls}">${escape(est)}</span></div>`;
+  box.innerHTML += `<div id="r_antig" style="margin-top:6px"></div>`;
+  const cliAnt = recCli, nitAnt = fiNit(bdV(recCli, "nit"));
+  if (nitAnt) recSync().then(todos => { const a = el("r_antig"); if (a && recCli === cliAnt) a.innerHTML = antigHTML(antigCalc((todos || []).filter(r => fiNit(r.nit) === nitAnt))); }).catch(() => {});
   if (el("r_setactivo")) el("r_setactivo").onclick = async () => {
     const b = el("r_setactivo"); b.disabled = true; b.textContent = "…";
     const ok = await recReactivarSiInactivo(recCli);
@@ -3948,6 +3994,25 @@ function recGestionEEFF(r) {
 }
 function recPeriodoTxt(k) { if (!k) return "—"; const [y, m] = k.split("-"); return REC_MESES_CAP[Number(m) - 1] + " " + y; }
 function recCatDe(r) { return r.tipo || recCategoria(r.servicio || r.servicioNombre, r.detalleServicio); }
+// Antigüedad (igual que la pasarela): meses DISTINTOS con declaración o facturación pagada, no hace falta que sean
+// seguidos. Con 12 o más puede pedir el mes de cumpleaños sin cobro. "desde" = período de su primera declaración.
+const ANTIG_MIN = 12;
+function antigCalc(recs) {
+  const meses = new Set(); let primera = "";
+  (recs || []).forEach(r => {
+    const cat = recCatDe(r); if (cat !== "declaracion" && cat !== "facturacion") return;
+    if (r.eliminado || (r.pasarela && (r.pasarela.estado === "revision" || r.pasarela.estado === "rechazado")) || r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") return;
+    const k = recPeriodoKey(r) || String(r.fechaISO || "").slice(0, 7); if (!/^\d{4}-\d{2}$/.test(k)) return;
+    meses.add(k); if (cat === "declaracion" && (!primera || k < primera)) primera = k;
+  });
+  if (!primera) primera = [...meses].sort()[0] || "";
+  return { pagos: meses.size, desde: primera, desdeTxt: primera ? REC_MESES_CAP[Number(primera.slice(5)) - 1] + " " + primera.slice(0, 4) : "", cumple: meses.size >= ANTIG_MIN };
+}
+function antigHTML(a) {
+  if (!a || !a.pagos) return `<span class="note" style="margin:0">🗓 Sin pagos de declaración o facturación registrados</span>`;
+  return `<span style="font-size:13px">🗓 Cliente desde <b>${escape(a.desdeTxt)}</b> · <b>${a.pagos}</b> ${a.pagos === 1 ? "mes pagado" : "meses pagados"}</span> ` +
+    (a.cumple ? `<span class="badge ok" title="Tiene ${ANTIG_MIN} o más meses pagados">🎂 Puede usar el beneficio de cumpleaños</span>` : `<span class="badge off" title="El beneficio de cumpleaños pide ${ANTIG_MIN} meses pagados">🎂 Le faltan ${ANTIG_MIN - a.pagos} para el beneficio</span>`);
+}
 function enListaTrabajo(r, tipo) {
   const cat = recCatDe(r), f = String(r.fechaISO || "").slice(0, 10), per = recPeriodoKey(r);
   // "Nuevo" = registrado en el panel (no viene de la importación) o recepcionado desde el corte:
@@ -5194,6 +5259,7 @@ function fichaRapida(nit) {
     const canEd = canEditClientes();
     const fila = (lbl, v, secreto) => v ? `<div style="display:flex;gap:6px;align-items:flex-start;padding:4px 0;border-bottom:1px solid var(--line)"><span style="color:var(--muted);flex:0 0 130px;font-size:12px">${escape(lbl)}</span><b style="flex:1;font-size:13px;overflow-wrap:anywhere">${escape(v)}</b><button type="button" class="mini fr-cp" data-v="${escape(v)}" title="Copiar" style="padding:1px 6px">📋</button></div>` : "";
     let h = `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px"><div style="flex:1"><h3 style="margin:0">${escape(c ? (bdV(c, "nombre") || bdV(c, "razon")) : "NIT " + nit)}</h3>${c ? `<div style="margin-top:4px"><span class="badge ${bdIsActivo(c) ? "ok" : "off"}">${escape(bdV(c, "estado") || "—")}</span></div>` : ""}</div><button class="mini" id="fr_x">✕</button></div>`;
+    h += `<div id="fr_ant" style="margin:0 0 8px"><span class="note" style="margin:0"><span class="cx-spin"></span> Calculando antigüedad…</span></div>`;
     if (!c) h += `<p class="note">Este NIT no está en la Base de Datos.</p>`;
     else BD_GROUPS.forEach(g => {
       const campos = BD_FIELDS.filter(f => f[2] === g && (f[3] !== "secret" || canEd)).map(f => fila(f[1], bdV(c, f[0]))).join("");
@@ -5208,6 +5274,8 @@ function fichaRapida(nit) {
     box.querySelectorAll(".fr-cp").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "📋"; }, 1200); } catch (e) {} });
     box.querySelector("#fr_pas").onclick = e => { try { navigator.clipboard.writeText(pasarelaUrl(nit)); e.target.textContent = "✓ Copiado"; } catch (er) {} };
     box.querySelector("#fr_full").onclick = () => { cerrar(); const b = document.querySelector('nav.tabs button[data-v="ficha"]'); switchView("ficha", b); fiCargar(nit); };
+    recSync().then(todos => { const a = box.querySelector("#fr_ant"); if (a) a.innerHTML = antigHTML(antigCalc((todos || []).filter(r => fiNit(r.nit) === nit))); })
+      .catch(() => { const a = box.querySelector("#fr_ant"); if (a) a.innerHTML = ""; });
   });
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest(".fi-ojo"); if (b) { e.preventDefault(); e.stopPropagation(); fichaRapida(b.dataset.fnit); } }, true);
@@ -5280,6 +5348,7 @@ function paintFicha() {
         <h3 style="margin:0 0 8px">${escape(c ? (bdV(c, "nombre") || bdV(c, "razon")) : (uno.clienteNombre || "—"))} ${c ? `<span class="badge ${bdEstadoInfo(c).cls}" style="vertical-align:middle">${escape(bdEstadoInfo(c).raw || "—")}</span>` : ""}</h3>
         ${dato("Código de ID", c ? bdV(c, "codigoId") : uno.clienteId)}${dato("NIT", FI_UI.nit)}${dato("Celular", c ? bdV(c, "celular") : uno.clienteCelular)}${dato("Correo", c ? bdV(c, "correo") : uno.clienteCorreo)}
         ${dato("Tipo de contribuyente", c && bdV(c, "tipo"))}${dato("Brinda servicios a", (c && bdV(c, "brinda")) || uno.rubro)}${dato("Fecha apertura NIT", c && bdV(c, "fechaNit"))}
+        <div style="padding:6px 0 2px">${antigHTML(antigCalc(recs))}</div>
         ${!c ? `<p class="note">Este NIT no está en la Base de Datos de clientes; se muestran los datos de sus recepciones.</p>` : ""}
       </div>
       <div>

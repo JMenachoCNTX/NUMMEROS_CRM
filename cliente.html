@@ -556,7 +556,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var c = d.cliente, f = function (a) { return a ? String(a).split("-").reverse().join("/") : ""; };
     var dato = function (l, v) { return '<div class="dato"><span>' + esc(l) + "</span><b>" + esc(v || "—") + "</b></div>"; };
     return '<div class="pila"><h2>Mis datos</h2><div class="grid">' +
-      '<div class="card"><h3 style="margin-bottom:6px">Datos personales</h3>' + dato("Nombre o razón social", c.nombre) + dato("NIT", c.nit) + dato("Código de cliente", c.id) + dato("Celular", c.celular) + dato("Correo", c.correo) + "</div>" +
+      '<div class="card"><h3 style="margin-bottom:6px">Datos personales</h3>' + dato("Nombre o razón social", c.nombre) + dato("NIT", c.nit) + dato("Código de cliente", c.id) + dato("Celular", c.celular) + dato("Correo", c.correo) +
+        (c.antig && c.antig.desdeTxt ? dato("Cliente de CONTAX desde", c.antig.desdeTxt) + dato("Meses pagados", String(c.antig.pagos)) : "") + "</div>" +
       '<div class="card"><h3 style="margin-bottom:6px">Actividad</h3>' + dato("Tipo de contribuyente", c.tipo) + dato("Actividad principal", c.actividad) + dato("Brinda servicios a", c.brinda) + dato("Apertura del NIT", f(c.aperturaNit)) + dato("Matrícula SEPREC", c.matricula) + dato("Vencimiento mensual", "Día " + c.diaVence) + "</div></div>" +
       '<div class="aviso warn">¿Algún dato está mal o cambió? <a href="' + wa("Hola CONTAX, quiero actualizar mis datos. Mi NIT es " + c.nit + ".") + '" target="_blank" rel="noopener" style="color:inherit;font-weight:700">Avísanos por WhatsApp</a> y lo corregimos.</div></div>';
   }
@@ -596,5 +597,6 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   } else pintarLogin("", nitGuardado);
 })();
 </script>
+<script src="version-aviso.js" defer></script>
 </body>
 </html>

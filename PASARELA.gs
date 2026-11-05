@@ -265,7 +265,7 @@ function pasConfigPublica() {
     periodoFact: { anio: hoy.anio, mes: hoy.mes, texto: PAS_MESES[hoy.mes - 1] + " " + hoy.anio },
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
     beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "", sinContador: pasSinCont_(c),
-    cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1] },
+    cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1], minPagos: PAS_CUMPLE_MIN_PAGOS },
     premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
@@ -283,7 +283,8 @@ function pasBuscar(nitRaw) {
       nombre: cli.nombre, nit: nit, id: cli.codigoId,
       celular: pasOcultar_(cli.celular, "cel"), correo: pasOcultar_(cli.correo, "mail"),
       brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli), aperturaNit: pasFechaISO_(cli.fechaNit), inactivo: pasInactivo_(cli),
-      diaVence: 13 + Number(nit.slice(-1))
+      diaVence: 13 + Number(nit.slice(-1)),
+      antig: (function () { try { return pasAntiguedad_(nit); } catch (e) { return null; } })()
     }
   };
 }
@@ -881,6 +882,8 @@ function pasCumple(d) {
   if (!cot.ok) return cot;
   if (cot.plan !== "estandar" && cot.plan !== "premium") return no("El mes de cumpleaños sin cobro es del Plan Estándar y del Plan Premium.");
   if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
+  var ant = pasAntiguedad_(nit);
+  if (!ant.cumple) return no("El mes de cumpleaños sin cobro es para clientes con al menos " + ant.requeridos + " meses pagados con CONTAX (no hace falta que sean seguidos). Llevas " + ant.pagos + (ant.pagos === 1 ? " mes" : " meses") + ". Puedes pagar normalmente con el QR.");
   if (pasCumpleUsado_(nit, "", hoy.anio)) return no("Ya usaste tu mes de cumpleaños sin cobro este año. Puedes pagar normalmente con el QR.");
   var img = String(d.imagen || "");
   if (img.indexOf("data:image/") !== 0) return { ok: false, error: "Sube una foto de tu C.I. o de tu licencia de conducir." };
@@ -1251,6 +1254,25 @@ function portalRecepciones_(nit) {
   return docs.filter(function (x) { if (vistos[x.id]) return false; vistos[x.id] = 1; var r = x.data; var pe = r.pasarela && r.pasarela.estado; return !r.eliminado && pe !== "rechazado"; })
     .map(function (x) { var r = x.data; r.id = x.id; return r; });
 }
+// Antigüedad del cliente: cantidad de MESES DISTINTOS con declaración o facturación pagada (no hace falta que sean
+// seguidos: si un mes no pagó y al siguiente pagó los dos, cuentan los dos) y el período de su primera declaración.
+var PAS_CUMPLE_MIN_PAGOS = 12;   // 1 año: 12 pagos acumulados para el mes de cumpleaños sin cobro
+function pasAntiguedad_(nit, recs) {
+  recs = recs || portalRecepciones_(nit);
+  var meses = {}, primera = "", primeraFecha = "";
+  recs.forEach(function (r) {
+    var cat = portalCat_(r); if (cat !== "declaracion" && cat !== "facturacion") return;
+    if ((r.pasarela && r.pasarela.estado === "revision") || r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") return;
+    var k = portalPeriodoKey_(r) || String(r.fechaISO || "").slice(0, 7); if (!/^\d{4}-\d{2}$/.test(k)) return;
+    meses[k] = 1;
+    if (cat === "declaracion" && (!primera || k < primera)) primera = k;
+    var f = String(r.fechaISO || "").slice(0, 10); if (f && (!primeraFecha || f < primeraFecha)) primeraFecha = f;
+  });
+  if (!primera) primera = Object.keys(meses).sort()[0] || "";
+  var n = Object.keys(meses).length;
+  return { pagos: n, requeridos: PAS_CUMPLE_MIN_PAGOS, cumple: n >= PAS_CUMPLE_MIN_PAGOS, desde: primera,
+           desdeTxt: primera ? PAS_MESES[Number(primera.slice(5)) - 1] + " " + primera.slice(0, 4) : "", primeraRecepcion: primeraFecha };
+}
 function portalCat_(r) {
   if (r.tipo) return r.tipo;
   var s = String((r.servicio || r.servicioNombre || "") + " " + (r.detalleServicio || "")).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -1311,7 +1333,7 @@ function portalDatos_(nit) {
     ok: true,
     cliente: { suscriptor: cli.suscriptor || "", nombre: cli.nombre, nit: nit, id: cli.codigoId, celular: cli.celular, correo: cli.correo, tipo: cli.tipo, actividad: cli.actP, brinda: cli.brinda,
                aperturaNit: pasFechaISO_(cli.fechaNit), matricula: cli.estMat, estado: cli.estado, grupo: pasGrupoEstado_(cli.estado), repartidor: pasEsRepartidor_(cli),
-               diaVence: 13 + Number(nit.slice(-1)) },
+               diaVence: 13 + Number(nit.slice(-1)), antig: pasAntiguedad_(nit, recs) },
     declaraciones: decl, tramites: tram, eeff: eeff, facturacion: fact, otros: otros,
     suscripcion: { activa: susc, mes: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, estadoBD: cli.estado },
     config: { precios: c.precios, lanzamiento: c.lanzamiento || "", eeffGestion: c.eeffGestion || PAS_DEF.eeffGestion, diaDesde: c.diaDesde || 25 },
