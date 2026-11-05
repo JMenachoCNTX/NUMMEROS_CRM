@@ -173,6 +173,8 @@ function pasarelaHandle_(d) {
   if (a === "pas_verificar") return pasVerificar(d);
   if (a === "pas_confirmar") return pasConfirmar(d.token);
   if (a === "pas_cumple") return pasCumple(d);
+  if (a === "pas_saldo") return pasSaldoPagar(d);
+  if (a === "pas_prospecto") return pasProspecto(d);
   if (String(a || "").indexOf("portal_") === 0) return portalHandle_(d);
   if (String(a || "").indexOf("sis_") === 0) return sistemaHandle_(d);
   return { ok: false, error: "accion_desconocida" };
@@ -266,6 +268,7 @@ function pasConfigPublica() {
     terminos: PAS_TERMINOS, terminosVersion: PAS_TERMINOS_VERSION, advertenciaEeff: PAS_ADVERTENCIA_EEFF,
     beneficios: Object.assign({}, PAS_DEF.beneficios, c.beneficios || {}), lanzamiento: c.lanzamiento || "", sinContador: pasSinCont_(c),
     cumple: { activo: pasCumpleActivo_(c), mes: hoy.mes, mesTexto: PAS_MESES[hoy.mes - 1], mesAntTexto: PAS_MESES[(hoy.mes + 10) % 12], minPagos: PAS_CUMPLE_MIN_PAGOS },
+    referidos: { pct: REF_PCT }, cashback: CASH_PCT,
     premios: (c.premios || []).filter(function (p) { return p.activo !== false; }).map(function (p) { return { nombre: p.nombre, descripcion: p.descripcion, servicio: p.servicio, fase: p.fase || 0, plan: p.plan || "", tipo: p.tipo }; })
   };
 }
@@ -284,7 +287,9 @@ function pasBuscar(nitRaw) {
       celular: pasOcultar_(cli.celular, "cel"), correo: pasOcultar_(cli.correo, "mail"),
       brinda: cli.brinda, tieneCorreo: !!cli.correo, repartidor: pasEsRepartidor_(cli), aperturaNit: pasFechaISO_(cli.fechaNit), inactivo: pasInactivo_(cli),
       diaVence: 13 + Number(nit.slice(-1)),
-      antig: (function () { try { return pasAntiguedad_(nit); } catch (e) { return null; } })()
+      antig: (function () { try { return pasAntiguedad_(nit); } catch (e) { return null; } })(),
+      billetera: (function () { try { return refResumen_(nit, cli, false); } catch (e) { console.error(e); return null; } })(),
+      refPendiente: (function () { try { var r = fsGet_("referidos/" + nit); return r && r.estado === "registrado" ? { codigo: r.codigo, nombreRef: r.nombreRef } : null; } catch (e) { return null; } })()
     }
   };
 }
@@ -529,7 +534,7 @@ function pasReservar(d) {
     }
     var cot = pasCotEeff_(g, r.precio, r.fase, r.nombre);
     cot.reserva = { fase: r.fase, nombre: r.nombre || "", precio: r.precio, exp: r.exp, quedanSeg: Math.max(0, Math.round((r.exp - ahora) / 1000)) };
-    return cot;
+    return pasAplicarExtras_(cot, d);
   } finally { lock.releaseLock(); }
 }
 function pasCotEeff_(g, precio, fase, nombre) {
@@ -537,7 +542,8 @@ function pasCotEeff_(g, precio, fase, nombre) {
   return { ok: true, monto: precio, servicio: "BALANCE", detalle: "BALANCE GENERAL", tipo: "eeff", cupo: fase, balance: nombre,
            periodo: { tipo: "gestion", mes: "", anio: g, texto: "Gestión " + g }, resumen: "Estados financieros gestión " + g + " · " + nombre };
 }
-function pasCotizar(d) {
+function pasCotizar(d) { return pasAplicarExtras_(pasCotizarBase_(d), d); }
+function pasCotizarBase_(d) {
   var c = pasCfg(), hoy = pasHoy_(), s = d.servicio;
   if (s === "decl") {
     var def = pasPeriodoDeclDefault_(c, hoy);
@@ -626,7 +632,8 @@ function pasVerificar(d) {
     if (resV) {
       var tPago = pasMomentoPago_(x.fecha, x.hora);
       var dentro = tPago ? tPago <= resV.exp + 10 * 60000 : (Date.now() - resV.creado < 24 * 3600000);
-      if (dentro && Math.abs(pasNum_(x.importe) - resV.precio) < 0.01) { cot = pasCotEeff_(gV, resV.precio, resV.fase, resV.nombre); cot.reservaRespetada = true; }
+      var cotR = pasAplicarExtras_(pasCotEeff_(gV, resV.precio, resV.fase, resV.nombre), d);
+      if (dentro && Math.abs(pasNum_(x.importe) - cotR.monto) < 0.01) { cot = cotR; cot.reservaRespetada = true; }
     }
   }
   if (lect.error) motivos.push("No se pudo leer el comprobante");
@@ -800,7 +807,7 @@ function pasConfirmar(token) {
       servicio: cot.servicio, servicioNombre: cot.servicio, detalleServicio: cot.detalle,
       mesRecepcion: cot.periodo.texto, periodoTipo: cot.periodo.tipo, periodoMes: cot.periodo.mes, periodoAnio: cot.periodo.anio,
       anio: cot.periodo.anio, mesPago: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, fechaPago: hoy.iso,
-      importe: cot.monto, tipoPago: cu ? "CUMPLEAÑOS" : "QR", atencion: "PASARELA",
+      importe: cot.monto, tipoPago: cu ? "CUMPLEAÑOS" : (cot.saldo && !(cot.monto > 0) ? "BILLETERA" : "QR"), atencion: "PASARELA",
       comentarios: cu ? "Mes de cumpleaños sin cobro (" + cu.tipoDoc + " verificado por IA, nació el " + cu.fechaNac + ")" : (cli.externo ? "NO CLIENTE (Balance Independiente) · registrar en la Base de Datos · C.I. " + cli.ci + " · " : cot.sinContador ? "CLIENTE INACTIVO (Balance Independiente) · " : "") + (v.aprobado ? "Pago por pasarela (verificado por IA)" : ("Pasarela en revisión: " + v.motivos.join(", "))),
       clienteExterno: !!cli.externo, clienteCI: cli.ci || "", sinContador: !!cot.sinContador,
       compBanco: x.banco || "", compNroOperacion: nro, compDepositante: x.depositante || "", compUrl: cu ? "" : url,
@@ -819,7 +826,11 @@ function pasConfirmar(token) {
     var premios = [];
     if (v.aprobado && !cu) { try { premios = pasPremiosGanados_(cot); } catch (e) { console.error(e); } }
     if (premios.length) { rec.premios = premios; rec.premiosEntregado = false; }
+    if (cot.ref) { rec.referidoCodigo = cot.ref.codigo; rec.referidoPor = cot.ref.nombreRef; rec.referidoPrecioNormal = cot.montoNormal; rec.comentarios += " · " + REF_PCT + " % de descuento con el código " + cot.ref.codigo + " (" + cot.ref.nombreRef + ")"; }
+    if (cot.saldo) { rec.saldoUsado = cot.saldo.total; rec.saldoUsadoRef = cot.saldo.ref; rec.saldoUsadoCash = cot.saldo.cash; rec.comentarios += " · Bs " + cot.saldo.total + " pagados con la billetera CONTAX"; }
     fsCreate_("recepciones", rec);
+    var ex = { cashback: 0 };
+    if (!cli.externo) { try { ex = pasExtrasConfirmados_(v, cli, cot, nroRec); } catch (e) { console.error(e); } }
     if (cot.tipo === "eeff") {
       try { PropertiesService.getScriptProperties().deleteProperty("res_" + v.nit); } catch (e) {}
       if (v.aprobado && !cot.sinContador) { try { pasContarEeff_(cot.periodo.anio, cot.monto); } catch (e) { console.error(e); } }
@@ -833,7 +844,7 @@ function pasConfirmar(token) {
           action: "recibo", to: cli.correo, nombre: cli.nombre, nit: v.nit, idCliente: cli.codigoId, celular: cli.celular, correo: cli.correo,
           tipoContribuyente: cli.tipo, rubro: cli.brinda, actividad: cli.actP, aperturaNit: cli.fechaNit, matricula: cli.estMat,
           nroRecepcion: nroRec, nroRecibo: nroCom, dia: rec.dia, fecha: hoy.fecha, hora: hoy.hora, mes: cot.periodo.texto,
-          tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: cu ? "SIN COBRO (MES DE CUMPLEAÑOS)" : "QR", atencion: "PASARELA", comentarios: "",
+          tipoServicio: cot.servicio, detalleServicio: cot.detalle, importe: cot.monto, formaPago: cu ? "SIN COBRO (MES DE CUMPLEAÑOS)" : (cot.saldo ? (cot.monto > 0 ? "QR + BILLETERA CONTAX (Bs " + cot.saldo.total + ")" : "BILLETERA CONTAX") : "QR"), atencion: "PASARELA", comentarios: "",
           terminos: (cot.sinContador ? PAS_TERMINOS.sinContador.concat(PAS_TERMINOS.eeff.filter(function (t) { return !PAS_TER_SOLO_CUPOS.test(t); })) : (PAS_TERMINOS[cot.tipo] || [])).concat(cot.tipo === "eeff" ? PAS_ADVERTENCIA_EEFF : []),
           premios: premios, terminosTitulo: "Términos y condiciones aceptados (" + cot.servicio + ")",
           empresa: (pasCfgApp().company || "CONTAX - Contabilidad e Impuestos")
@@ -841,11 +852,270 @@ function pasConfirmar(token) {
         enviado = true;
       } catch (e) {}
     }
-    var out = { ok: true, cumple: !!cu, premios: premios, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail") };
+    var out = { ok: true, cumple: !!cu, premios: premios, estado: estadoPas, nroRecepcion: nroRec, resumen: cot.resumen, monto: cot.monto, correoEnviado: enviado, correo: pasOcultar_(cli.correo, "mail"),
+                codigo: cli.externo ? "" : refCodigo_(cli), cashback: ex.cashback || 0, conReferido: !!cot.ref, refPorNombre: cot.ref ? cot.ref.nombreRef : "", saldoUsado: cot.saldo ? cot.saldo.total : 0 };
     pasCachePut_("hecho_" + token, out, 1800);
     return out;
   } finally { lock.releaseLock(); }
 }
+// ---------------- Referidos, billetera y cashback ----------------
+// Código de cada cliente: CONTAX-<Código de ID>. Un cliente NUEVO (sin pagos de declaración ni facturación) que paga su
+// declaración con un código paga la MITAD. Quien lo refirió recibe en su billetera el precio completo del plan que eligió el
+// nuevo, recién cuando el nuevo ya tiene 2 meses pagados. El saldo de referidos sirve para cualquier servicio o se retira
+// en efectivo (lo aprueba el equipo en el Panel).
+// Cashback: 5 % (Plan Estándar) o 10 % (Plan Premium) de cada declaración pagada y verificada en la pasarela. Solo sirve
+// para balances; no vence, pero no se puede usar mientras el cliente esté de baja y se pierde si sigue de baja 6 meses.
+var REF_PREFIJO = "CONTAX-", REF_PCT = 50, CASH_PCT = { estandar: 5, premium: 10 }, CASH_BAJA_DIAS = 183;
+function refR2_(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function refCodigo_(cli) { var n = cli ? String(cli.codigoId || "").replace(/\D/g, "") : ""; return n ? REF_PREFIJO + Number(n) : ""; }
+function refNorm_(t) { var n = String(t || "").toUpperCase().replace(/\s/g, "").replace(/^CONTAX-?/, ""); return /^\d{1,7}$/.test(n) ? String(Number(n)) : ""; }
+function pasClientePorCodigo_(id) {
+  if (!id) return null;
+  var k = "cod_" + id, nc = pasCache_(k);
+  if (nc && nc.nit) { var cc = pasClienteCache_(nc.nit); if (cc) { cc.nitBuscado = nc.nit; return cc; } }
+  var campos = pasCamposBD_(), hN = campos.nit || "2. NIT", docs = [];
+  [campos.codigoId, "1. Codigo de ID"].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).some(function (h) {
+    docs = fsQuery_("bdclientes", [[h, "EQUAL", id]], 2);
+    if (!docs.length) docs = fsQuery_("bdclientes", [[h, "EQUAL", Number(id)]], 2);
+    return docs.length > 0;
+  });
+  if (!docs.length) return null;
+  var nit = String(docs[0].data[hN] == null ? "" : docs[0].data[hN]).replace(/\D/g, "");
+  if (!nit) return null;
+  pasCachePut_(k, { nit: nit }, 3600);
+  var cli = pasClienteCache_(nit); if (cli) cli.nitBuscado = nit;
+  return cli;
+}
+// ¿Este NIT puede pagar con código de referido? Devuelve { ref } o { error }. Sin código escrito usa el que dejó al registrarse.
+function refAplicable_(nit, codigoTxt) {
+  var doc = fsGet_("referidos/" + nit);
+  if (doc && (doc.estado === "primer_pago" || doc.estado === "liberado")) return { error: codigoTxt ? "Ya usaste un código de referido en tu primer pago." : "" };
+  var id = refNorm_(codigoTxt) || (doc && doc.estado === "registrado" ? refNorm_(doc.codigo) : "");
+  if (!id) return { error: codigoTxt ? "Ese código no es válido. Debe ser como CONTAX-245." : "" };
+  var ant = pasAntiguedad_(nit);
+  if (ant.pagos > 0) return { error: "El código de referido es solo para tu primer pago como cliente nuevo." };
+  var r = pasClientePorCodigo_(id);
+  if (!r || !pasPermitido_(r)) return { error: "No encontramos ese código. Revísalo con quien te lo pasó." };
+  if (r.nitBuscado === nit) return { error: "No puedes usar tu propio código." };
+  return { ref: { codigo: REF_PREFIJO + id, nitRef: r.nitBuscado, nombreRef: r.nombre } };
+}
+// Billetera del cliente (billetera/{nit}). Aplica la regla del cashback para clientes de baja.
+function pasBilletera_(nit, cli) {
+  var b = fsGet_("billetera/" + nit) || {};
+  var o = { saldoRef: refR2_(b.saldoRef), saldoCash: refR2_(b.saldoCash), retenido: refR2_(b.retenido), movs: b.movs || [], inactivoDesde: b.inactivoDesde || "" };
+  cli = cli || pasClienteCache_(nit);
+  var baja = cli ? pasInactivo_(cli) || pasGrupoEstado_(cli.estado) === "lista_negra" || pasGrupoEstado_(cli.estado) === "nit_baja" : false;
+  if (baja && o.saldoCash > 0) {
+    if (!o.inactivoDesde) { o.inactivoDesde = new Date().toISOString(); try { fsUpsert_("billetera/" + nit, { inactivoDesde: o.inactivoDesde, _upd: Date.now() }); } catch (e) {} }
+    else if (Date.now() - Date.parse(o.inactivoDesde) > CASH_BAJA_DIAS * 86400000) {
+      try { billeteraMover_(nit, cli && cli.nombre, { cash: -o.saldoCash }, "perdido", "Cashback perdido: más de 6 meses de baja"); } catch (e) {}
+      o.saldoCash = 0;
+    }
+  } else if (!baja && o.inactivoDesde) { o.inactivoDesde = ""; try { fsUpsert_("billetera/" + nit, { inactivoDesde: "", _upd: Date.now() }); } catch (e) {} }
+  o.cashUsable = baja ? 0 : o.saldoCash;
+  return o;
+}
+// Suma o resta saldos y anota el movimiento. Quien la llama debe tener el candado (LockService) si hace falta.
+function billeteraMover_(nit, nombre, cambios, tipo, detalle) {
+  var b = fsGet_("billetera/" + nit) || {}, mov = { f: new Date().toISOString(), t: tipo, d: String(detalle || "").slice(0, 200) };
+  var o = { saldoRef: refR2_(b.saldoRef), saldoCash: refR2_(b.saldoCash), retenido: refR2_(b.retenido) };
+  if (cambios.ref) { o.saldoRef = refR2_(o.saldoRef + cambios.ref); mov.ref = refR2_(cambios.ref); }
+  if (cambios.cash) { o.saldoCash = refR2_(o.saldoCash + cambios.cash); mov.cash = refR2_(cambios.cash); }
+  if (cambios.ret) o.retenido = refR2_(o.retenido + cambios.ret);
+  if (o.saldoRef < 0 || o.saldoCash < 0 || o.retenido < 0) throw new Error("Saldo insuficiente.");
+  var movs = [mov].concat(b.movs || []).slice(0, 200);
+  fsUpsert_("billetera/" + nit, { nit: nit, nombre: nombre || b.nombre || "", saldoRef: o.saldoRef, saldoCash: o.saldoCash, retenido: o.retenido, movs: movs, _upd: Date.now() });
+  return o;
+}
+// Aplica el código de referido y el saldo de la billetera a una cotización (decl, balances y facturación)
+function pasAplicarExtras_(cot, d) {
+  if (!cot || !cot.ok) return cot;
+  var nit = String(d.nit || "").replace(/\D/g, "");
+  if (!nit) return cot;
+  if (cot.tipo === "declaracion") {
+    var rf = refAplicable_(nit, d.ref);
+    if (rf.ref) {
+      cot.montoNormal = cot.monto; cot.monto = Math.round(cot.monto * (100 - REF_PCT) / 100);
+      cot.ref = { codigo: rf.ref.codigo, nitRef: rf.ref.nitRef, nombreRef: rf.ref.nombreRef, premio: cot.montoNormal, plan: cot.plan };
+      cot.resumen += " · " + REF_PCT + " % con el código " + rf.ref.codigo;
+    } else if (rf.error) cot.refError = rf.error;
+  }
+  if (d.usarSaldo === true && cot.monto > 0) {
+    var b = pasBilletera_(nit), usaCash = cot.tipo === "eeff" && !cot.sinContador;
+    var uRef = Math.min(b.saldoRef, cot.monto), uCash = usaCash ? Math.min(b.cashUsable, cot.monto - uRef) : 0;
+    var total = Math.floor(uRef + uCash + 0.0001);   // el saldo se usa en bolivianos enteros (así existe el QR del resto)
+    if (total < uRef) uRef = total;
+    uCash = refR2_(total - uRef);
+    if (total > 0) {
+      cot.saldo = { ref: refR2_(uRef), cash: uCash, total: total };
+      cot.montoAntesSaldo = cot.monto; cot.monto = refR2_(cot.monto - total);
+      cot.resumen += " · Bs " + total + " de tu billetera";
+    }
+  }
+  return cot;
+}
+// Pago cubierto 100 % con la billetera: se recepciona sin comprobante
+function pasSaldoPagar(d) {
+  var nit = String(d.nit || "").replace(/\D/g, ""), cli = pasClienteCache_(nit);
+  if (!cli || cli.externo || !pasPermitido_(cli)) return { ok: false, error: "No podemos procesar tu pago en línea. Escríbenos por WhatsApp." };
+  if (d.aceptaTerminos !== true) return { ok: false, error: "Debes leer y aceptar los términos y condiciones del servicio." };
+  d.usarSaldo = true;
+  var cot = d.servicio === "eeff" ? pasReservar(d) : pasCotizar(d);
+  if (!cot.ok) return cot;
+  if (!cot.saldo || cot.monto > 0) return { ok: false, error: "Tu saldo no alcanza para todo el pago. Paga el resto con el QR." };
+  var token = Utilities.getUuid();
+  pasCachePut_("v_" + token, { nit: nit, cot: cot, x: {}, motivos: [], aprobado: true, img: "" }, 1800);
+  return pasConfirmar(token);
+}
+// Después de guardar la recepción en pasConfirmar: referidos, saldo usado y cashback
+function pasExtrasConfirmados_(v, cli, cot, nroRec) {
+  var nit = v.nit, out = { cashback: 0 };
+  if (cot.saldo && cot.saldo.total > 0) {
+    try { billeteraMover_(nit, cli.nombre, { ref: -cot.saldo.ref, cash: -cot.saldo.cash }, "uso", "Pago de " + cot.resumen.split(" · ")[0] + " (recepción N° " + nroRec + ")"); }
+    catch (e) { console.error(e); try { fsCreate_("bdlog", { fechaISO: new Date().toISOString(), accion: "billetera_error", nombre: cli.nombre, detalle: "No se pudo descontar Bs " + cot.saldo.total + " de la billetera (recepción " + nroRec + "): " + e.message, porUid: "pasarela", porNombre: "Pasarela de pagos" }); } catch (e2) {} }
+  }
+  try { pasRefConfirmado_(nit, cli, cot, nroRec); } catch (e) { console.error(e); }
+  if (v.aprobado && cot.tipo === "declaracion" && CASH_PCT[cot.plan] && cot.monto > 0) {
+    var cb = refR2_(cot.monto * CASH_PCT[cot.plan] / 100);
+    if (cb > 0) { try { billeteraMover_(nit, cli.nombre, { cash: cb }, "cash", "Cashback " + CASH_PCT[cot.plan] + " % · " + cot.resumen.split(" · ")[0]); out.cashback = cb; } catch (e) { console.error(e); } }
+  }
+  return out;
+}
+function pasRefConfirmado_(nit, cli, cot, nroRec) {
+  if (cot.ref) {
+    fsUpsert_("referidos/" + nit, { nitNuevo: nit, nombreNuevo: cli.nombre, codigo: cot.ref.codigo, nitRef: cot.ref.nitRef, nombreRef: cot.ref.nombreRef,
+      estado: "primer_pago", plan: cot.ref.plan || "", premio: cot.ref.premio, pagoNuevo: cot.monto, recPrimer: nroRec, fechaPrimerPago: new Date().toISOString(), _upd: Date.now() });
+    var rC = pasClienteCache_(cot.ref.nitRef);
+    refAvisar_(rC, "¡Alguien usó tu código " + cot.ref.codigo + "!",
+      "Hola " + (rC && rC.nombre || "") + ":\n\n" + cli.nombre + " acaba de pagar su primera declaración con tu código " + cot.ref.codigo + ".\n\n" +
+      "Cuando pague su segundo mes recibirás Bs " + pasFmt_(cot.ref.premio) + " en tu billetera CONTAX. Puedes usarlos para pagar tus servicios o pedir el retiro en efectivo.\n\n¡Gracias por recomendarnos!");
+  } else if (cot.tipo === "declaracion") refRevisar_(nit);
+}
+// Si el nuevo ya tiene 2 meses pagados, el premio pasa a la billetera de quien lo refirió
+function refRevisar_(nitNuevo) {
+  var doc = fsGet_("referidos/" + nitNuevo);   // se relee siempre (con el candado) para no pagar dos veces
+  if (!doc || doc.estado !== "primer_pago") return false;
+  if (pasAntiguedad_(nitNuevo).pagos < 2) return false;
+  var rC = pasClienteCache_(doc.nitRef);
+  billeteraMover_(doc.nitRef, rC && rC.nombre || doc.nombreRef, { ref: Number(doc.premio) || 0 }, "ref", "Premio por recomendar a " + doc.nombreNuevo);
+  fsUpsert_("referidos/" + nitNuevo, { estado: "liberado", fechaLiberado: new Date().toISOString(), _upd: Date.now() });
+  refAvisar_(rC, "¡Ganaste Bs " + pasFmt_(doc.premio) + " en tu billetera CONTAX!",
+    "Hola " + (rC && rC.nombre || "") + ":\n\n" + doc.nombreNuevo + ", a quien recomendaste, ya pagó su segundo mes con nosotros.\n\n" +
+    "Te depositamos Bs " + pasFmt_(doc.premio) + " en tu billetera CONTAX. Úsalos en la pasarela para pagar tus servicios o pide el retiro en efectivo desde tu Portal de Clientes.\n\n¡Gracias por recomendarnos!");
+  return true;
+}
+function refPendientesDe_(nitRef) {
+  var l = fsQuery_("referidos", [["nitRef", "EQUAL", nitRef]], 100).map(function (x) { return x.data; });
+  if (l.some(function (r) { return r.estado === "primer_pago"; })) refConCandado_(function () {
+    l.forEach(function (r) { if (r.estado === "primer_pago") { try { if (refRevisar_(r.nitNuevo)) r.estado = "liberado"; } catch (e) { console.error(e); } } });
+  });
+  return l;
+}
+// Los movimientos de saldo fuera de pasConfirmar se hacen con el candado (si está ocupado, se revisa en la próxima visita)
+function refConCandado_(fn) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(8000)) return;
+  try { fn(); } finally { lock.releaseLock(); }
+}
+function refAvisar_(cli, asunto, texto) {
+  if (!cli || !cli.correo) return;
+  try {
+    var inl = {}, bC = logoBlob_("contax-logo.png", "contax.png"), bN = logoBlob_("nummeros-firma.png", "nummeros.png");
+    if (bC) inl.logoContax = bC; if (bN) inl.logoNummeros = bN;
+    GmailApp.sendEmail(cli.correo, asunto, texto, { name: EMPRESA.nombre, replyTo: EMPRESA.correo, htmlBody: correoAvisoHTML_({ asunto: asunto, texto: texto }, !!bC, !!bN), inlineImages: inl });
+  } catch (e) { console.error(e); }
+}
+// Lo que ve el cliente de su billetera (pasarela y portal)
+function refResumen_(nit, cli, conDetalle) {
+  var refs = conDetalle ? refPendientesDe_(nit) : null;   // primero: si algún referido ya cumplió, su premio entra a la billetera
+  var b = pasBilletera_(nit, cli), o = { codigo: refCodigo_(cli), saldoRef: b.saldoRef, saldoCash: b.saldoCash, cashUsable: b.cashUsable, retenido: b.retenido,
+    pctRef: REF_PCT, pctCash: CASH_PCT, cashCongelado: b.saldoCash > 0 && b.cashUsable === 0 };
+  if (conDetalle) {
+    o.movs = (b.movs || []).slice(0, 40);
+    o.referidos = refs.map(function (r) { return { nombre: r.nombreNuevo, estado: r.estado, premio: r.premio, fecha: String(r.fechaPrimerPago || r.fechaRegistro || "").slice(0, 10) }; });
+    o.retiros = fsQuery_("retiros", [["nit", "EQUAL", nit]], 30).map(function (x) { return { monto: x.data.monto, estado: x.data.estado, fecha: String(x.data.fechaISO || "").slice(0, 10) }; });
+  }
+  return o;
+}
+// "Quiero ser cliente": deja sus datos (y el código de quien lo refirió) para que el equipo lo registre
+function pasProspecto(d) {
+  var nit = String(d.nit || "").replace(/\D/g, ""), nombre = String(d.nombre || "").trim().replace(/\s+/g, " ").toUpperCase().slice(0, 120), cel = String(d.celular || "").replace(/\D/g, "").slice(0, 12);
+  if (nit.length < 5) return { ok: false, error: "Escribe un NIT válido." };
+  if (nombre.split(" ").length < 2) return { ok: false, error: "Escribe tu nombre completo." };
+  if (cel.length < 7) return { ok: false, error: "Escribe tu número de celular." };
+  if (pasClienteCache_(nit)) return { ok: false, error: "Ese NIT ya es cliente de CONTAX. Vuelve atrás e ingresa con tu NIT." };
+  var id = refNorm_(d.ref), r = id ? pasClientePorCodigo_(id) : null;
+  if (d.ref && !r) return { ok: false, error: "No encontramos ese código de referido. Revísalo o déjalo vacío." };
+  fsUpsert_("prospectos/" + nit, { nit: nit, nombre: nombre, celular: cel, codigo: r ? REF_PREFIJO + id : "", nombreRef: r ? r.nombre : "", estado: "nuevo", fechaISO: new Date().toISOString(), _upd: Date.now() });
+  if (r) fsUpsert_("referidos/" + nit, { nitNuevo: nit, nombreNuevo: nombre, codigo: REF_PREFIJO + id, nitRef: r.nitBuscado, nombreRef: r.nombre, estado: "registrado", fechaRegistro: new Date().toISOString(), _upd: Date.now() });
+  return { ok: true, conCodigo: !!r, nombreRef: r ? r.nombre : "" };
+}
+// Portal: pedir el retiro en efectivo del saldo de referidos (el equipo lo paga y lo marca en el Panel)
+function portalRetiro_(nit, d) {
+  var monto = refR2_(d.monto), cli = pasClienteCache_(nit);
+  if (!(monto > 0)) return { ok: false, error: "Escribe cuánto quieres retirar." };
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var b = pasBilletera_(nit, cli);
+    if (monto > b.saldoRef) return { ok: false, error: "Tu saldo de referidos es Bs " + pasFmt_(b.saldoRef) + "." };
+    billeteraMover_(nit, cli && cli.nombre, { ref: -monto, ret: monto }, "retiro", "Retiro en efectivo solicitado (en proceso)");
+    fsCreate_("retiros", { nit: nit, nombre: cli ? cli.nombre : "", celular: cli ? cli.celular : "", monto: monto, cuenta: String(d.cuenta || "").slice(0, 200), estado: "pendiente", fechaISO: new Date().toISOString(), _upd: Date.now() });
+  } finally { lock.releaseLock(); }
+  return { ok: true, billetera: refResumen_(nit, cli, true) };
+}
+// ---- Panel (Pasarela → Premios): referidos, billeteras, retiros y prospectos ----
+function fsListar_(coll, max) {
+  var out = [], tk = "";
+  do {
+    var r = fsReq_(fsBase_() + "/" + coll + "?pageSize=300" + (tk ? "&pageToken=" + encodeURIComponent(tk) : "")) || {};
+    (r.documents || []).forEach(function (x) { var o = fsDec_(x.fields || {}); o._id = x.name.split("/").pop(); out.push(o); });
+    tk = r.nextPageToken || "";
+  } while (tk && out.length < (max || 3000));
+  return out;
+}
+function admReferidos_() {
+  var refs = fsListar_("referidos"), rev = 0;
+  refConCandado_(function () {
+    refs.forEach(function (r) { if (r.estado === "primer_pago" && rev < 25) { rev++; try { if (refRevisar_(r.nitNuevo)) r.estado = "liberado"; } catch (e) { console.error(e); } } });
+  });
+  var bill = fsListar_("billetera").map(function (b) { return { nit: b._id, nombre: b.nombre, saldoRef: refR2_(b.saldoRef), saldoCash: refR2_(b.saldoCash), retenido: refR2_(b.retenido), inactivoDesde: b.inactivoDesde || "", movs: (b.movs || []).slice(0, 15) }; });
+  return { ok: true, referidos: refs, billeteras: bill, retiros: fsListar_("retiros"), prospectos: fsListar_("prospectos"), pctRef: REF_PCT, pctCash: CASH_PCT };
+}
+function admRetiro_(yo, d) {
+  var r = fsGet_("retiros/" + d.id);
+  if (!r || r.estado !== "pendiente") return { ok: false, error: "Ese retiro ya fue atendido." };
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    if (d.accion === "pagado") billeteraMover_(r.nit, r.nombre, { ret: -r.monto }, "retiro", "Retiro en efectivo pagado por " + yo.nombre);
+    else billeteraMover_(r.nit, r.nombre, { ret: -r.monto, ref: r.monto }, "ajuste", "Retiro rechazado: " + String(d.motivo || "sin motivo") + " (el saldo vuelve a tu billetera)");
+    fsUpsert_("retiros/" + d.id, { estado: d.accion === "pagado" ? "pagado" : "rechazado", atendidoPor: yo.nombre, atendidoISO: new Date().toISOString(), motivo: String(d.motivo || ""), _upd: Date.now() });
+  } finally { lock.releaseLock(); }
+  if (d.accion === "pagado") refAvisar_(pasClienteCache_(r.nit), "Tu retiro de Bs " + pasFmt_(r.monto) + " fue pagado", "Hola " + r.nombre + ":\n\nYa te pagamos el retiro de Bs " + pasFmt_(r.monto) + " de tu billetera CONTAX.\n\n¡Gracias por recomendarnos!");
+  return { ok: true };
+}
+function admBilleteraAjuste_(yo, d) {
+  var nit = String(d.nit || "").replace(/\D/g, ""), m = refR2_(d.monto);
+  if (!nit || !m) return { ok: false, error: "Falta el NIT o el monto." };
+  var cli = pasClienteCache_(nit), lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try { billeteraMover_(nit, cli && cli.nombre, d.tipo === "cash" ? { cash: m } : { ref: m }, "ajuste", "Ajuste de " + yo.nombre + ": " + String(d.motivo || "").slice(0, 120)); }
+  finally { lock.releaseLock(); }
+  return { ok: true };
+}
+function admRefAsignar_(yo, d) {
+  var nit = String(d.nit || "").replace(/\D/g, ""), id = refNorm_(d.codigo);
+  if (!nit) return { ok: false, error: "Falta el NIT del cliente nuevo." };
+  if (d.anular === true) { fsUpsert_("referidos/" + nit, { estado: "anulado", anuladoPor: yo.nombre, _upd: Date.now() }); return { ok: true }; }
+  var r = id ? pasClientePorCodigo_(id) : null;
+  if (!r) return { ok: false, error: "No encontramos ese código." };
+  if (r.nitBuscado === nit) return { ok: false, error: "No puede referirse a sí mismo." };
+  var actual = fsGet_("referidos/" + nit);
+  if (actual && (actual.estado === "primer_pago" || actual.estado === "liberado")) return { ok: false, error: "Ese cliente ya pagó con un código." };
+  var cli = pasClienteCache_(nit);
+  fsUpsert_("referidos/" + nit, { nitNuevo: nit, nombreNuevo: cli ? cli.nombre : String(d.nombre || ""), codigo: REF_PREFIJO + id, nitRef: r.nitBuscado, nombreRef: r.nombre, estado: "registrado", asignadoPor: yo.nombre, fechaRegistro: new Date().toISOString(), _upd: Date.now() });
+  if (d.prospecto) fsUpsert_("prospectos/" + nit, { estado: "registrado", _upd: Date.now() });
+  return { ok: true };
+}
+
 // ---------------- Mes de cumpleaños sin cobro (Plan Estándar y Premium) ----------------
 // El beneficio está activo mientras el Plan Estándar lo anuncie en sus beneficios ("Mes de tu cumpleaños sin cobro").
 function pasCumpleActivo_(c) {
@@ -1105,7 +1375,11 @@ function adminHandle(d) {
     }
     if (d.action === "admin_ctrl_sesion") return ctrlSesion_(d.idToken, d.reponer === true);   // CONTROL: entrar con el usuario del panel
     if (d.action === "admin_ctrl_hoja") return ctrlHoja_(d.idToken, d.hoja);                   // CONTROL: leer BDYango / pagos de Google Sheets
-    var yo = admVerificar_(d.idToken);
+    if (d.action === "admin_referidos") { admVerificar_(d.idToken, true); return admReferidos_(); }
+    if (d.action === "admin_ref_asignar") return admRefAsignar_(admVerificar_(d.idToken, true), d);
+    var yo = admVerificar_(d.idToken);   // de aquí para abajo: solo Admin
+    if (d.action === "admin_retiro") return admRetiro_(yo, d);
+    if (d.action === "admin_billetera_ajuste") return admBilleteraAjuste_(yo, d);
     if (d.action === "admin_set_password") return admSetPassword_(yo, d.uid, d.password);
     if (d.action === "admin_ctrl_sync") return ctrlSync_(d.uid);
     return { ok: false, error: "accion_desconocida" };
@@ -1222,6 +1496,7 @@ function portalHandle_(d) {
   if (a === "portal_djarchivo") return portalDjArchivo_(nit, d.id);
   if (a === "portal_yango") return portalYango_(nit);
   if (a === "portal_chat") return portalChat_(nit, d);
+  if (a === "portal_retiro") return ses.staff ? { ok: false, error: "El retiro lo pide el cliente desde su propio portal." } : portalRetiro_(nit, d);
   if (a === "portal_salir") { pasCacheDel_("ps_" + d.token); return { ok: true }; }
   return { ok: false, error: "accion_desconocida" };
 }
@@ -1339,6 +1614,7 @@ function portalDatos_(nit) {
     cliente: { suscriptor: cli.suscriptor || "", nombre: cli.nombre, nit: nit, id: cli.codigoId, celular: cli.celular, correo: cli.correo, tipo: cli.tipo, actividad: cli.actP, brinda: cli.brinda,
                aperturaNit: pasFechaISO_(cli.fechaNit), matricula: cli.estMat, estado: cli.estado, grupo: pasGrupoEstado_(cli.estado), repartidor: pasEsRepartidor_(cli),
                diaVence: 13 + Number(nit.slice(-1)), antig: pasAntiguedad_(nit, recs) },
+    billetera: (function () { try { return refResumen_(nit, cli, true); } catch (e) { console.error(e); return null; } })(),
     declaraciones: decl, tramites: tram, eeff: eeff, facturacion: fact, otros: otros,
     suscripcion: { activa: susc, mes: PAS_MESES[hoy.mes - 1] + " " + hoy.anio, estadoBD: cli.estado },
     config: { precios: c.precios, lanzamiento: c.lanzamiento || "", eeffGestion: c.eeffGestion || PAS_DEF.eeffGestion, diaDesde: c.diaDesde || 25 },

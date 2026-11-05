@@ -397,6 +397,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function bs(n) { return "Bs " + (Number(n) || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function wa(txt) { return WA ? "https://wa.me/" + WA + "?text=" + encodeURIComponent(txt || "Hola CONTAX, necesito ayuda con mi pago.") : "#"; }
   function api(datos) {
+    // Código de referido y saldo de la billetera van en todo lo que calcula el precio
+    if (/^pas_(cotizar|reservar|verificar|saldo)$/.test(datos.action)) { if (S.ref) datos.ref = S.ref; if (S.usarSaldo) datos.usarSaldo = true; }
     if (!URL_) return Promise.resolve({ ok: false, error: "La pasarela aún no está activada. Escríbenos por WhatsApp." });
     var intentos = 0;
     function uno() {
@@ -468,7 +470,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   }
   // Paso al que se puede volver con los datos que hay
   function pasoValido(p) {
-    if (p === "nit" || p === "cuenta") return true;
+    if (p === "nit" || p === "cuenta" || p === "alta" || p === "altaOk") return true;
     if (p === "externo" || p === "sc1") return !!S.cfg && !!(S.cfg.sinContador && S.cfg.sinContador.vigente);
     if (!S.cli || !S.cfg) return false;
     if (p === "datos" || p === "servicio") return true;
@@ -489,7 +491,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     ir(p, "", true);
   });
   try { history.replaceState({ paso: "nit" }, ""); } catch (e) {}
-  function reiniciarServicio() { S.eeffFase = 0; S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; S.cumpleMsg = ""; }
+  function reiniciarServicio() { S.eeffFase = 0; S.serv = ""; S.opcion = ""; S.plan = ""; S.tipoFact = ""; S.cot = null; S.img = ""; S.ver = null; S.fin = null; S.acepta = false; S.aceptaUtil = false; S.resFin = 0; S.cumpleMsg = ""; S.usarSaldo = false; }
   var relojT = null;
   function relojReserva() {
     clearInterval(relojT);
@@ -549,6 +551,55 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<label class="subir" for="fCumple">' + ICON.subir + "Subir foto de mi C.I. o licencia</label><input type=\"file\" id=\"fCumple\" accept=\"image/*\" class=\"oculto\">" +
       '<p class="chico suave">La usamos solo para verificar tu fecha de nacimiento. Debe ser el documento del titular del NIT.</p></div>';
   }
+  // Código de referido (solo clientes nuevos, declaración) y saldo de la billetera, en la pantalla de pago
+  function extrasPagoHtml(q) {
+    var h = "", cli = S.cli || {}, b = cli.billetera || null, pct = (S.cfg && S.cfg.referidos && S.cfg.referidos.pct) || 50;
+    if (q.ref) h += '<div class="aviso ok"><b>' + pct + '% de descuento</b> con el código <b>' + esc(q.ref.codigo) + "</b> de " + esc(q.ref.nombreRef || "") + '. <button class="link" id="bRefQuitar" style="display:inline;width:auto;padding:0">Quitar</button></div>';
+    else if (S.serv === "decl" && !cli.externo && cli.antig && cli.antig.pagos === 0) {
+      h += '<div class="card pila" style="gap:8px"><b>¿Te recomendó alguien?</b><p class="c13 suave" style="line-height:19px">Si es tu primera declaración con CONTAX, con un código de referido pagas la <b>mitad</b>.</p>' +
+        (S.ref && q.refError ? '<div class="aviso warn" role="alert">' + esc(q.refError) + "</div>" : "") +
+        '<div style="display:flex;gap:8px"><input id="inRef" value="' + esc(S.ref || "") + '" placeholder="CONTAX-245" autocapitalize="characters" style="flex:1;min-width:0"><button class="btn2" id="bRefAplicar" style="width:auto;padding:0 16px">Aplicar</button></div></div>';
+    }
+    if (b && !cli.externo) {
+      var usable = (Number(b.saldoRef) || 0) + (S.serv === "eeff" ? (Number(b.cashUsable) || 0) : 0);
+      if (usable >= 1 || S.usarSaldo) h += '<label class="card" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="chkSaldo"' + (S.usarSaldo ? " checked" : "") + ' style="margin-top:3px">' +
+        '<span><b>Usar mi billetera CONTAX</b><br><span class="c13 suave">Tienes ' + bs(usable) + " disponibles" + (S.serv !== "eeff" && b.saldoCash > 0 ? " (tu cashback de " + bs(b.saldoCash) + " es para balances)" : "") + ".</span></span></label>";
+    }
+    return h;
+  }
+  function recotizarPago() {
+    cargando("Calculando…");
+    var d = { action: S.serv === "eeff" ? "pas_reservar" : "pas_cotizar", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "" };
+    if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
+    api(d).then(function (r) { if (!r.ok) { ir("pago", r.error); return; } S.cot = r; if (r.reserva) S.resFin = Date.now() + r.reserva.quedanSeg * 1000; ir("pago"); });
+  }
+  function pagarConSaldo() {
+    main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("envio") + "</div>"; window.scrollTo(0, 0);
+    var d = { action: "pas_saldo", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, fase: S.serv === "eeff" ? (S.eeffFase || "") : "", aceptaTerminos: S.acepta === true, aceptaUtilidad: S.aceptaUtil === true };
+    if (S.serv === "decl") { d.anio = S.per.anio; d.mes = S.per.mes; }
+    Promise.all([api(d), espera(2500)]).then(function (x) { var r = x[0]; if (!r.ok) { ir("pago", r.error); return; } S.fin = r; ir("fin"); });
+  }
+  // Pantalla final: imágenes para compartir en el estado de WhatsApp (premio ganado + código de referido)
+  function compartirHtml(f) {
+    if (!f || !f.codigo || !window.PremioImg) return "";
+    var bts = [];
+    if (f.cumple) bts.push(["cumple", "", "Compartir mi regalo de cumpleaños"]);
+    (f.premios || []).forEach(function (p, i) { bts.push(["premio", i, "Compartir mi premio: " + p.nombre]); });
+    if (f.cashback > 0) bts.push(["cashback", "", "Compartir mi cashback"]);
+    bts.push(["referido", "", "Compartir mi código"]);
+    return '<div class="card pila" style="gap:8px;text-align:left"><b>Recomienda CONTAX y gana</b><p class="c13 suave" style="line-height:19px">Tu código es <b style="color:var(--txt)">' + esc(f.codigo) + "</b>. Quien declare por primera vez con tu código paga la mitad, y tú recibes en tu billetera lo que cuesta su plan cuando pague su segundo mes." +
+      (f.cashback > 0 ? "<br>Además ganaste <b>" + bs(f.cashback) + "</b> de cashback para tus balances." : "") + "</p>" +
+      bts.map(function (x) { return '<button class="btn2" data-img="' + x[0] + '" data-i="' + x[1] + '">' + esc(x[2]) + "</button>"; }).join("") + "</div>";
+  }
+  function compartirImagen(b) {
+    var f = S.fin || {}, t = b.dataset.img, o = { tipo: t, codigo: f.codigo, whatsapp: WA ? String(WA).replace(/^591/, "").replace(/(\d{3})(\d+)/, "$1-$2") : "" };
+    if (t === "premio") o.nombre = ((f.premios || [])[Number(b.dataset.i)] || {}).nombre;
+    if (t === "cashback") o.pct = S.cfg && S.cfg.cashback && S.cfg.cashback[S.plan] || 5;
+    var txt0 = b.textContent; b.disabled = true; b.textContent = "Preparando imagen…";
+    window.PremioImg.crear(o).then(function (blob) { return window.PremioImg.compartir(blob, window.PremioImg.textoReferido(f.codigo), "CONTAX-" + t + ".png"); })
+      .catch(function (e) { alert(e.message || "No se pudo crear la imagen."); })
+      .then(function () { b.disabled = false; b.textContent = txt0; });
+  }
   function pedirCumple(img) {
     main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("cumple") + "</div>"; window.scrollTo(0, 0);
     var d = { action: "pas_cumple", nit: S.nit, servicio: S.serv, plan: S.plan, tipoFact: S.tipoFact, imagen: img, aceptaTerminos: S.acepta === true };
@@ -589,6 +640,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
         '<p class="suave solo-movil" style="margin-top:10px;font-size:15px;line-height:22px">Escribe tu NIT, elige el servicio, paga con QR y sube tu comprobante. Tu trámite queda recepcionado al instante.</p></div>' +
         '<form class="card pila" id="fNit" novalidate><div><label class="l" for="nit">Tu NIT</label><input class="nit" id="nit" inputmode="numeric" autocomplete="off" value="' + esc(S.nit) + '" placeholder="Ej. 5412313012"></div>' +
         '<p class="chico suave">Con tu NIT completamos tus datos. No necesitas registrarte.</p>' + errHtml() + '<button class="btn" type="submit">Continuar</button></form>' +
+        (S.noCli ? '<div class="card pila" style="gap:8px"><b>¿Todavía no eres cliente de CONTAX?</b><p class="c13 suave" style="line-height:19px">Déjanos tus datos y te ayudamos a empezar.' + (S.ref ? " Con el código <b>" + esc(S.ref) + "</b> tu primera declaración cuesta la mitad." : "") + '</p><button class="btn2" id="bAlta">Quiero ser cliente</button></div>' : "") +
         (antesLanz() ? '<p class="chico suave" style="text-align:center;margin-top:-4px">Declaraciones y facturación ya puedes pagarlas. Los balances puedes revisarlos desde ahora y pagarlos desde la apertura.</p>' : "") + scInvitaHtml() + "</div>";
     } else if (S.paso === "sc1") {
       var SC1 = S.cfg.sinContador || {};
@@ -745,13 +797,16 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
           ? '<div class="aviso warn" id="resBox"><b>Tu reserva venció.</b><br>Si ya pagaste, sube tu comprobante igual: revisamos la hora del pago y respetamos tu precio. Si aún no pagaste, reserva de nuevo para ver el precio actual.<button class="btn2" id="bReservar" style="margin-top:10px">Reservar de nuevo</button></div>'
           : '<div class="aviso ok" id="resBox"><b>Tu cupo del ' + esc(q.reserva.nombre || ("Balance " + q.reserva.fase)) + " está reservado a " + bs(q.reserva.precio) + '</b><br>Tienes <b id="cuenta">--:--</b> minutos para pagar. Si se te corta el internet o tardas en subir el comprobante, no te preocupes: si pagaste dentro de este tiempo, respetamos tu precio.</div>';
       }
-      h = '<div class="pila"><h2>Paga con QR</h2>' + resHtml + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p><div class="monto">' + bs(q.monto) + "</div>" +
-        (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
+      var todoSaldo = !!(q.saldo && !(q.monto > 0));
+      h = '<div class="pila"><h2>' + (todoSaldo ? "Paga con tu billetera" : "Paga con QR") + '</h2>' + resHtml + extrasPagoHtml(q) + '<div class="card pila" style="align-items:center;text-align:center"><p class="c13 suave">' + esc(q.resumen) + '</p>' +
+        ((q.montoNormal || q.montoAntesSaldo) ? '<div class="chico suave"><s>' + bs(q.montoNormal || q.montoAntesSaldo) + "</s></div>" : "") + '<div class="monto">' + bs(q.monto) + "</div>" +
+        (todoSaldo ? '<p class="c13" style="line-height:19px">Tu saldo cubre todo el pago. No necesitas pagar con QR ni subir comprobante.</p>' + errHtml() + '<button class="btn" id="bPagarSaldo">Pagar con mi saldo</button></div><button class="link" id="bVolver">Cambiar servicio</button></div>' : "") +
+        (todoSaldo ? "" : (q.qr ? '<img class="qr" src="' + esc(q.qr) + '" alt="Código QR para pagar ' + bs(q.monto) + '"><p class="chico suave">A nombre de CONTAX · El QR ya trae el monto exacto</p><a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none;width:auto;padding:0 18px" href="' + esc(q.qr) + '" download="QR-CONTAX-' + esc(q.monto) + '.png">Descargar QR</a>'
               : '<div class="aviso warn">El QR de este monto no está disponible en este momento. <a href="' + wa("Hola, quiero pagar " + q.resumen + " (" + bs(q.monto) + ") y no me aparece el QR.") + '" target="_blank" rel="noopener">Escríbenos por WhatsApp</a>.</div>') +
         '</div>' + cumpleHtml(q) + '<div class="pila" style="gap:8px"><div class="paso"><b>1</b>Escanea el QR desde la app de tu banco.</div><div class="paso"><b>2</b>Paga el monto exacto y guarda la captura o el PDF del comprobante.</div><div class="paso"><b>3</b>Súbela aquí para recepcionar tu servicio.</div></div>' +
         (S.img ? (S.img.indexOf("data:application/pdf") === 0 ? '<div class="card" style="text-align:center"><b>PDF del comprobante listo</b><p class="chico suave">' + esc(S.imgNombre || "comprobante.pdf") + "</p></div>" : '<img class="prev" src="' + S.img + '" alt="Comprobante subido">') : "") + errHtml() +
         '<label class="subir" for="fComp">' + ICON.subir + (S.img ? "Cambiar comprobante" : "Subir comprobante") + '</label><input type="file" id="fComp" accept="image/*,application/pdf" class="oculto">' +
-        (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Puedes subir la captura o el PDF del comprobante. Al subirlo verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>';
+        (S.img ? '<button class="btn" id="bVerif">Verificar de nuevo</button>' : '<p class="chico suave" style="text-align:center;margin-top:-4px">Puedes subir la captura o el PDF del comprobante. Al subirlo verificamos tu pago al instante.</p>') + '<button class="link" id="bVolver">Cambiar servicio</button></div>');
     } else if (S.paso === "verif") {
       var v = S.ver;
       // Solo se muestran los datos leídos con su check; no se explica qué se revisa ni por qué falla
@@ -777,13 +832,29 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
                 '<div class="aviso ok" style="text-align:left"><b>Declaraciones y facturación ya están disponibles.</b> Puedes pagarlas ahora mismo.</div>' +
         '<button class="btn" id="bOtrosServ">Pagar declaración o facturación</button>' +
         (WA ? '<a class="btn2" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="' + wa("Hola CONTAX, quiero que me avisen cuando abra la venta de balances.") + '" target="_blank" rel="noopener">Avísame por WhatsApp cuando abran los balances</a>' : "") + "</div>";
+    } else if (S.paso === "alta") {
+      var A0 = S.alta || {};
+      h = '<div class="pila"><h2>Quiero ser cliente de CONTAX</h2><p class="suave" style="margin-top:-6px">Déjanos tus datos. Te escribimos por WhatsApp para registrarte y empezar con tus declaraciones.</p>' +
+        '<form class="card pila" id="fAlta" novalidate>' +
+        '<div><label class="l" for="alNom">Nombre completo</label><input id="alNom" autocomplete="name" value="' + esc(A0.nombre || "") + '" placeholder="Ej. JUAN PÉREZ LÓPEZ"></div>' +
+        '<div><label class="l" for="alNit">NIT</label><input id="alNit" inputmode="numeric" value="' + esc(A0.nit || S.noCli || "") + '"></div>' +
+        '<div><label class="l" for="alCel">Celular (WhatsApp)</label><input id="alCel" inputmode="tel" value="' + esc(A0.celular || "") + '" placeholder="7xxxxxxx"></div>' +
+        '<div><label class="l" for="alRef">Código de quien te recomendó (opcional)</label><input id="alRef" value="' + esc(A0.ref || S.ref || "") + '" placeholder="Ej. CONTAX-245" autocapitalize="characters"></div>' +
+        '<p class="chico suave">Con un código de referido tu primera declaración cuesta la <b>mitad</b>.</p>' + errHtml() +
+        '<button class="btn" type="submit">Enviar mis datos</button></form><button class="link" id="bOtroNit">Volver al inicio</button></div>';
+    } else if (S.paso === "altaOk") {
+      var A1 = S.alta || {};
+      h = '<div class="pila" style="text-align:center;padding-top:16px"><div class="check">' + ICON.big + '</div><h2>¡Recibimos tus datos!</h2>' +
+        '<p class="suave" style="line-height:22px">Te escribiremos por WhatsApp para registrarte.' + (A1.conCodigo ? " Tu código de <b>" + esc(A1.nombreRef || "") + "</b> ya quedó guardado: tu primera declaración cuesta la mitad." : "") + '</p>' +
+        (WA ? '<a class="btn" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="' + wa("Hola CONTAX, quiero ser cliente. Mi nombre es " + (A1.nombre || "") + " y mi NIT es " + (A1.nit || "") + "." + (A1.ref ? " Me recomendó el código " + A1.ref + "." : "")) + '" target="_blank" rel="noopener">Escribir ahora por WhatsApp</a>' : "") +
+        '<button class="link" id="bOtroNit">Volver al inicio</button></div>';
     } else if (S.paso === "fin") {
       var f = S.fin, ok = f.estado === "aprobado";
       h = '<div class="pila" style="text-align:center;padding-top:16px"><div class="check' + (ok ? "" : " rev") + '">' + (ok ? ICON.big : ICON.reloj) + "</div>" +
         "<h2>" + (ok ? (f.cumple ? "¡Feliz cumpleaños! 🎂" : "¡Listo!") : "Pago en revisión") + '</h2><p class="suave" style="line-height:22px">' + (ok ? (f.cumple ? "Este mes tu declaración es sin cobro. Ya la recepcionamos." : "Tu pago fue recepcionado.") : "Recibimos tu comprobante. Lo revisaremos y te escribiremos por WhatsApp.") + "<br>Orden de Recepción <b style=\"color:var(--txt)\">N° " + esc(f.nroRecepcion) + "</b></p>" +
         '<div class="card" style="text-align:left"><div class="fila"><span>Servicio</span><b>' + esc(f.resumen) + '</b></div><div class="fila"><span>Importe</span><b>' + bs(f.monto) + "</b></div>" +
         (ok && f.correoEnviado ? '<div class="fila"><span>Enviado a</span><b>' + esc(f.correo) + "</b></div>" : "") + "</div>" +
-        premiosHtml(f.premios) +
+        premiosHtml(f.premios) + compartirHtml(f) +
         '<p class="c13 suave" style="line-height:19px">' + (ok ? (S.cli && S.cli.externo ? "El equipo de CONTAX ya tiene tu trámite. Te escribiremos por WhatsApp para pedirte la información de tu empresa." : "El equipo de CONTAX ya tiene tu trámite en su lista de trabajo. Cuando esté listo lo encontrarás en tu Portal de Clientes NUMMEROS.") : "Guarda este número por si necesitas consultarnos.") + "</p>" +
         '<button class="btn2" id="bOtro">Hacer otro pago</button></div>';
     }
@@ -981,9 +1052,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       main.innerHTML = '<div class="pila" style="padding-top:24px">' + animHtml("nit") + "</div>"; window.scrollTo(0, 0);
       Promise.all([api({ action: "pas_buscar", nit: S.nit }), S.cfg ? Promise.resolve(S.cfg) : api({ action: "pas_config" }), espera(3000)]).then(function (rs) {
         if (!rs[0].ok && rs[0].noCliente && rs[0].sinContador && rs[1].ok && !desdePortal) { S.cfg = rs[1]; S.cli = null; S.error = ""; S.scNoEnc = S.nit; S.ext = Object.assign({}, S.ext || {}, { nit: S.nit }); S.serv = "eeff"; S.acepta = false; S.aceptaUtil = false; ir("sc1"); return; }
+        S.noCli = !rs[0].ok && rs[0].noCliente ? S.nit : "";
         if (!rs[0].ok) { ir("nit", rs[0].error); return; }
         if (!rs[1].ok) { ir("nit", rs[1].error); return; }
-        S.cli = rs[0].cliente; S.cfg = rs[1]; ir(desdePortal ? "servicio" : "datos");
+        S.cli = rs[0].cliente; S.cfg = rs[1];
+        if (!S.ref && S.cli.refPendiente) S.ref = S.cli.refPendiente.codigo;
+        ir(desdePortal ? "servicio" : "datos");
       });
     };
     // Sin búsqueda automática: el NIT se busca solo al tocar «Continuar» (muchos lo escriben despacio)
@@ -1080,6 +1154,21 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       comprimir(f).then(function (d) { S.img = d; S.imgNombre = ""; S.error = ""; verificarComprobante(); }).catch(function (e) { S.error = e.message; pintar(); });
     };
     if ($("bVerif")) $("bVerif").onclick = verificarComprobante;
+    if ($("bRefAplicar")) $("bRefAplicar").onclick = function () { S.ref = $("inRef").value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20); recotizarPago(); };
+    if ($("bRefQuitar")) $("bRefQuitar").onclick = function () { S.ref = ""; recotizarPago(); };
+    if ($("chkSaldo")) $("chkSaldo").onchange = function () { S.usarSaldo = this.checked; S.img = ""; recotizarPago(); };
+    if ($("bPagarSaldo")) $("bPagarSaldo").onclick = pagarConSaldo;
+    if ($("bAlta")) $("bAlta").onclick = function () { S.error = ""; S.alta = { nit: S.noCli, ref: S.ref }; ir("alta"); };
+    if ($("fAlta")) $("fAlta").onsubmit = function (ev) {
+      ev.preventDefault();
+      S.alta = { nombre: $("alNom").value, nit: $("alNit").value.replace(/\D/g, ""), celular: $("alCel").value, ref: $("alRef").value.toUpperCase().replace(/[^A-Z0-9-]/g, "") };
+      cargando("Enviando tus datos…");
+      api({ action: "pas_prospecto", nombre: S.alta.nombre, nit: S.alta.nit, celular: S.alta.celular, ref: S.alta.ref }).then(function (r) {
+        if (!r.ok) { ir("alta", r.error); return; }
+        S.alta.conCodigo = r.conCodigo; S.alta.nombreRef = r.nombreRef; if (r.conCodigo) S.ref = S.alta.ref; ir("altaOk");
+      });
+    };
+    document.querySelectorAll("[data-img]").forEach(function (b) { b.onclick = function () { compartirImagen(b); }; });
     if ($("fCumple")) $("fCumple").onchange = function () {
       var f = this.files && this.files[0]; if (!f) return;
       comprimir(f).then(pedirCumple).catch(function (e) { S.cumpleMsg = e.message; pintar(); });
@@ -1188,7 +1277,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // NIT por enlace: pagos.html?nit=123456
   var porEnlace = false;
   var desdePortal = false;
-  try { var qs = new URLSearchParams(location.search), qn = qs.get("nit"); desdePortal = qs.get("portal") === "1"; if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } } catch (e) {}
+  try { var qs = new URLSearchParams(location.search), qn = qs.get("nit"); desdePortal = qs.get("portal") === "1"; if (qn) { S.nit = qn.replace(/\D/g, ""); porEnlace = true; } if (qs.get("ref")) S.ref = String(qs.get("ref")).toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20); } catch (e) {}
   if (!porEnlace && recuperarEstado() && S.paso !== "nit") { try { history.replaceState({ paso: "nit" }, ""); history.pushState({ paso: S.paso }, ""); } catch (e) {} }
   var previa = false; try { previa = new URLSearchParams(location.search).get("vista") === "previa"; } catch (e) {}
   cargando("Cargando…");
@@ -1201,6 +1290,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   });
 })();
 </script>
+<script src="premio-imagen.js"></script>
 <script src="version-aviso.js" defer></script>
 </body>
 </html>

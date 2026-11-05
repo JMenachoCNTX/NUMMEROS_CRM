@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "96";
+const APP_VERSION = "97";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -5790,6 +5790,9 @@ function paMontos() {
   add(c.precios.sinMov, "Plan Básico (sin movimiento)"); add(c.precios.enFecha, "Plan Estándar del 25 al 30"); add(c.precios.fueraFecha, "Plan Estándar del 1 al 5");
   add(c.precios.premium, "Plan Premium"); add(c.precios.eeffOtros, "Balance · otros rubros");
   add(c.precios.fact, "Suscripción de facturación");
+  // Primer pago con código de referido (50 %): también necesitan su QR
+  add(Math.round(c.precios.sinMov / 2), "Referido 50% · Plan Básico"); add(Math.round(c.precios.enFecha / 2), "Referido 50% · Plan Estándar del 25 al 30");
+  add(Math.round(c.precios.fueraFecha / 2), "Referido 50% · Plan Estándar del 1 al 5"); add(Math.round(c.precios.premium / 2), "Referido 50% · Plan Premium");
   const sc = Object.assign({}, PAS_SC_DEF, c.sinContador || {}); if (sc.activo !== false) add(sc.precio, "Balance Independiente");
   (PA_UI.cupos || []).forEach((x, i) => add(x.precio, "Balance · cupo " + (i + 1)));
   return o.sort((a, b) => a.m - b.m);
@@ -5985,6 +5988,91 @@ async function eeffSincronizarConteo(g, forzar) {
   return remoto || local;
 }
 // Pasarela → Premios → Cumpleaños: quién usó el mes sin cobro (con la foto de su documento) y quién cumple este mes según la BD
+// ===== Referidos, billeteras (saldo de referidos + cashback), retiros y "Quiero ser cliente" =====
+// Los datos viven en Firestore (referidos, billetera, retiros, prospectos) y se leen por el puente (admin_referidos).
+async function paRefApi(datos) {
+  const url = await recibosUrlGet(); if (!url) throw new Error("Falta la URL del puente en Configuración.");
+  const idToken = await auth.currentUser.getIdToken();
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(Object.assign({ idToken }, datos)) }).then(x => x.json());
+  if (!r.ok) throw new Error(r.error || "No se pudo completar.");
+  return r;
+}
+async function paRefCargar() {
+  PA_UI.refCargando = true;
+  try { PA_UI.ref = await paRefApi({ action: "admin_referidos" }); PA_UI.refErr = ""; }
+  catch (e) { PA_UI.refErr = e.message; PA_UI.ref = PA_UI.ref || null; }
+  PA_UI.refCargando = false;
+  if (PA_UI.tab === "premios" && el("pa_ref")) paintPasarela();
+}
+const REF_ESTADOS = { registrado: ["Registrado (aún no paga)", "off"], primer_pago: ["Pagó su 1er mes (premio pendiente)", "warn"], liberado: ["Premio entregado a la billetera", "ok"], anulado: ["Anulado", "off"] };
+function paRefHTML(admin) {
+  const R = PA_UI.ref;
+  if (!R && !PA_UI.refCargando) setTimeout(paRefCargar, 0);
+  const caja = (t, h) => `<div class="formcard" style="max-width:none;margin:0 0 16px" id="pa_ref"><h3 style="margin:0 0 6px">${t}</h3>${h}</div>`;
+  if (!R) return caja("Referidos y billeteras", PA_UI.refErr ? `<p class="note" style="color:var(--danger)">No se pudo cargar: ${escape(PA_UI.refErr)}. <button class="mini" id="pa_refrel">Reintentar</button></p>` : `<p class="note"><span class="cx-spin"></span> Cargando referidos y billeteras…</p>`);
+  const fch = iso => iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "";
+  const wa = n => { n = String(n || "").replace(/\D/g, ""); return n ? "https://wa.me/" + (n.length === 8 ? "591" + n : n) : ""; };
+  const refs = (R.referidos || []).slice().sort((a, b) => String(b.fechaPrimerPago || b.fechaRegistro || "").localeCompare(String(a.fechaPrimerPago || a.fechaRegistro || "")));
+  const bill = (R.billeteras || []).filter(b => b.saldoRef || b.saldoCash || b.retenido).sort((a, b) => (b.saldoRef + b.saldoCash) - (a.saldoRef + a.saldoCash));
+  const rets = (R.retiros || []).slice().sort((a, b) => String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")));
+  const pend = rets.filter(r => r.estado === "pendiente");
+  const pros = (R.prospectos || []).slice().sort((a, b) => String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")));
+  const suma = k => bill.reduce((t, b) => t + (Number(b[k]) || 0), 0);
+  const pc = R.pctCash || {};
+  return caja("Referidos y billeteras", `<p class="note" style="margin:0 0 10px">Código de cada cliente: <b>CONTAX-</b> + su Código de ID. El cliente <b>nuevo</b> paga el ${R.pctRef || 50}% de su primera declaración; quien lo refirió recibe en su billetera el precio de ese plan cuando el nuevo ya tiene <b>2 meses pagados</b>. Cashback: ${pc.estandar || 5}% (Estándar) y ${pc.premium || 10}% (Premium) de cada declaración pagada y verificada en la pasarela; solo para balances, no vence, se congela con la baja y se pierde a los 6 meses de baja. <button class="mini" id="pa_refrel">↻ Actualizar</button></p>
+    <div class="kpis"><div class="kpi"><div class="n">${refs.filter(r => r.estado !== "anulado").length}</div><div class="l">Referidos</div></div>
+      <div class="kpi"><div class="n">${refs.filter(r => r.estado === "primer_pago").length}</div><div class="l">Premio pendiente</div></div>
+      <div class="kpi"><div class="n">${refs.filter(r => r.estado === "liberado").length}</div><div class="l">Premios entregados</div></div>
+      <div class="kpi"><div class="n">${money(suma("saldoRef"))}</div><div class="l">Saldo de referidos</div></div>
+      <div class="kpi"><div class="n">${money(suma("saldoCash"))}</div><div class="l">Cashback acumulado</div></div>
+      <div class="kpi"><div class="n" style="${pend.length ? "color:var(--danger)" : ""}">${pend.length}</div><div class="l">Retiros por pagar</div></div></div>
+    ${pend.length ? `<h4 style="margin:14px 0 6px">Retiros en efectivo por pagar</h4><div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Cliente</th><th>NIT</th><th>Celular</th><th style="text-align:right">Monto</th><th>Pagar a</th><th></th></tr></thead><tbody>
+      ${pend.map(r => `<tr><td class="mono">${fch(r.fechaISO)}</td><td><b>${escape(r.nombre || "")}</b>${fichaOjo(r.nit)}</td><td class="mono">${escape(r.nit || "")}</td><td class="mono">${wa(r.celular) ? `<a href="${escape(wa(r.celular))}" target="_blank" rel="noopener">${escape(r.celular)}</a>` : ""}</td><td style="text-align:right"><b>${money(r.monto)}</b></td><td>${escape(r.cuenta || "")}</td>
+        <td>${admin ? `<button class="mini pa-ret" data-id="${escape(r._id)}" data-ac="pagado">✓ Ya lo pagué</button> <button class="mini pa-ret" data-id="${escape(r._id)}" data-ac="rechazado">Rechazar</button>` : `<span class="note">Lo marca un Admin</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    <h4 style="margin:14px 0 6px">Referidos</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 8px"><span class="note" style="margin:0">Asignar a mano:</span><input id="pa_rnit" class="mini" placeholder="NIT del cliente nuevo" style="width:170px"><input id="pa_rcod" class="mini" placeholder="Código (CONTAX-245)" style="width:170px"><button class="mini" id="pa_rasig">Asignar</button><span class="msg" id="pa_rmsg"></span></div>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Cliente nuevo</th><th>NIT</th><th>Código</th><th>Lo refirió</th><th>Estado</th><th style="text-align:right">Pagó</th><th style="text-align:right">Premio</th><th></th></tr></thead><tbody>
+      ${refs.map(r => { const e = REF_ESTADOS[r.estado] || [r.estado, "off"]; return `<tr><td class="mono">${fch(r.fechaPrimerPago || r.fechaRegistro)}</td><td><b>${escape(r.nombreNuevo || "")}</b>${fichaOjo(r.nitNuevo)}</td><td class="mono">${escape(r.nitNuevo || r._id)}</td><td class="mono">${escape(r.codigo || "")}</td><td>${escape(r.nombreRef || "")}${fichaOjo(r.nitRef)}</td>
+        <td><span class="badge ${e[1]}">${escape(e[0])}</span></td><td style="text-align:right">${r.pagoNuevo != null ? money(r.pagoNuevo) : "—"}</td><td style="text-align:right">${r.premio ? money(r.premio) : "—"}</td>
+        <td>${r.estado === "registrado" || r.estado === "primer_pago" ? `<button class="mini pa-ranul" data-nit="${escape(r.nitNuevo || r._id)}">Anular</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="9" class="note">Todavía no hay referidos.</td></tr>`}</tbody></table></div>
+    ${pros.length ? `<h4 style="margin:14px 0 6px">«Quiero ser cliente» (desde la pasarela)</h4><p class="note" style="margin:0 0 6px">Regístralos en la Base de Datos con el <b>mismo NIT</b>: si dejaron un código, el ${R.pctRef || 50}% se aplica solo en su primer pago.</p><div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Nombre</th><th>NIT</th><th>Celular</th><th>Código</th><th>Estado</th></tr></thead><tbody>
+      ${pros.map(x => `<tr><td class="mono">${fch(x.fechaISO)}</td><td><b>${escape(x.nombre || "")}</b></td><td class="mono">${escape(x.nit || x._id)}</td><td class="mono">${wa(x.celular) ? `<a href="${escape(wa(x.celular))}" target="_blank" rel="noopener">${escape(x.celular)}</a>` : ""}</td><td>${escape(x.codigo || "—")}${x.nombreRef ? `<div class="note" style="margin:0">${escape(x.nombreRef)}</div>` : ""}</td><td>${BD.some(c => fiNit(bdV(c, "nit")) === fiNit(x.nit || x._id)) ? `<span class="badge ok">Ya está en la BD</span>` : `<span class="badge warn">Falta registrar</span>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    <h4 style="margin:14px 0 6px">Billeteras con saldo</h4>
+    <div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Cliente</th><th>NIT</th><th style="text-align:right">Referidos</th><th style="text-align:right">Cashback</th><th style="text-align:right">Retiro en proceso</th><th>Estado</th><th>Últimos movimientos</th><th></th></tr></thead><tbody>
+      ${bill.map(b => `<tr><td><b>${escape(b.nombre || "")}</b>${fichaOjo(b.nit)}</td><td class="mono">${escape(b.nit)}</td><td style="text-align:right">${money(b.saldoRef)}</td><td style="text-align:right">${money(b.saldoCash)}</td><td style="text-align:right">${b.retenido ? money(b.retenido) : "—"}</td>
+        <td>${b.inactivoDesde ? `<span class="badge warn" title="Cliente de baja desde ${fch(b.inactivoDesde)}">Cashback congelado</span>` : `<span class="badge ok">Activo</span>`}</td>
+        <td style="font-size:12px">${(b.movs || []).slice(0, 3).map(m => `<div>${fch(m.f)} · ${escape(m.d || "")} <b>${money((Number(m.ref) || 0) + (Number(m.cash) || 0))}</b></div>`).join("")}</td>
+        <td>${admin ? `<button class="mini pa-bajus" data-nit="${escape(b.nit)}" data-nom="${escape(b.nombre || "")}">Ajustar</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="note">Ninguna billetera tiene saldo todavía.</td></tr>`}</tbody></table></div>`);
+}
+function paRefEnlazar(V) {
+  if (el("pa_refrel")) el("pa_refrel").onclick = () => { PA_UI.ref = null; PA_UI.refErr = ""; paintPasarela(); };
+  const hecho = () => { PA_UI.ref = null; paintPasarela(); };
+  V.querySelectorAll(".pa-ret").forEach(b => b.onclick = async () => {
+    const pagar = b.dataset.ac === "pagado";
+    const motivo = pagar ? "" : prompt("¿Por qué se rechaza? (el saldo vuelve a su billetera)");
+    if (!pagar && motivo === null) return;
+    if (pagar && !confirm("¿Confirmas que ya le pagaste este retiro?")) return;
+    b.disabled = true;
+    try { await paRefApi({ action: "admin_retiro", id: b.dataset.id, accion: b.dataset.ac, motivo }); hecho(); } catch (e) { alert(e.message); b.disabled = false; }
+  });
+  V.querySelectorAll(".pa-ranul").forEach(b => b.onclick = async () => {
+    if (!confirm("¿Anular este referido? Ya no se aplicará el descuento ni el premio.")) return;
+    b.disabled = true;
+    try { await paRefApi({ action: "admin_ref_asignar", nit: b.dataset.nit, anular: true }); hecho(); } catch (e) { alert(e.message); b.disabled = false; }
+  });
+  if (el("pa_rasig")) el("pa_rasig").onclick = async () => {
+    const m = el("pa_rmsg"); m.className = "msg"; m.textContent = "Asignando…";
+    try { await paRefApi({ action: "admin_ref_asignar", nit: el("pa_rnit").value, codigo: el("pa_rcod").value }); hecho(); }
+    catch (e) { m.className = "msg err"; m.textContent = e.message; }
+  };
+  V.querySelectorAll(".pa-bajus").forEach(b => b.onclick = async () => {
+    const tipo = prompt("Ajustar la billetera de " + b.dataset.nom + ".\nEscribe R para saldo de referidos o C para cashback:", "R");
+    if (!tipo) return;
+    const monto = prompt("Monto a sumar (usa negativo para restar, ej. -20):"); if (!monto) return;
+    const motivo = prompt("Motivo del ajuste:"); if (!motivo) return;
+    try { await paRefApi({ action: "admin_billetera_ajuste", nit: b.dataset.nit, tipo: /^c/i.test(tipo) ? "cash" : "ref", monto: Number(String(monto).replace(",", ".")), motivo }); hecho(); } catch (e) { alert(e.message); }
+  });
+}
 function paCumpleHTML(conCumple, canEdit) {
   const mes = new Date(Date.now() - 4 * 3600e3).getUTCMonth() + 1, anio = new Date(Date.now() - 4 * 3600e3).getUTCFullYear();
   const nac = t => { const m = String(t || "").match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4})/); return m ? { d: +m[1], m: +m[2], y: +m[3] } : null; };
@@ -6130,7 +6218,7 @@ function paintPasarela() {
     PA_UI.premios = PA_UI.premios || JSON.parse(JSON.stringify(c.premios && c.premios.length && !premViejos ? c.premios : PAS_PREM_DEF));
     const nFases = PA_UI.cupos.length;
     const opt = (v, l, sel) => `<option value="${v}" ${String(sel) === String(v) ? "selected" : ""}>${l}</option>`;
-    body = paCumpleHTML(conCumple, canEdit) + `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
+    body = paRefHTML(admin) + paCumpleHTML(conCumple, canEdit) + `<div class="formcard" style="max-width:none;margin:0 0 16px"><h3 style="margin:0 0 6px">Ganadores</h3>
         <p class="note" style="margin:0 0 10px">Clientes que ganaron un premio al pagar por la pasarela. Marca "Entregado" cuando les hagas la devolución o les des el beneficio.</p>
         ${conPremio.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>N° Rec</th><th>Cliente</th><th>Celular</th><th>Servicio</th><th style="text-align:right">Pagó</th><th>Premio</th><th>Entregado</th></tr></thead><tbody>
           ${conPremio.map(r => `<tr><td class="mono">${escape(r.fecha || "")}</td><td class="mono">${escape(String(r.nroRecepcion || ""))}</td><td><b>${escape(r.clienteNombre || "")}</b>${fichaOjo(r.nit)}<div class="note" style="margin:0">NIT ${escape(String(r.nit || ""))}</div></td><td class="mono">${escape(r.clienteCelular || "")}</td>
@@ -6223,6 +6311,7 @@ function paintPasarela() {
       m.className = "msg ok"; m.textContent = "Guardado.";
     } catch (e) { m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
   };
+  paRefEnlazar(V);
   V.querySelectorAll(".pa-cumrev").forEach(c => c.onchange = async () => {
     const quien = (ME && (ME.name || ME.email)) || "";
     const datos = { cumpleRevision: c.value, cumpleRevisadoPor: quien, cumpleRevisadoAt: Date.now(), _upd: Date.now() };

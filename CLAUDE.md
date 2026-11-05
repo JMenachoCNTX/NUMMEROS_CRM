@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v96; puente versión 52). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v97; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -76,3 +76,12 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v96 · Aviso de nueva versión:** `version-aviso.js` (incluido en index.html, pagos.html y cliente.html). Cada 3 min compara la página y sus .js/.css del mismo sitio; si cambian muestra "Hay una nueva versión · Actualizar ahora". No hay que tocar nada al publicar. El mismo archivo sirve para CONTROL y PortalNUMMEROS.
 - **v96 · Antigüedad (puente 51):** meses DISTINTOS con declaración o facturación pagada (no hace falta que sean seguidos; no cuentan DEUDOR, en revisión ni rechazados). `pasAntiguedad_` en PASARELA.gs (`PAS_CUMPLE_MIN_PAGOS = 12`) y `antigCalc` en app.js (`ANTIG_MIN`). El cumpleaños sin cobro exige 12. Se ve en la pasarela (barra del cliente), Portal del Cliente (Mis datos), Panel → Ficha, ficha rápida 👁 y Recepción al elegir cliente.
 - **Puente 52 · Cumpleaños:** vale al pagar en el mes del cumpleaños o al pagar la declaración de ese mes (mes siguiente). `cumpleAnio` = año de ese cumpleaños (evita cobrarlo 2 veces en dic/ene). La caja de la pasarela solo aparece con 12 meses pagados.
+
+### v97 · Referidos, billetera y cashback (puente 53)
+- **Código:** `CONTAX-<Código de ID>` de la BD (`refCodigo_`). Solo para **declaraciones**. El cliente **nuevo** (0 meses pagados) pone el código en la pasarela (o llega con `?ref=`) y paga el **50%** de su primer pago (redondeado: 30→15, 50→25, 60→30, 95→48; esos montos necesitan su QR, `paMontos`). Queda en `referidos/<nit>` (estado `registrado` → `primer_pago` → `liberado` / `anulado`).
+- **Premio:** cuando el nuevo ya tiene **2 meses pagados** (`pasAntiguedad_`, cuenta también recepciones manuales) quien lo refirió recibe en su billetera el precio completo del plan y un correo. Se revisa al pagar, al abrir el Portal y en Panel → Pasarela → Premios. Sin límite de referidos.
+- **Billetera** (`billetera/<nit>`: `saldoRef`, `saldoCash`, `retenido`, `movs` últimos 200): el saldo de referidos sirve para cualquier servicio o se retira en efectivo sin mínimo (Portal del Cliente → «Mi billetera» → `portal_retiro` → `retiros`, lo aprueba un Admin en el Panel). Se usa en Bs enteros (`chkSaldo`); si cubre todo se paga con «Pagar con mi saldo» (`pas_saldo`, tipoPago `BILLETERA`).
+- **Cashback:** 5% Plan Estándar y 10% Premium de cada **declaración pagada en la pasarela y verificada** (no en recepciones manuales del Panel). Solo para balances, sin tope ni vencimiento. Con el cliente de baja se congela (`inactivoDesde`) y se pierde a los 183 días.
+- **No clientes:** «Quiero ser cliente» en la pasarela → `prospectos/<nit>` (+ `referidos` si dejó código). Al registrarlo en la BD con el mismo NIT, el descuento se aplica solo.
+- **Imágenes para compartir:** `premio-imagen.js` (`PremioImg.crear`, canvas 1080x1920 con las fotos de `marca/contador/`, logo, código y QR a `pagos.html?ref=`). Hay una por beneficio: referido, cumpleaños, 10%, 20%, mes, año, premio por referir, cashback.
+- **Panel:** Pasarela → Premios → «Referidos y billeteras» (`paRefHTML`): retiros por pagar, referidos (asignar a mano / anular), «Quiero ser cliente» y billeteras (Ajustar, solo admin). Acciones del puente `admin_referidos`, `admin_ref_asignar`, `admin_retiro`, `admin_billetera_ajuste`. Las colecciones nuevas solo las toca el puente (no hace falta cambiar reglas).
