@@ -354,27 +354,34 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function primerNombre(n) { return String(n || "").split(/\s+/).slice(0, 3).join(" "); }
 
   // ----- Declaraciones y reportes -----
+  // Gestión 2026: en esta pestaña solo salen las declaraciones pagadas desde esta fecha y las que ya tienen documentos
+  // (10 clientes pagaron octubre antes del 20 y ya recibieron sus archivos). Sin filas vacías de meses sin datos.
+  var DECL_GESTION = "2026", DECL_DESDE = "2026-10-20";
   function tabDecl(d) {
     var anios = {}; d.declaraciones.forEach(function (x) { if (x.key) anios[x.key.slice(0, 4)] = 1; });
     var yAct = String(new Date().getFullYear()); anios[yAct] = 1;
     var lista = Object.keys(anios).sort().reverse(); if (!S.anio || !anios[S.anio]) S.anio = lista[0];
-    var tv = 0, tc = 0, ti = 0, tt = 0, filas = "";
+    var tv = 0, tc = 0, ti = 0, tt = 0, filas = "", filtro = S.anio === DECL_GESTION;
+    var vis = d.declaraciones.filter(function (x) { return !filtro || String(x.fechaISO).slice(0, 10) >= DECL_DESDE || (x.archivos && x.archivos.length); });
     var hoyK = d.hoy.slice(0, 7), primera = d.declaraciones.map(function (x) { return x.key; }).filter(Boolean).sort()[0] || hoyK;
     for (var m = 1; m <= 12; m++) {
-      var k = S.anio + "-" + ("0" + m).slice(-2), rs = d.declaraciones.filter(function (x) { return x.key === k; });
-      if (!rs.length) { filas += "<tr><td><b>" + MESES[m - 1] + "</b></td><td>" + (k < hoyK && k >= primera ? '<span class="badge b-pend">No recepcionado</span>' : '<span class="suave">—</span>') + '</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>'; continue; }
+      var k = S.anio + "-" + ("0" + m).slice(-2), rs = vis.filter(function (x) { return x.key === k; });
+      if (!rs.length) { if (filtro) continue; filas += "<tr><td><b>" + MESES[m - 1] + "</b></td><td>" + (k < hoyK && k >= primera ? '<span class="badge b-pend">No recepcionado</span>' : '<span class="suave">—</span>') + '</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>'; continue; }
       rs.forEach(function (r) { tv += r.ventas; tc += r.compras; ti += r.iva; tt += r.it;
-        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div><button class="mini" data-pdf="declaracion|' + esc(r.id) + '" style="margin-top:4px">' + ic("ver", 14) + "Ver</button>" + docsDecl(r) + "</td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
+        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div></td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
           '<td class="n">' + (r.ventas ? bs(r.ventas) : "—") + '</td><td class="n">' + (r.compras ? bs(r.compras) : "—") + '</td><td class="n">' + (r.iva ? bs(r.iva) : "—") + '</td><td class="n">' + (r.it ? bs(r.it) : "—") + "</td></tr>"; });
     }
+    if (!filas) filas = '<tr><td colspan="6" class="suave">Todavía no hay declaraciones para mostrar.</td></tr>';
     var util = Math.round((tv - tc) * 100) / 100;
+    var delAnio = vis.filter(function (x) { return x.key && x.key.slice(0, 4) === S.anio; });
     return '<div class="pila"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Declaraciones mensuales</h2><p class="c13 suave">Estado de cada mes y tu reporte de ventas, compras e impuestos.</p></div>' +
       '<div style="display:flex;gap:8px;align-items:center"><button class="btn2" data-pdf="reporte||' + esc(S.anio) + '">' + ic("bajar", 16) + 'Reporte PDF</button><select id="selAnio" style="width:auto;height:42px;font-size:15px">' + lista.map(function (a) { return "<option" + (a === S.anio ? " selected" : "") + ">" + a + "</option>"; }).join("") + "</select></div></div>" +
       '<div class="grid">' + kpi("rep", "Ventas " + S.anio, bs(tv), "Según tus facturas registradas.", "") + kpi("rep", "Compras " + S.anio, bs(tc), "Facturas de compras registradas.", "") +
-      kpi("decl", "IVA + IT pagado o por pagar", bs(ti + tt), "IVA " + bs(ti) + " · IT " + bs(tt), "") + kpi("bal", "Utilidad estimada " + S.anio, bs(util), util > 0 ? "IUE estimado (25%): " + bs(util * 0.25) : "Sin utilidad estimada por ahora.", util > 0 ? "var(--ok)" : "") + "</div>" +
+      kpi("decl", "IVA + IT pagado o por pagar", bs(ti + tt), "IVA " + bs(ti) + " · IT " + bs(tt), "") + kpi("bal", "Utilidad estimada " + S.anio, bs(util), filtro ? "Solo con las declaraciones de esta tabla." : util > 0 ? "IUE estimado (25%): " + bs(util * 0.25) : "Sin utilidad estimada por ahora.", util > 0 ? "var(--ok)" : "") + "</div>" +
       '<div class="tw"><table><thead><tr><th>Mes</th><th>Estado</th><th class="n">Ventas</th><th class="n">Compras</th><th class="n">IVA</th><th class="n">IT</th></tr></thead><tbody>' + filas + "</tbody>" +
       '<tfoot><tr><td><b>Total</b></td><td></td><td class="n"><b>' + bs(tv) + '</b></td><td class="n"><b>' + bs(tc) + '</b></td><td class="n"><b>' + bs(ti) + '</b></td><td class="n"><b>' + bs(tt) + "</b></td></tr></tfoot></table></div>" +
-      '<p class="chico suave">La utilidad es un estimado con tus ventas y compras registradas; el cálculo oficial se hace en tus estados financieros. En cada mes están tus documentos: RCV, formularios 200 y 400, libro de compras y el QR para pagar tus impuestos (el QR vale solo hasta las 00:00 de su fecha de vencimiento).</p></div>';
+      (delAnio.length ? '<div class="card"><h3 style="margin-bottom:6px">Documentos de tus declaraciones</h3><div class="lista">' + delAnio.map(function (x) { return filaDocsDecl(x, true); }).join("") + "</div></div>" : "") +
+      '<p class="chico suave">La utilidad es un estimado con tus ventas y compras registradas; el cálculo oficial se hace en tus estados financieros. El QR para pagar tus impuestos vale solo hasta las 00:00 de su fecha de vencimiento.</p></div>';
   }
 
   // Documentos de la declaración que sube CONTAX (RCV, formularios, libro de compras y QR de pago)
@@ -382,12 +389,19 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function docsDecl(r) {
     var l = r.archivos || []; if (!l.length) return "";
     var hoy = new Date().toISOString().slice(0, 10);
-    return '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + l.map(function (a) {
-      var vencido = /^qr/.test(a.tipo) && a.qrVence && a.qrVence < hoy;
-      return '<button class="mini" data-djarch="' + esc(a.id) + '" title="' + esc(a.nombre) + '">' + ic(/^qr/.test(a.tipo) ? "qr" : "doc", 14) + esc(NOM_DJ[a.tipo] || a.tipo) + "</button>" +
-        (/^qr/.test(a.tipo) ? '<div class="chico ' + (vencido ? "" : "suave") + '" style="flex-basis:100%' + (vencido ? ";color:var(--err,#B42318)" : "") + '">' +
-          (a.qrMonto ? "Bs " + esc(a.qrMonto) + " · " : "") + (vencido ? "QR vencido: pide uno nuevo por WhatsApp." : (a.qrVence ? "Vale hasta el " + esc(a.qrVence.split("-").reverse().join("/")) + " a las 00:00." : "Válido solo hasta las 00:00 del día de vencimiento.")) + "</div>" : "");
-    }).join("") + "</div>";
+    var notas = l.filter(function (a) { return /^qr/.test(a.tipo); }).map(function (a) {
+      var vencido = a.qrVence && a.qrVence < hoy;
+      return '<div class="chico ' + (vencido ? "" : "suave") + '"' + (vencido ? ' style="color:var(--err,#B42318)"' : "") + ">" + esc(NOM_DJ[a.tipo] || a.tipo) + ": " +
+        (a.qrMonto ? "Bs " + esc(a.qrMonto) + " · " : "") + (vencido ? "vencido, pide uno nuevo por WhatsApp." : (a.qrVence ? "vale hasta el " + esc(a.qrVence.split("-").reverse().join("/")) + " a las 00:00." : "válido solo hasta las 00:00 del día de vencimiento.")) + "</div>";
+    }).join("");
+    return l.map(function (a) { return '<button class="mini" data-djarch="' + esc(a.id) + '" title="' + esc(a.nombre) + '">' + ic(/^qr/.test(a.tipo) ? "qr" : "doc", 14) + esc(NOM_DJ[a.tipo] || a.tipo) + "</button>"; }).join("") +
+      (notas ? '<div style="flex-basis:100%">' + notas + "</div>" : "");
+  }
+  // Una fila por mes: el nombre del mes y sus documentos
+  function filaDocsDecl(x, conResumen) {
+    var per = x.key ? MESES[Number(x.key.slice(5)) - 1] + " " + x.key.slice(0, 4) : x.periodo;
+    return '<div class="it"><span class="ic">' + ic("decl") + '</span><div class="tx"><b>Declaración ' + esc(per) + '</b><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' +
+      (conResumen ? '<button class="mini" data-pdf="declaracion|' + esc(x.id) + '">' + ic("ver", 14) + "Resumen</button>" : "") + docsDecl(x) + "</div></div></div>";
   }
   function enlazarDocsDecl() {
     document.querySelectorAll("[data-djarch]").forEach(function (bt) { bt.onclick = function () {
@@ -428,10 +442,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var recibos = [].concat(d.declaraciones, d.eeff, d.tramites, d.facturacion, d.otros).filter(function (x) { return x.nro; }).sort(function (a, b) { return String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")); });
     var anios = {}; d.declaraciones.forEach(function (x) { if (x.key) anios[x.key.slice(0, 4)] = 1; }); anios[String(new Date().getFullYear())] = 1;
     // Lo que el equipo sube en Declaraciones → Entrega al cliente también se ve aquí, mes por mes
-    var deDecl = d.declaraciones.filter(function (x) { return x.archivos && x.archivos.length; }).map(function (x) {
-      var per = x.key ? MESES[Number(x.key.slice(5)) - 1] + " " + x.key.slice(0, 4) : x.periodo;
-      return '<div class="it"><span class="ic">' + ic("decl") + '</span><div class="tx"><b>Declaración ' + esc(per) + "</b>" + docsDecl(x) + "</div></div>";
-    }).join("");
+    var deDecl = d.declaraciones.filter(function (x) { return x.archivos && x.archivos.length; }).map(function (x) { return filaDocsDecl(x, false); }).join("");
     return '<div class="pila"><h2>Documentos</h2>' +
       '<div class="card pila"><h3>Enviar documentos a CONTAX</h3><div class="subir">' +
       '<div><label class="l" for="dTipo">¿Qué documento es?</label><select id="dTipo">' + TIPOS_DOC.map(function (t) { return "<option>" + esc(t) + "</option>"; }).join("") + "</select></div>" +
