@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v103; puente versión 53). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v104; puente versión 54). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -92,4 +92,5 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v100:** la lista cuenta como cliente CONTAX a los estados ACTIVO y SUSCRIPCIÓN FACTURACIÓN (cualquier tipo de suscriptor). CONTROL 2.4.5 hace lo mismo.
 - **v101 · Facturación → Facturas pendientes:** ahora es solo la lista de Repartidores Yango CONTAX (se quitó «Suscriptores de facturación»; lo de cada mes sigue en Suscriptores Activos). Filas numeradas, botón «Pantalla completa» (`FAC_UI.yfull`, Esc para salir). Cuadros: Total = Emitidas (`YF.emitidas`, desde el inicio) + Faltan emitir (`porEmitir`) + Con problema (`yfProblema`: `noSePudo` y `observada`). Las que sube el repartidor no cuentan.
 - **v103:** Facturación → Facturas pendientes muestra «Duplicadas por anular»: facturas `estado: 'porAnular'` que crea CONTROL 2.4.23, sin `uid` para que el repartidor no las vea. «Ya la anulé» las pasa a `anulada`.
+- **v104 · Portal del Cliente (puente 54):** `portalPeriodoKey_` calcula el período igual que `recPeriodoKey` del Panel. Antes solo entendía el mes con año de 4 cifras: las recepciones con «OCTUBRE», «OCTUBRE>» u «OCTUBRE/25» (la gran mayoría) no salían en la tabla de Declaraciones, ni sus archivos. La pestaña Documentos → «De CONTAX para ti» también lista los archivos de Declaraciones.
 - **v102:** el título de cada pestaña sale solo en la barra de arriba (el `<h1>` de cada vista se oculta por CSS). Facturación → «Facturas por mes» (`yfMesHTML`): facturas emitidas por CONTAX a cada repartidor cliente, últimos 6 meses, por el mes en que se marcaron (`yfDia`). Suscriptores Activos: cuadros con nombres claros.

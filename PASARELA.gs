@@ -1575,12 +1575,25 @@ function portalEstadoGen_(r) {
   if (/proceso|curso|trabaj/.test(e)) return "proceso";
   return "pendiente";
 }
+// Igual que recPeriodoKey del Panel. La mayoría de las recepciones dice solo el mes («OCTUBRE», «OCTUBRE>») o un año
+// corto («OCTUBRE/25»): sin año se toma el que deja el período más cerca de la fecha de recepción (hasta 1 mes adelantado).
 function portalPeriodoKey_(r) {
   var m = Number(r.periodoMes) || 0, y = Number(r.periodoAnio || r.anio) || 0;
   if (m && y) return y + "-" + ("0" + m).slice(-2);
-  var t = String(r.mesRecepcion || "").toUpperCase(), mm = PAS_MESES.map(function (x) { return x.toUpperCase(); });
-  for (var i = 0; i < 12; i++) if (t.indexOf(mm[i]) >= 0) { var yy = (t.match(/(20\d\d)/) || [])[1]; if (yy) return yy + "-" + ("0" + (i + 1)).slice(-2); }
-  return "";
+  var t = String(r.mesRecepcion || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace("SETIEMBRE", "SEPTIEMBRE");
+  var mm = PAS_MESES.map(function (x) { return x.toUpperCase(); }), mi = -1;
+  for (var i = 0; i < 12; i++) if (t.indexOf(mm[i]) >= 0) { mi = i; break; }
+  if (mi < 0) return "";
+  var yy = (t.match(/20\d{2}/) || [])[0];
+  if (!yy) { var c2 = t.match(/[.\/>\-\s](\d{2})\b/); if (c2) yy = "20" + c2[1]; }
+  if (!yy) {
+    var f = String(r.fechaISO || ""), fy = Number(f.slice(0, 4)), fm = Number(f.slice(5, 7));
+    if (!fy) return "";
+    var ref = fy * 12 + (fm - 1);
+    yy = [fy + 1, fy, fy - 1].filter(function (c) { return c * 12 + mi <= ref + 1; })[0];
+    if (!yy) return "";
+  }
+  return yy + "-" + ("0" + (mi + 1)).slice(-2);
 }
 function portalDatos_(nit) {
   var cli = pasClienteCache_(nit);

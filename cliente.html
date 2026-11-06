@@ -293,7 +293,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     cont.querySelectorAll("[data-ir]").forEach(function (b) { b.onclick = function () { ir(b.dataset.ir); }; });
     if (S.tab === "inicio") promoIniciar();
     if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; enlazarDocsDecl(); }
-    if (S.tab === "docs") enlazarDocs();
+    if (S.tab === "docs") { enlazarDocs(); enlazarDocsDecl(); }
     if (S.tab === "bill") enlazarBilletera();
     if (S.tab === "yango") { cargarYango(); cont.querySelectorAll("[data-ygpdf]").forEach(function (b) { b.onclick = function () { pdfYango(S.yg.repartidores[Number(b.dataset.ygpdf)]); }; }); }
     enlazarPdf(cont);
@@ -427,6 +427,11 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var fila = function (x) { return '<div class="it"><span class="ic">' + ic(x.origen === "contax" ? "doc" : "subir") + '</span><div class="tx"><b>' + esc(x.nombre) + "</b><span>" + esc(new Date(x.fecha).toLocaleDateString("es-BO")) + " · " + esc(x.kb) + ' KB</span></div><button class="btn2" data-bajar="' + esc(x.id) + '" style="height:38px">' + ic("ver", 16) + "Ver</button></div>"; };
     var recibos = [].concat(d.declaraciones, d.eeff, d.tramites, d.facturacion, d.otros).filter(function (x) { return x.nro; }).sort(function (a, b) { return String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")); });
     var anios = {}; d.declaraciones.forEach(function (x) { if (x.key) anios[x.key.slice(0, 4)] = 1; }); anios[String(new Date().getFullYear())] = 1;
+    // Lo que el equipo sube en Declaraciones → Entrega al cliente también se ve aquí, mes por mes
+    var deDecl = d.declaraciones.filter(function (x) { return x.archivos && x.archivos.length; }).map(function (x) {
+      var per = x.key ? MESES[Number(x.key.slice(5)) - 1] + " " + x.key.slice(0, 4) : x.periodo;
+      return '<div class="it"><span class="ic">' + ic("decl") + '</span><div class="tx"><b>Declaración ' + esc(per) + "</b>" + docsDecl(x) + "</div></div>";
+    }).join("");
     return '<div class="pila"><h2>Documentos</h2>' +
       '<div class="card pila"><h3>Enviar documentos a CONTAX</h3><div class="subir">' +
       '<div><label class="l" for="dTipo">¿Qué documento es?</label><select id="dTipo">' + TIPOS_DOC.map(function (t) { return "<option>" + esc(t) + "</option>"; }).join("") + "</select></div>" +
@@ -435,7 +440,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<div class="card"><h3 style="margin-bottom:6px">Reportes NUMMEROS</h3><p class="c13 suave" style="margin-bottom:10px">Tu resumen de ventas, compras e impuestos de cada año, en PDF.</p><div style="display:flex;gap:8px;flex-wrap:wrap">' +
         Object.keys(anios).sort().reverse().map(function (a) { return '<button class="btn2" data-pdf="reporte||' + a + '">' + ic("rep", 16) + "Reporte " + a + "</button>"; }).join("") + "</div></div>" +
       '<div class="card"><h3 style="margin-bottom:6px">Órdenes de recepción</h3>' + (recibos.length ? '<div class="lista">' + recibos.slice(0, 60).map(function (x) { return '<div class="it"><span class="ic">' + ic("doc") + '</span><div class="tx"><b>Orden N° ' + esc(x.nro) + " · " + esc(x.servicio || "Servicio") + "</b><span>" + esc((x.periodo || "") + (x.fecha ? " · " + x.fecha : "") + " · " + bs(x.importe)) + '</span></div><button class="btn2" data-pdf="recibo|' + esc(x.id) + '" style="height:38px">' + ic("ver", 16) + "Ver</button></div>"; }).join("") + "</div>" : '<p class="c13 suave">Aún no tienes órdenes de recepción.</p>') + "</div>" +
-      '<div class="card"><h3 style="margin-bottom:6px">De CONTAX para ti</h3>' + (de.length ? '<div class="lista">' + de.map(fila).join("") + "</div>" : '<p class="c13 suave">Aquí aparecerán tus formularios, balances y documentos cuando el equipo los suba.</p>') + "</div>" +
+      '<div class="card"><h3 style="margin-bottom:6px">De CONTAX para ti</h3>' + (deDecl || de.length ? '<div class="lista">' + deDecl + de.map(fila).join("") + "</div>" : '<p class="c13 suave">Aquí aparecerán tus formularios, balances y documentos cuando el equipo los suba.</p>') + "</div>" +
       '<div class="card"><h3 style="margin-bottom:6px">Enviados por ti</h3>' + (mios.length ? '<div class="lista">' + mios.map(fila).join("") + "</div>" : '<p class="c13 suave">Todavía no enviaste documentos.</p>') + "</div></div>";
   }
   function leerArchivo(f) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(f); }); }
