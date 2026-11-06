@@ -368,7 +368,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var k = S.anio + "-" + ("0" + m).slice(-2), rs = vis.filter(function (x) { return x.key === k; });
       if (!rs.length) { if (filtro) continue; filas += "<tr><td><b>" + MESES[m - 1] + "</b></td><td>" + (k < hoyK && k >= primera ? '<span class="badge b-pend">No recepcionado</span>' : '<span class="suave">—</span>') + '</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>'; continue; }
       rs.forEach(function (r) { tv += r.ventas; tc += r.compras; ti += r.iva; tt += r.it;
-        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div></td><td>" + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
+        filas += "<tr><td><b>" + MESES[m - 1] + '</b><div class="chico suave">' + esc(r.detalle.replace(/^DDJJ - /, "")) + '</div></td><td>' + badge(r.estado) + (r.fechaDecl ? '<div class="chico suave">Presentada ' + esc(String(r.fechaDecl).slice(0, 10)) + "</div>" : "") + "</td>" +
           '<td class="n">' + (r.ventas ? bs(r.ventas) : "—") + '</td><td class="n">' + (r.compras ? bs(r.compras) : "—") + '</td><td class="n">' + (r.iva ? bs(r.iva) : "—") + '</td><td class="n">' + (r.it ? bs(r.it) : "—") + "</td></tr>"; });
     }
     if (!filas) filas = '<tr><td colspan="6" class="suave">Todavía no hay declaraciones para mostrar.</td></tr>';
