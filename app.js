@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "102";
+const APP_VERSION = "103";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6508,6 +6508,7 @@ async function yfCargar(forzar) {
     try { (await getDocs(collection(YF.db, "emisionContax"))).forEach(d => { const x = d.data(); emiDe[String(x.id) + "|" + x.semana] = { _id: d.id, ...x }; }); YF.sinEmi = false; }
     catch (e) { YF.sinEmi = true; }
     YF.emitidas = fac.docs.map(d => d.data()).filter(f => f.origen === "contax" && f.estado !== "anulada");
+    YF.porAnular = fac.docs.map(d => ({ _id: d.id, ...d.data() })).filter(f => f.estado === "porAnular");
     // Factura vigente por ID de Yango y semana (la más reciente manda)
     const facDe = {};
     fac.docs.forEach(d => { const f = { _id: d.id, ...d.data() }; if (f.estado === "anulada") return; const t = f.subido && f.subido.seconds || 0;
@@ -6632,6 +6633,35 @@ function yfResumenEmitidas() {
     <tr><td><b>Total (todo)</b></td>${per.map(p => `<td class="mono" style="text-align:right"><b>${l.filter(f => yfQuien(f.registradoPor || f.revisadoPor) === p).length}</b></td>`).join("")}<td class="mono" style="text-align:right"><b>${l.length}</b></td></tr>
   </tbody></table></div>`;
 }
+// Duplicadas de clientes CONTAX (las detecta la conciliación de CONTROL): las anula el equipo y al repartidor no se le avisa
+async function yfYaAnulada(id, btn) {
+  if (!confirm("¿Ya anulaste esta factura en Impuestos?")) return;
+  btn.disabled = true;
+  try {
+    await yfConectar();
+    const f = (YF.porAnular || []).find(x => x._id === id), quien = String(auth.currentUser.email || "");
+    await updateDoc(doc(YF.db, "facturas", id), { estado: "anulada", anulada: serverTimestamp(), anuladaPor: quien });
+    YF.porAnular = (YF.porAnular || []).filter(x => x._id !== id);
+    try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "factura_yango_duplicada_anulada", nombre: (f && f.nombre) || "", detalle: "N.º " + ((f && f.numero) || ""), porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || quien }); } catch (e) {}
+    paintFacturacion();
+  } catch (e) {
+    btn.disabled = false;
+    alert(/permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso (pide rol operador o admin)." : (e.message || String(e)));
+  }
+}
+function yfPorAnularHTML(canEd, cred, fmtF) {
+  const l = YF.porAnular || []; if (!l.length) return "";
+  return `<div style="border:1px solid #B4453C;border-radius:12px;padding:12px 14px;margin:0 0 14px">
+    <b style="color:#B4453C">Duplicadas por anular (${l.length})</b>
+    <p class="note" style="margin:4px 0 10px">Facturas de clientes CONTAX emitidas de más. Anúlalas en Impuestos y márcalas aquí. Al repartidor no se le avisa.</p>
+    <div style="overflow:auto"><table><thead><tr><th>Repartidor</th><th>Factura</th><th style="text-align:right">Importe</th><th>Motivo</th>${canEd ? "<th>Accesos SIN</th><th></th>" : ""}</tr></thead><tbody>
+    ${l.map(f => `<tr><td><b>${escape(f.nombre || "—")}</b><div style="color:var(--muted);font-size:12px">ID ${escape(String(f.id || ""))}</div></td>
+      <td class="mono">N.º ${escape(String(f.numero || "s/n"))} · ${fmtF(f.fechaEmision)}<div style="font-size:12px;color:var(--muted)">NIT ${escape(String(f.nitEmisor || "—"))}<br>${escape(String(f.autorizacion || ""))}</div></td>
+      <td class="mono" style="text-align:right"><b>${fmtBsY(f.importe)}</b></td>
+      <td style="font-size:13px;min-width:160px">${escape(f.detalle || "")}</td>
+      ${canEd ? `<td>${cred(YF.cliDe(f.id, f.nombre))}</td><td><button class="btn" style="padding:4px 10px;font-size:12px" data-yfanu="${escape(f._id)}">Ya la anulé</button></td>` : ""}</tr>`).join("")}
+    </tbody></table></div></div>`;
+}
 const yfProblema = x => x.estado === "noSePudo" || x.estado === "observada";
 const yfEspera = () => YF.err ? `<p class="msg err">No se pudo leer la lista de CONTROL: ${escape(YF.err)}</p><button class="btn" id="yf_rec">Reintentar</button>`
   : !YF.filas ? `<p class="lead"><span class="cx-spin"></span> Trayendo la lista de facturación de CONTROL…</p>` : "";
@@ -6688,6 +6718,7 @@ function yfHTML() {
     return `${e.estado === "noSePudo" && e.motivo ? `<b style="color:#B4453C">${escape(e.motivo)}</b><br>` : ""}${escape(e.comentario || "")}<div style="color:var(--muted);font-size:11px">${escape(yfQuien(e.por))} · ${fmtF(e.fecha || e.fechaISO)}</div>`; };
   return `<div id="yf_caja"${FAC_UI.yfull ? ` class="rec-full"` : ""}>
     <p class="note" style="margin:0 0 10px">Solo los repartidores que son <b>clientes activos de CONTAX</b> (lista de facturación de CONTROL, mismos importes). Copia los accesos para entrar al SIAT y luego marca la factura como emitida o explica por qué no se pudo; el repartidor verá el motivo en su Portal. Se actualiza cada 10 minutos.</p>
+    ${yfPorAnularHTML(canEd, cred, fmtF)}
     ${YF.sinEmi ? `<p class="msg err" style="margin:0 0 10px">Los motivos y comentarios todavía no se pueden leer: faltan publicar las reglas del Portal de repartidores.</p>` : ""}
     <div class="kpis">${kpi(emitidas + faltan.length + problema.length, "Total que CONTAX debe emitir")}${kpi(emitidas, "Emitidas · " + hoyN + " hoy", "var(--ok)")}${kpi(faltan.length, "Faltan emitir · " + fmtBsY(faltan.reduce((s, x) => s + x.importe, 0)))}${kpi(problema.length, "Con problema", "#B4453C")}</div>
     <p class="note" style="margin:0 0 10px">Total = Emitidas + Faltan emitir + Con problema. Emitidas cuenta desde que empezó el sistema, también las de semanas ya pagadas. No cuentan las facturas que sube el propio repartidor.</p>
@@ -6770,6 +6801,7 @@ function paintFacturacion() {
   if (el("yf_tipo")) el("yf_tipo").onchange = e => { FAC_UI.ytipo = e.target.value; paintFacturacion(); };
   el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem, b));
   el("v-facturacion").querySelectorAll("[data-yfno]").forEach(b => b.onclick = () => yfNoEmitida(b.dataset.yfno));
+  el("v-facturacion").querySelectorAll("[data-yfanu]").forEach(b => b.onclick = () => yfYaAnulada(b.dataset.yfanu, b));
   el("v-facturacion").querySelectorAll(".yf-cp").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "📋"; }, 1200); } catch (e) {} });
   if (el("yf_rec")) el("yf_rec").onclick = () => { YF.err = ""; YF.filas = null; paintFacturacion(); yfCargar(true).then(() => paintFacturacion(), () => paintFacturacion()); };
   if (el("fac_per")) el("fac_per").onchange = e => { FAC_UI.per = e.target.value; paintFacturacion(); };
