@@ -584,7 +584,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var rets = (b.retiros || []).filter(function (r) { return r.estado === "pendiente"; });
     return '<div class="pila"><h2>Mi billetera</h2>' +
       '<div class="card"><h3 style="margin-bottom:6px">Recomienda CONTAX y gana</h3><p class="c13" style="line-height:19px">Tu código es <b style="font-size:18px">' + esc(b.codigo) + "</b>. Quien declare por primera vez con tu código paga la <b>mitad</b>. Cuando pague su segundo mes, tú recibes en tu billetera <b>lo que cuesta su plan</b> (Bs 30, 50, 60 o 95), sin límite de recomendados.</p>" +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" id="bbImg">Compartir mi imagen</button><button class="btn2" id="bbTxt">Copiar mi enlace</button></div><p class="chico suave" id="bbMsg" style="margin-top:6px"></p></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" id="bbImg">Compartir mi imagen</button><button class="btn2" id="bbBajar">Descargar imagen</button><button class="btn2" id="bbWa">Enviar por WhatsApp</button><button class="btn2" id="bbTxt">Copiar mi enlace</button></div>' +
+      '<p class="chico suave" style="margin-top:6px">En la computadora, WhatsApp no aparece al compartir: descarga la imagen y adjúntala en tu chat o estado de WhatsApp.</p><p class="chico suave" id="bbMsg" style="margin-top:6px"></p></div>' +
       '<div class="grid"><div class="card"><h3 style="margin-bottom:6px">Saldo de referidos</h3><div style="font-size:28px;font-weight:700">' + bs(b.saldoRef) + '</div><p class="c13 suave" style="line-height:19px">Úsalo para pagar cualquier servicio en la pasarela o retíralo en efectivo.</p>' +
         (b.retenido > 0 ? '<p class="c13" style="margin-top:6px"><span class="badge b-proc">En proceso</span> Retiro de ' + bs(b.retenido) + " en camino.</p>" : "") +
         (b.saldoRef > 0 ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><input id="bbMonto" inputmode="decimal" placeholder="Monto" value="' + esc(String(b.saldoRef)) + '" style="width:110px"><input id="bbCuenta" placeholder="Banco y N° de cuenta, o QR por WhatsApp" style="flex:1;min-width:180px"><button class="btn2" id="bbRetiro">Pedir retiro</button></div>' : "") + "</div>" +
@@ -601,6 +602,17 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       var bt = this; bt.disabled = true; bt.textContent = "Preparando imagen…";
       window.PremioImg.crear({ tipo: "referido", codigo: b.codigo }).then(function (blob) { return window.PremioImg.compartir(blob, window.PremioImg.textoReferido(b.codigo), "CONTAX-referido.png"); })
         .catch(function (e) { msg(e.message || "No se pudo crear la imagen."); }).then(function () { bt.disabled = false; bt.textContent = "Compartir mi imagen"; });
+    };
+    if ($("bbBajar")) $("bbBajar").onclick = function () {
+      if (!window.PremioImg) return;
+      var bt = this; bt.disabled = true; bt.textContent = "Preparando imagen…";
+      window.PremioImg.crear({ tipo: "referido", codigo: b.codigo }).then(function (blob) { window.PremioImg.descargar(blob, "CONTAX-referido.png"); msg("Imagen descargada: búscala en tu carpeta de Descargas."); })
+        .catch(function (e) { msg(e.message || "No se pudo crear la imagen."); }).then(function () { bt.disabled = false; bt.textContent = "Descargar imagen"; });
+    };
+    // Abre WhatsApp (app o web) con el mensaje y el enlace listos; la imagen se adjunta aparte
+    if ($("bbWa")) $("bbWa").onclick = function () {
+      var t = window.PremioImg ? window.PremioImg.textoReferido(b.codigo) : b.codigo;
+      window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank", "noopener");
     };
     if ($("bbTxt")) $("bbTxt").onclick = function () {
       var t = window.PremioImg ? window.PremioImg.textoReferido(b.codigo) : b.codigo;
