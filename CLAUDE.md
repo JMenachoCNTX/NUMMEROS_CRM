@@ -8,7 +8,7 @@ Es el **sistema central de CONTAX** y la **fuente de usuarios** de todos los sis
   trámites, egresos, reportes, pasarela, CONTROL, usuarios, configuración, asistente IA.
 - `pagos.html` — **Pasarela de pagos** pública: el cliente busca su NIT, ve el precio, paga por QR y sube el comprobante en foto o PDF (máx. 2,5 MB; lo lee la IA).
   Incluye la venta de balances (Balance Integral / Balance Independiente para no clientes).
-- `cliente.html` — **Portal del Cliente**: el cliente activo entra con NIT y C.I. y ve sus datos y documentos. En cada declaración ve los archivos que el equipo subió en Declaraciones (RCV, F200, F400, compras y QR con su vencimiento a las 00:00), servidos por el puente (`portal_djarchivo`). Si el cliente también es repartidor de Yango (su NIT en `perfiles` del Portal de repartidores, o su NIT o C.I. en BDYango) ve la pestaña **Pagos Yango** con su informe general de pagos MTG y lo descarga en PDF (`portal_yango`, lee `semanas` e `historialRider` de `portal-nummeros`; versión 44 del puente).
+- `cliente.html` — **Portal del Cliente**: el cliente activo entra con su **correo** (usuario) y su **NIT** (contraseña) y ve sus datos y documentos. En cada declaración ve los archivos que el equipo subió en Declaraciones (RCV, F200, F400, compras y QR con su vencimiento a las 00:00), servidos por el puente (`portal_djarchivo`). Si el cliente también es repartidor de Yango (su NIT en `perfiles` del Portal de repartidores, o su NIT o C.I. en BDYango) ve la pestaña **Pagos Yango** con su informe general de pagos MTG y lo descarga en PDF (`portal_yango`, lee `semanas` e `historialRider` de `portal-nummeros`; versión 44 del puente).
 - `privacy-policy.html` — política de privacidad.
 
 ## Para qué empresa
@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v106; puente versión 54). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v107; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -95,4 +95,5 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v104 · Portal del Cliente (puente 54):** `portalPeriodoKey_` calcula el período igual que `recPeriodoKey` del Panel. Antes solo entendía el mes con año de 4 cifras: las recepciones con «OCTUBRE», «OCTUBRE>» u «OCTUBRE/25» (la gran mayoría) no salían en la tabla de Declaraciones, ni sus archivos. La pestaña Documentos → «De CONTAX para ti» también lista los archivos de Declaraciones.
 - **v105 · Portal del Cliente → Declaraciones:** en 2026 (`DECL_GESTION`, `DECL_DESDE`) la tabla solo muestra lo pagado desde el 20/10/2026 y lo que ya tiene documentos, sin filas de meses vacíos; los cuadros suman solo lo mostrado. Los adjuntos van en el cuadro «Documentos de tus declaraciones» (`filaDocsDecl`). Otros años y el Reporte PDF no cambian.
 - **v106 · Portal del Cliente → Mi billetera:** además de «Compartir mi imagen» (en la computadora el menú del sistema no trae WhatsApp) hay «Descargar imagen» y «Enviar por WhatsApp» (wa.me con el mensaje y el enlace; la imagen se adjunta aparte).
+- **v107 · Ingreso al Portal del Cliente (puente 55):** usuario = correo de la BD («5. Correo Electrónico»; si tiene varios, vale cualquiera), contraseña = NIT (`portalLogin_(nit, ci, correo)`). Si llega sin `correo` (página vieja) sigue valiendo NIT + C.I. Los activos sin correo no pueden entrar: la ficha del cliente lo avisa.
 - **v102:** el título de cada pestaña sale solo en la barra de arriba (el `<h1>` de cada vista se oculta por CSS). Facturación → «Facturas por mes» (`yfMesHTML`): facturas emitidas por CONTAX a cada repartidor cliente, últimos 6 meses, por el mes en que se marcaron (`yfDia`). Suscriptores Activos: cuadros con nombres claros.

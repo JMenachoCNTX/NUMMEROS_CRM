@@ -1485,9 +1485,9 @@ var PORTAL_SESION_SEG = 21600;   // 6 horas
 var PORTAL_CARPETA = "NUMMEROS · Portal de clientes";
 function portalHandle_(d) {
   var a = d.action;
-  if (a === "portal_login") return portalLogin_(d.nit, d.ci);
+  if (a === "portal_login") return portalLogin_(d.nit, d.ci, d.correo);
   var ses = portalSesionObj_(d.token), nit = ses && ses.nit;
-  if (!nit) return { ok: false, sesion: false, error: "Tu sesión terminó. Vuelve a ingresar con tu NIT y tu C.I." };
+  if (!nit) return { ok: false, sesion: false, error: "Tu sesión terminó. Vuelve a ingresar con tu correo y tu NIT." };
   if (!ses.staff) { var cA = pasClienteCache_(nit); if (!cA || pasGrupoEstado_(cA.estado) !== "activo") { pasCacheDel_("ps_" + d.token); return { ok: false, sesion: false, error: "¡Ups! El Portal de CONTAX es exclusivo para clientes activos. Si no realizaste el pago de tu suscripción mensual, no podrás acceder. Paga en nuestra pasarela o escríbenos por WhatsApp para reactivar tu servicio.", inactivo: true }; } }
   if (a === "portal_datos") { var dd = portalDatos_(nit); if (ses.staff) dd.staff = ses.staff; return dd; }
   if (a === "portal_pdf") return portalPdf_(nit, d);
@@ -1503,22 +1503,28 @@ function portalHandle_(d) {
 function portalSesionObj_(token) { if (!token || String(token).length < 20) return null; return pasCache_("ps_" + token); }
 function portalSesion_(token) { if (!token || String(token).length < 20) return ""; var s = pasCache_("ps_" + token); return s && s.nit ? s.nit : ""; }
 function portalLimpiaCi_(v) { return String(v || "").toUpperCase().replace(/[^0-9A-Z]/g, ""); }
-function portalLogin_(nitIn, ciIn) {
-  var nit = String(nitIn || "").replace(/\D/g, ""), ci = portalLimpiaCi_(ciIn);
-  if (nit.length < 5 || !ci) return { ok: false, error: "Escribe tu NIT y tu C.I." };
+// Ingreso: usuario = correo electrónico de la BD, contraseña = NIT (no todos tienen C.I. en la BD).
+// Las páginas viejas (sin «correo») siguen entrando con NIT + C.I.
+function portalCorreos_(t) { return String(t || "").toLowerCase().split(/[\s,;\/]+/).filter(function (x) { return /@/.test(x); }); }
+function portalLogin_(nitIn, ciIn, correoIn) {
+  var nit = String(nitIn || "").replace(/\D/g, ""), ci = portalLimpiaCi_(ciIn), correo = String(correoIn || "").trim().toLowerCase(), conCorreo = correoIn != null;
+  if (conCorreo ? (!/@/.test(correo) || nit.length < 5) : (nit.length < 5 || !ci)) return { ok: false, error: conCorreo ? "Escribe tu correo y tu NIT." : "Escribe tu NIT y tu C.I." };
   // Máximo 6 intentos fallidos cada 15 minutos por NIT
   var kInt = "pli_" + nit, intentos = Number(pasCache_(kInt) || 0);
   if (intentos >= 6) return { ok: false, error: "Demasiados intentos. Espera 15 minutos o escríbenos por WhatsApp." };
   var cli = pasClienteCache_(nit);
-  var fallo = function () { pasCachePut_(kInt, intentos + 1, 900); return { ok: false, error: "NIT o C.I. incorrectos. Si no recuerdas tus datos, escríbenos por WhatsApp." }; };
+  var fallo = function () { pasCachePut_(kInt, intentos + 1, 900); return { ok: false, error: (conCorreo ? "Correo o NIT incorrectos." : "NIT o C.I. incorrectos.") + " Si no recuerdas tus datos, escríbenos por WhatsApp." }; };
   if (!cli) return fallo();
-  if (pasGrupoEstado_(cli.estado) !== "activo") return { ok: false, inactivo: true, error: "¡Ups! El Portal de CONTAX es exclusivo para clientes activos. Si no realizaste el pago de tu suscripción mensual, no podrás acceder. Paga en nuestra pasarela o escríbenos por WhatsApp para reactivar tu servicio." };
-  var ciBD = portalLimpiaCi_(cli.ci), ciNum = ci.replace(/\D/g, "");
   var ok = false;
-  if (ciBD) ok = ci === ciBD || (ciNum.length >= 5 && ciNum === ciBD.replace(/\D/g, ""));
-  // Persona natural sin C.I. registrado: el NIT es el C.I. más 3 dígitos
-  else ok = nit.length >= 8 && ciNum.length >= 5 && nit.slice(0, -3) === ciNum;
+  if (conCorreo) ok = portalCorreos_(cli.correo).indexOf(correo) >= 0;
+  else {
+    var ciBD = portalLimpiaCi_(cli.ci), ciNum = ci.replace(/\D/g, "");
+    if (ciBD) ok = ci === ciBD || (ciNum.length >= 5 && ciNum === ciBD.replace(/\D/g, ""));
+    // Persona natural sin C.I. registrado: el NIT es el C.I. más 3 dígitos
+    else ok = nit.length >= 8 && ciNum.length >= 5 && nit.slice(0, -3) === ciNum;
+  }
   if (!ok) return fallo();
+  if (pasGrupoEstado_(cli.estado) !== "activo") return { ok: false, inactivo: true, error: "¡Ups! El Portal de CONTAX es exclusivo para clientes activos. Si no realizaste el pago de tu suscripción mensual, no podrás acceder. Paga en nuestra pasarela o escríbenos por WhatsApp para reactivar tu servicio." };
   pasCacheDel_(kInt);
   var token = Utilities.getUuid() + Utilities.getUuid().slice(0, 8);
   pasCachePut_("ps_" + token, { nit: nit, t: Date.now() }, PORTAL_SESION_SEG);

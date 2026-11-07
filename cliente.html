@@ -193,31 +193,31 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
 
   // ================= LOGIN =================
   var FOTOS = ["pitagoras-tablet", "euclides-laptop", "arquimedes-pensando", "los-tres-reunion", "pitagoras-celular", "euclides-lentes", "arquimedes-eureka"];
-  function pintarLogin(err, nit) {
+  function pintarLogin(err, correo) {
     var foto = FOTOS[Math.floor(Math.random() * FOTOS.length)];
     raiz.innerHTML = '<div id="login"><div class="lform">' +
       '<img class="logo logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS by CONTAX"><img class="logo logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS by CONTAX">' +
       '<div><p class="c13 suave">CONTAX · Contabilidad e Impuestos</p><h1>Portal del Cliente</h1><p class="suave" style="margin-top:8px;line-height:21px">Tus declaraciones, balances, trámites, facturación y documentos en un solo lugar.</p></div>' +
       cuentasHtml(true) +
       '<form class="card pila" id="fLog" novalidate>' +
-      '<div><label class="l" for="lNit">Usuario: tu NIT</label><input class="grande" id="lNit" inputmode="numeric" autocomplete="username" value="' + esc(nit || "") + '" placeholder="Ej. 5412313012"></div>' +
-      '<div><label class="l" for="lCi">Clave: tu número de C.I.</label><div class="ojo"><input class="grande" id="lCi" type="password" autocomplete="current-password" placeholder="Tu carnet de identidad"><button type="button" id="bOjo" aria-label="Mostrar u ocultar la clave">' + ic("ojo") + "</button></div></div>" +
+      '<div><label class="l" for="lMail">Usuario: tu correo electrónico</label><input class="grande" id="lMail" type="email" inputmode="email" autocomplete="username" autocapitalize="off" value="' + esc(correo || "") + '" placeholder="El correo que registraste en CONTAX"></div>' +
+      '<div><label class="l" for="lNit">Contraseña: tu NIT</label><div class="ojo"><input class="grande" id="lNit" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Ej. 5412313012"><button type="button" id="bOjo" aria-label="Mostrar u ocultar la contraseña">' + ic("ojo") + "</button></div></div>" +
       (err ? '<div class="aviso err" role="alert">' + esc(err) + "</div>" : "") +
       '<button class="btn w" type="submit">Ingresar</button>' +
       '<p class="chico suave" style="text-align:center">¿No puedes ingresar? <a href="' + wa("Hola CONTAX, no puedo ingresar al Portal del Cliente. Mi NIT es: ") + '" target="_blank" rel="noopener" style="color:var(--acento)">Escríbenos por WhatsApp</a></p></form>' +
       '<a class="btn2" href="pagos.html" style="text-decoration:none">' + ic("pago") + "Solo quiero pagar un servicio</a></div>" +
       '<div class="lhero" style="background-image:url(marca/clasicos/' + foto + '.jpg)"><div class="tx"><h2>Tu contabilidad, clara y a mano</h2><p>Mira el estado de tus declaraciones, descarga tus documentos y paga tus servicios con QR desde tu celular.</p></div></div></div>';
     tic();
-    document.getElementById("bOjo").onclick = function () { var i = document.getElementById("lCi"); i.type = i.type === "password" ? "text" : "password"; };
+    document.getElementById("bOjo").onclick = function () { var i = document.getElementById("lNit"); i.type = i.type === "password" ? "text" : "password"; };
     document.getElementById("fLog").onsubmit = function (ev) {
       ev.preventDefault();
-      var n = document.getElementById("lNit").value.replace(/\D/g, ""), c = document.getElementById("lCi").value.trim();
-      if (n.length < 5 || !c) { pintarLogin("Escribe tu NIT y tu número de C.I.", n); return; }
+      var c = document.getElementById("lMail").value.trim().toLowerCase(), n = document.getElementById("lNit").value.replace(/\D/g, "");
+      if (!/@/.test(c) || n.length < 5) { pintarLogin("Escribe tu correo y tu NIT.", c); return; }
       raiz.innerHTML = anim("Ingresando a tu portal", "Estamos preparando tu información.");
-      Promise.all([api({ action: "portal_login", nit: n, ci: c }), espera(3000)]).then(function (x) {
+      Promise.all([api({ action: "portal_login", correo: c, nit: n }), espera(3000)]).then(function (x) {
         var r = x[0];
-        if (!r.ok) { pintarLogin(r.error || "No se pudo ingresar.", n); return; }
-        S.token = r.token; S.d = r; try { sessionStorage.setItem("portal-tk", r.token); localStorage.setItem("portal-nit", n); } catch (e) {}
+        if (!r.ok) { pintarLogin(r.error || "No se pudo ingresar.", c); return; }
+        S.token = r.token; S.d = r; try { sessionStorage.setItem("portal-tk", r.token); localStorage.setItem("portal-correo", c); localStorage.removeItem("portal-nit"); } catch (e) {}
         S.tab = "inicio"; pintarApp();
       });
     };
@@ -225,7 +225,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function salir(msg) {
     if (S.token) api({ action: "portal_salir", token: S.token });
     S.token = ""; S.d = null; S.chat = []; try { sessionStorage.removeItem("portal-tk"); } catch (e) {}
-    var n = ""; try { n = localStorage.getItem("portal-nit") || ""; } catch (e) {}
+    var n = ""; try { n = localStorage.getItem("portal-correo") || ""; } catch (e) {}
     pintarLogin(msg || "", n);
   }
 
@@ -667,7 +667,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   // ================= INICIO =================
   var tk = ""; try { tk = sessionStorage.getItem("portal-tk") || ""; } catch (e) {}
   try { var mh = location.hash.match(/tk=([A-Za-z0-9-]+)/); if (mh) { tk = mh[1]; sessionStorage.setItem("portal-tk", tk); history.replaceState(null, "", location.pathname); } } catch (e) {}
-  var nitGuardado = ""; try { nitGuardado = localStorage.getItem("portal-nit") || ""; } catch (e) {}
+  var nitGuardado = ""; try { nitGuardado = localStorage.getItem("portal-correo") || ""; } catch (e) {}
   api({ action: "pas_config" }).then(function (r) { if (r && r.ok) { S.cfgPub = { precios: r.precios, lanzamiento: r.lanzamiento, eeffGestion: r.eeff && r.eeff.gestion, diaDesde: r.diaDesde || 25 }; if (!S.d && document.getElementById("fLog")) { var n = document.getElementById("lNit"), ci = document.getElementById("lCi"); if (!ci || !ci.value) pintarLogin("", n ? n.value : nitGuardado); } } });
   if (tk) {
     raiz.innerHTML = anim("Abriendo tu portal", "Un momento…");

@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "106";
+const APP_VERSION = "107";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3373,8 +3373,8 @@ function recNuevoCliente() {
       <div class="field"><label>NIT (opcional)</label><input id="nc_nit" inputmode="numeric"></div>
       <div class="field"><label>Celular (opcional)</label><input id="nc_cel" inputmode="tel"></div>
     </div>
-    <div class="field"><label>C.I. (opcional · es su clave del Portal del Cliente)</label><input id="nc_ci"></div>
-    <div class="field"><label>Correo (opcional)</label><input id="nc_correo" type="email"></div>
+    <div class="field"><label>C.I. (opcional)</label><input id="nc_ci"></div>
+    <div class="field"><label>Correo (opcional · es su usuario del Portal del Cliente)</label><input id="nc_correo" type="email"></div>
     <div class="field"><label>Nota para la tarea (opcional)</label><textarea id="nc_nota" style="min-height:60px" placeholder="Ej. Trae su carnet el lunes"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn sec" id="nc_cancel" style="border:1px solid var(--line)">Cancelar</button>
@@ -5402,16 +5402,16 @@ function fiDocsPintar(c) {
   const box = el("fi_docs"); if (!box) return;
   const nit = FI_UI.nit, info = FI_DOCS[nit];
   const nombre = c ? (bdV(c, "nombre") || bdV(c, "razon")) : "";
-  const ci = c ? bdV(c, "ci") : "";
-  const claveTxt = ci ? "tu número de C.I." : (nit.length >= 8 ? "tu número de C.I. (" + nit.slice(0, -3) + ")" : "tu número de C.I.");
-  const msgWa = `Hola ${nombre.split(" ")[0] || ""}, ya puedes revisar tus declaraciones, balances, trámites y documentos en el Portal del Cliente de CONTAX:\n${PORTAL_URL}\nUsuario: tu NIT (${nit})\nClave: ${claveTxt}`;
+  // Portal del Cliente: usuario = correo de la BD, contraseña = NIT
+  const correoP = c ? String(bdV(c, "correo") || "").trim() : "";
+  const msgWa = `Hola ${nombre.split(" ")[0] || ""}, ya puedes revisar tus declaraciones, balances, trámites y documentos en el Portal del Cliente de CONTAX:\n${PORTAL_URL}\nUsuario: tu correo${/@/.test(correoP) ? " (" + correoP + ")" : ""}\nContraseña: tu NIT (${nit})`;
   const lista = info && info.documentos ? info.documentos : null;
   box.innerHTML = `<div class="formcard" style="max-width:none;margin:0">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><h3 style="margin:0 auto 0 0">Portal del Cliente y documentos</h3>
       <button class="mini" id="fi_pver" style="background:var(--green);color:#fff;border-color:var(--green)">Ver su portal</button><button class="mini" id="fi_pcopy">Copiar enlace del portal</button><button class="mini" id="fi_pwa">Copiar mensaje para WhatsApp</button></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px"><b style="margin-right:auto">Pasarela de pagos con su NIT</b><button class="mini" id="fi_pas">🔗 Copiar enlace de la pasarela</button><button class="mini" id="fi_paswa">Copiar mensaje para WhatsApp</button></div>
     <p class="note" style="margin:0 0 10px">Con este enlace entra directo con su NIT (sin escribirlo): <span class="mono">${escape(pasarelaUrl(nit))}</span></p>
-    <p class="note" style="margin:0 0 10px">El cliente entra en <b>${escape(PORTAL_URL)}</b> con su <b>NIT</b> y su <b>C.I.</b>${ci ? "" : ` (no tiene C.I. en la Base de Datos: se usa el NIT sin los 3 últimos dígitos${nit.length >= 8 ? ", <b>" + escape(nit.slice(0, -3)) + "</b>" : ""}; si es empresa, carga su C.I. en la ficha de la Base de Datos)`}.</p>
+    <p class="note" style="margin:0 0 10px">El cliente entra en <b>${escape(PORTAL_URL)}</b> con su <b>correo</b> como usuario y su <b>NIT</b> como contraseña.${/@/.test(correoP) ? "" : ` <b style="color:var(--red,#B42318)">No tiene correo en la Base de Datos: cárgalo en su ficha para que pueda entrar.</b>`}</p>
     ${lista === null ? `<button class="btn sec" id="fi_dver" style="border:1px solid var(--line)">Ver documentos del cliente</button>` : lista === "cargando" ? `<p class="note"><span class="cx-spin"></span> Cargando documentos…</p>` : info.error ? `<p class="msg err">${escape(info.error)}</p>` : `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><a class="mini" href="${escape(info.carpetaContax)}" target="_blank" rel="noopener">Subir documentos para el cliente (Drive)</a><a class="mini" href="${escape(info.carpeta)}" target="_blank" rel="noopener">Abrir carpeta del cliente</a><button class="mini" id="fi_drel">Actualizar</button></div>
       <p class="note" style="margin:0 0 8px">Lo que pongas en la carpeta <b>"Entregados por CONTAX"</b> le aparece al cliente en su portal para descargar.</p>
