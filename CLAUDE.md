@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v107; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v108; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -96,4 +96,5 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v105 · Portal del Cliente → Declaraciones:** en 2026 (`DECL_GESTION`, `DECL_DESDE`) la tabla solo muestra lo pagado desde el 20/10/2026 y lo que ya tiene documentos, sin filas de meses vacíos; los cuadros suman solo lo mostrado. Los adjuntos van en el cuadro «Documentos de tus declaraciones» (`filaDocsDecl`). Otros años y el Reporte PDF no cambian.
 - **v106 · Portal del Cliente → Mi billetera:** además de «Compartir mi imagen» (en la computadora el menú del sistema no trae WhatsApp) hay «Descargar imagen» y «Enviar por WhatsApp» (wa.me con el mensaje y el enlace; la imagen se adjunta aparte).
 - **v107 · Ingreso al Portal del Cliente (puente 55):** usuario = correo de la BD («5. Correo Electrónico»; si tiene varios, vale cualquiera), contraseña = NIT (`portalLogin_(nit, ci, correo)`). Si llega sin `correo` (página vieja) sigue valiendo NIT + C.I. Los activos sin correo no pueden entrar: la ficha del cliente lo avisa.
+- **v108 · Portal del Cliente con marca CONTAX:** barra de menú con el logo de CONTAX (`marca/logos/contax-horizontal-color.svg` / `-blanco`), isotipo de CONTAX en el asistente, imágenes de la colaboración NUMMEROS × CONTAX (`marca/colaboracion/`, copiadas de EdiThor a 1280 px) en el ingreso, el carrusel del Inicio y al final de cada pestaña (`BANNER_TAB`). «Copiar mi enlace» copia solo el enlace `pagos.html?ref=CONTAX-…`; la pasarela muestra el aviso del descuento a quien llega con código.
 - **v102:** el título de cada pestaña sale solo en la barra de arriba (el `<h1>` de cada vista se oculta por CSS). Facturación → «Facturas por mes» (`yfMesHTML`): facturas emitidas por CONTAX a cada repartidor cliente, últimos 6 meses, por el mes en que se marcaron (`yfDia`). Suscriptores Activos: cuadros con nombres claros.

@@ -192,7 +192,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function badge(e) { var x = EST[e] || [e, "b-mut"]; return '<span class="badge ' + x[1] + '">' + esc(x[0]) + "</span>"; }
 
   // ================= LOGIN =================
-  var FOTOS = ["pitagoras-tablet", "euclides-laptop", "arquimedes-pensando", "los-tres-reunion", "pitagoras-celular", "euclides-lentes", "arquimedes-eureka"];
+  // Imágenes de la colaboración NUMMEROS × CONTAX
+  var FOTOS = ["apreton-arquimedes", "los-cuatro-oscuro", "reunion-sala", "portal-clientes-euclides-pantalla", "contrato-euclides-oscuro", "proyector-claro", "pitagoras-muestra-sistema"];
   function pintarLogin(err, correo) {
     var foto = FOTOS[Math.floor(Math.random() * FOTOS.length)];
     raiz.innerHTML = '<div id="login"><div class="lform">' +
@@ -206,7 +207,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<button class="btn w" type="submit">Ingresar</button>' +
       '<p class="chico suave" style="text-align:center">¿No puedes ingresar? <a href="' + wa("Hola CONTAX, no puedo ingresar al Portal del Cliente. Mi NIT es: ") + '" target="_blank" rel="noopener" style="color:var(--acento)">Escríbenos por WhatsApp</a></p></form>' +
       '<a class="btn2" href="pagos.html" style="text-decoration:none">' + ic("pago") + "Solo quiero pagar un servicio</a></div>" +
-      '<div class="lhero" style="background-image:url(marca/clasicos/' + foto + '.jpg)"><div class="tx"><h2>Tu contabilidad, clara y a mano</h2><p>Mira el estado de tus declaraciones, descarga tus documentos y paga tus servicios con QR desde tu celular.</p></div></div></div>';
+      '<div class="lhero" style="background-image:url(marca/colaboracion/' + foto + '.jpg)"><div class="tx"><h2>Tu contabilidad, clara y a mano</h2><p>Mira el estado de tus declaraciones, descarga tus documentos y paga tus servicios con QR desde tu celular.</p></div></div></div>';
     tic();
     document.getElementById("bOjo").onclick = function () { var i = document.getElementById("lNit"); i.type = i.type === "password" ? "text" : "password"; };
     document.getElementById("fLog").onsubmit = function (ev) {
@@ -265,13 +266,13 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function pintarApp() {
     var c = S.d.cliente;
     if (S.tab === "yango" && !S.d.yango) S.tab = "inicio";
-    raiz.innerHTML = (S.d.staff ? '<div style="background:#93370D;color:#fff;text-align:center;font-size:13px;padding:7px 12px;font-weight:600">Vista de CONTAX (' + esc(S.d.staff) + "): estás viendo el portal de este cliente tal como él lo ve.</div>" : "") + '<div class="top"><div class="topin"><img class="logo logoClaro" src="marca/logos/nummeros-logotipo-horizontal-principal.svg" alt="NUMMEROS"><img class="logo logoOsc" src="marca/logos/nummeros-logotipo-horizontal-blanco.svg" alt="NUMMEROS">' +
+    raiz.innerHTML = (S.d.staff ? '<div style="background:#93370D;color:#fff;text-align:center;font-size:13px;padding:7px 12px;font-weight:600">Vista de CONTAX (' + esc(S.d.staff) + "): estás viendo el portal de este cliente tal como él lo ve.</div>" : "") + '<div class="top"><div class="topin"><img class="logo logoClaro" src="marca/logos/contax-horizontal-color.svg" alt="CONTAX"><img class="logo logoOsc" src="marca/logos/contax-horizontal-blanco.svg" alt="CONTAX">' +
       '<div class="who"><b>' + esc(c.nombre) + "</b><span>NIT " + esc(c.nit) + "</span></div>" +
       '<button class="icb" id="bTema" title="Modo claro u oscuro" aria-label="Cambiar modo claro u oscuro">' + ic("tema") + '</button><button class="icb" id="bSalir" title="Salir" aria-label="Salir del portal">' + ic("salir") + "</button></div>" +
       '<nav class="tabs" aria-label="Secciones">' + TABS.filter(function (t) { return t[0] !== "yango" || S.d.yango; }).map(function (t) { return '<button data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + ic(t[2], 16) + esc(t[1]) + "</button>"; }).join("") + "</nav></div>" +
       '<main id="cont"></main>' +
       '<div class="flot">' + (WA ? '<a class="wa" href="' + wa() + '" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">' + ic("msj", 22) + "<span>WhatsApp</span></a>" : "") +
-      '<button class="ia" id="bChat" aria-label="Asistente">' + '<img src="marca/logos/nummeros-isotipo-blanco.svg" alt="" style="width:20px;height:24px">' + "<span>Asistente</span></button></div>" + '<div id="chatBox"></div>';
+      '<button class="ia" id="bChat" aria-label="Asistente">' + '<img src="marca/logos/contax-isotipo-blanco.svg" alt="" style="width:20px;height:24px">' + "<span>Asistente</span></button></div>" + '<div id="chatBox"></div>';
     document.getElementById("bSalir").onclick = function () { salir(); };
     document.getElementById("bTema").onclick = function () { var o = ["auto", "claro", "oscuro"]; pasTema.set(o[(o.indexOf(pasTema.get()) + 1) % 3]); };
     document.getElementById("bChat").onclick = function () { S.chatAbierto = true; pintarChat(); };
@@ -289,7 +290,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     else if (S.tab === "docs") h = tabDocs(d);
     else if (S.tab === "bill") h = tabBilletera(d);
     else h = tabDatos(d);
+    if (S.tab !== "inicio") h += bannerTab(S.tab, d);
     cont.innerHTML = h; tic();
+    cont.querySelectorAll("[data-banchat]").forEach(function (a) { a.onclick = function (e) { e.preventDefault(); S.chatAbierto = true; pintarChat(); }; });
     cont.querySelectorAll("[data-ir]").forEach(function (b) { b.onclick = function () { ir(b.dataset.ir); }; });
     if (S.tab === "inicio") promoIniciar();
     if (S.tab === "decl") { var sa = document.getElementById("selAnio"); if (sa) sa.onchange = function () { S.anio = sa.value; pintarTab(); }; enlazarDocsDecl(); }
@@ -300,19 +303,35 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     if (document.getElementById("bChatIr")) document.getElementById("bChatIr").onclick = function () { S.chatAbierto = true; pintarChat(); };
   }
 
+  // Imagen de colaboración NUMMEROS × CONTAX al final de cada pestaña (en el Inicio va el carrusel)
+  var BANNER_TAB = {
+    decl: ["proyector-claro.jpg", "Tus impuestos, siempre al día", "Declaramos tu IVA e IT a tiempo cada mes y te dejamos aquí tus formularios y el QR para pagar.", "Preguntar al asistente", "chat"],
+    serv: ["contrato-euclides-oscuro.jpg", "Balances y trámites sin vueltas", "Reserva tu balance de la gestión o pide un trámite y sigue su estado desde aquí.", "Pagar un servicio", "pagos"],
+    yango: ["pitagoras-muestra-sistema.jpg", "Tus pagos de Yango en un solo lugar", "Revisa lo pagado y lo pendiente de cada semana y descarga tu informe en PDF.", "Preguntar al asistente", "chat"],
+    docs: ["portal-clientes-euclides-pantalla.jpg", "Tus documentos, a un clic", "Envía tus documentos a CONTAX y descarga los que te entregamos, cuando quieras.", "Preguntar al asistente", "chat"],
+    bill: ["apreton-arquimedes.jpg", "Recomienda CONTAX y gana", "Quien declare por primera vez con tu código paga la mitad, y tú recibes lo que cuesta su plan.", "Preguntar al asistente", "chat"],
+    datos: ["los-cuatro-oscuro.jpg", "NUMMEROS × CONTAX", "Tecnología y contadores trabajando juntos para que tu contabilidad sea clara y esté a mano.", "Escríbenos por WhatsApp", "wa"]
+  };
+  function bannerTab(tab, d) {
+    var p = BANNER_TAB[tab]; if (!p) return "";
+    var nitQ = "?portal=1&nit=" + encodeURIComponent(d.cliente.nit);
+    var boton = p[4] === "chat" ? '<a href="#" data-banchat="1">' + esc(p[3]) + "</a>" : p[4] === "wa" ? (WA ? '<a href="' + wa() + '" target="_blank" rel="noopener">' + esc(p[3]) + "</a>" : "") : '<a href="pagos.html' + nitQ + '">' + esc(p[3]) + "</a>";
+    return '<div class="promo" style="margin-top:18px;background-image:url(marca/colaboracion/' + p[0] + ')"><div class="tx"><b>' + esc(p[1]) + "</b><p>" + esc(p[2]) + "</p>" + boton + "</div></div>";
+  }
+
   // ----- Inicio -----
   var PROMOS = [
-    ["los-tres-reunion.jpg", "Balances de la gestión con cupos limitados", "Reserva tu balance a mejor precio: el precio sube cuando se llena cada fase. Con firma digital y entrega en tu portal.", "Ver balances", "pagos"],
-    ["pitagoras-celular.jpg", "Paga con QR desde tu celular", "Tu pago se verifica al instante y recibes tu Orden de Recepción por correo. Sin filas ni oficinas.", "Pagar ahora", "pagos"],
-    ["euclides-laptop.jpg", "Facturación automática para repartidores", "Tu factura lista cada semana antes del jueves, con tu historial siempre a mano.", "Suscribirme", "pagos"],
-    ["arquimedes-pensando.jpg", "¿Tienes dudas de tus impuestos?", "Pregúntale a nuestro asistente o escríbenos por WhatsApp. Te respondemos con tu información.", "Preguntar", "chat"]
+    ["reunion-sala.jpg", "Balances de la gestión con cupos limitados", "Reserva tu balance a mejor precio: el precio sube cuando se llena cada fase. Con firma digital y entrega en tu portal.", "Ver balances", "pagos"],
+    ["pasarela-pagos-pitagoras-pantalla.jpg", "Paga con QR desde tu celular", "Tu pago se verifica al instante y recibes tu Orden de Recepción por correo. Sin filas ni oficinas.", "Pagar ahora", "pagos"],
+    ["sistema-contable-euclides-pantalla.jpg", "Facturación automática para repartidores", "Tu factura lista cada semana antes del jueves, con tu historial siempre a mano.", "Suscribirme", "pagos"],
+    ["apreton-arquimedes.jpg", "¿Tienes dudas de tus impuestos?", "Pregúntale a nuestro asistente o escríbenos por WhatsApp. Te respondemos con tu información.", "Preguntar", "chat"]
   ];
   // Tipo de suscriptor: el de declaración ya tiene la facturación incluida; al de facturación se le ofrece la declaración
   function esSuscDecl(d) { return /DECLARAC/i.test((d.cliente && d.cliente.suscriptor) || ""); }
   function esSuscFact(d) { return /FACTURAC/i.test((d.cliente && d.cliente.suscriptor) || ""); }
   function promos(d) {
     if (esSuscDecl(d)) return PROMOS.filter(function (p) { return !/Facturación automática/.test(p[1]); });
-    if (esSuscFact(d)) return [["euclides-laptop.jpg", "Pásate a la suscripción de declaración", "Nosotros hacemos tu declaración mensual de IVA e IT a tiempo, y la facturación ya va incluida. Desde Bs 50 al mes.", "Quiero declarar", "pagos"]].concat(PROMOS.filter(function (p) { return !/Facturación automática/.test(p[1]); }));
+    if (esSuscFact(d)) return [["contrato-euclides-oscuro.jpg", "Pásate a la suscripción de declaración", "Nosotros hacemos tu declaración mensual de IVA e IT a tiempo, y la facturación ya va incluida. Desde Bs 50 al mes.", "Quiero declarar", "pagos"]].concat(PROMOS.filter(function (p) { return !/Facturación automática/.test(p[1]); }));
     return PROMOS;
   }
   function tabInicio(d) {
@@ -339,7 +358,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       '<button id="bChatIr"><span class="ic">' + ic("chat") + "</span>Asistente<small>Resuelve tus dudas</small></button>" +
       (WA ? '<a href="' + wa() + '" target="_blank" rel="noopener"><span class="ic">' + ic("msj") + "</span>WhatsApp<small>Habla con el equipo</small></a>" : "") +
       "</div>" +
-      '<div><div class="promo" id="promo" style="background-image:url(marca/clasicos/' + p[0] + ')"><div class="tx"><b>' + esc(p[1]) + "</b><p>" + esc(p[2]) + "</p>" +
+      '<div><div class="promo" id="promo" style="background-image:url(marca/colaboracion/' + p[0] + ')"><div class="tx"><b>' + esc(p[1]) + "</b><p>" + esc(p[2]) + "</p>" +
       (p[4] === "chat" ? '<a href="#" id="promoChat">' + esc(p[3]) + "</a>" : '<a href="pagos.html' + nitQ + '">' + esc(p[3]) + "</a>") + "</div></div>" +
       '<div class="puntos">' + PROMOS.map(function (x, i) { return '<i class="' + (i === S.promo % PROMOS.length ? "on" : "") + '"></i>'; }).join("") + "</div></div></div>";
   }
@@ -615,8 +634,9 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank", "noopener");
     };
     if ($("bbTxt")) $("bbTxt").onclick = function () {
-      var t = window.PremioImg ? window.PremioImg.textoReferido(b.codigo) : b.codigo;
-      try { navigator.clipboard.writeText(t).then(function () { msg("Listo: pega el mensaje en WhatsApp."); }); } catch (e) { msg(t); }
+      // Solo el enlace (con tu código adentro); el mensaje completo va con «Enviar por WhatsApp»
+      var t = location.origin + location.pathname.replace(/[^/]*$/, "") + "pagos.html?ref=" + encodeURIComponent(b.codigo);
+      try { navigator.clipboard.writeText(t).then(function () { msg("Enlace copiado: " + t); }, function () { msg(t); }); } catch (e) { msg(t); }
     };
     if ($("bbRetiro")) $("bbRetiro").onclick = function () {
       var m = Number(String($("bbMonto").value).replace(",", ".")), cta = $("bbCuenta").value.trim(), bt = this;
@@ -646,7 +666,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     var box = document.getElementById("chatBox"); if (!box) return;
     if (!S.chatAbierto) { box.innerHTML = ""; return; }
     if (!S.chat.length) S.chat.push({ de: "ia", t: "Hola, " + primerNombre(S.d.cliente.nombre) + ". Soy el asistente de CONTAX. Puedo ayudarte con tus declaraciones, vencimientos, precios y pagos. ¿Qué necesitas?" });
-    box.innerHTML = '<div class="chat" role="dialog" aria-label="Asistente de CONTAX"><div class="hd"><img src="marca/logos/nummeros-isotipo-blanco.svg" alt=""><b>Asistente CONTAX</b><button id="cX" aria-label="Cerrar">' + ic("x", 20) + "</button></div>" +
+    box.innerHTML = '<div class="chat" role="dialog" aria-label="Asistente de CONTAX"><div class="hd"><img src="marca/logos/contax-isotipo-blanco.svg" alt="" style="object-fit:contain"><b>Asistente CONTAX</b><button id="cX" aria-label="Cerrar">' + ic("x", 20) + "</button></div>" +
       '<div class="ms" id="cMs">' + S.chat.map(function (m) { return '<div class="m ' + (m.de === "yo" ? "yo" : "ia") + '">' + esc(m.t) + "</div>"; }).join("") + (S.pensando ? '<div class="m ia">Escribiendo…</div>' : "") + "</div>" +
       (S.chat.length < 2 ? '<div class="sug">' + ["¿Cuándo vence mi declaración?", "¿Cuánto cuesta el balance?", "¿Cómo pago con QR?"].map(function (q) { return '<button data-q="' + esc(q) + '">' + esc(q) + "</button>"; }).join("") + "</div>" : "") +
       '<form id="cF"><input id="cIn" placeholder="Escribe tu pregunta…" autocomplete="off" maxlength="500"><button class="btn" aria-label="Enviar">' + ic("enviar") + "</button></form></div>";
