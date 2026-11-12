@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "108";
+const APP_VERSION = "109";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6445,7 +6445,7 @@ function paintRepFinanzas() {
 }
 
 // ---------- FACTURACIÓN (subpestañas) ----------
-const FAC_UI = { tab: "activos", per: "", q: "", ycont: "CONTAX", yver: "faltan", ytipo: "", yfull: false, ymtipo: "" };
+const FAC_UI = { tab: "activos", per: "", q: "", ycont: "CONTAX", yver: "faltan", ytipo: "", yfull: false, ymtipo: "", yord: "nombre", ydir: 1, yres: "dia", yresAb: false };
 // ============================================================
 //  Lista de facturación de repartidores (la de CONTROL · Facturas)
 //  Se lee en vivo del Portal de repartidores (portal-nummeros) con la cuenta de CONTROL
@@ -6621,17 +6621,31 @@ function yfNoEmitida(clave) {
 }
 // Facturas emitidas por CONTAX: cuántas por día y quién las marcó (de portal-nummeros/facturas, origen 'contax')
 const yfDia = f => { const t = f.subido && f.subido.seconds; return t ? new Date(t * 1000 - 4 * 3600e3).toISOString().slice(0, 10) : (f.fechaEmision || ""); };
+// Semana ISO (lunes a domingo) de un día AAAA-MM-DD → { k: "2026-46", txt: "Sem 46 · 09/11–15/11" }
+function yfSemIso(d) {
+  const t = new Date(d + "T12:00:00Z"), dia = (t.getUTCDay() + 6) % 7, lun = new Date(t - dia * 864e5), jue = new Date(+lun + 3 * 864e5);
+  const a = jue.getUTCFullYear(), n = 1 + Math.floor((jue - Date.UTC(a, 0, 1)) / 864e5 / 7);
+  const dom = new Date(+lun + 6 * 864e5), f = x => x.toISOString().slice(8, 10) + "/" + x.toISOString().slice(5, 7);
+  return { k: a + "-" + String(n).padStart(2, "0"), txt: "Sem " + n + " · " + f(lun) + "–" + f(dom) };
+}
 function yfResumenEmitidas() {
-  const dia = yfDia, l = (YF.emitidas || []).filter(f => dia(f));
+  const l = (YF.emitidas || []).filter(f => yfDia(f));
   if (!l.length) return `<p style="color:var(--muted)">Todavía no hay facturas marcadas como emitidas.</p>`;
-  const per = [...new Set(l.map(f => yfQuien(f.registradoPor || f.revisadoPor)))].sort();
-  const dias = [...new Set(l.map(dia))].sort().reverse().slice(0, 14);
-  const cuenta = (d, p) => l.filter(f => dia(f) === d && (p == null || yfQuien(f.registradoPor || f.revisadoPor) === p)).length;
+  const porSem = FAC_UI.yres === "semana", quien = f => yfQuien(f.registradoPor || f.revisadoPor);
   const fd = d => d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4);
-  return `<div style="overflow:auto"><table><thead><tr><th>Día</th>${per.map(p => `<th style="text-align:right">${escape(p)}</th>`).join("")}<th style="text-align:right">Total</th></tr></thead><tbody>
-    ${dias.map(d => `<tr><td class="mono">${fd(d)}</td>${per.map(p => `<td class="mono" style="text-align:right">${cuenta(d, p) || ""}</td>`).join("")}<td class="mono" style="text-align:right"><b>${cuenta(d)}</b></td></tr>`).join("")}
-    <tr><td><b>Total (todo)</b></td>${per.map(p => `<td class="mono" style="text-align:right"><b>${l.filter(f => yfQuien(f.registradoPor || f.revisadoPor) === p).length}</b></td>`).join("")}<td class="mono" style="text-align:right"><b>${l.length}</b></td></tr>
-  </tbody></table></div>`;
+  const clave = f => porSem ? yfSemIso(yfDia(f)).k : yfDia(f), txt = {};
+  l.forEach(f => { const d = yfDia(f); txt[clave(f)] = porSem ? yfSemIso(d).txt : fd(d); });
+  const per = [...new Set(l.map(quien))].sort();
+  const filas = [...new Set(l.map(clave))].sort().reverse().slice(0, porSem ? 12 : 14);
+  const de = (k, p) => l.filter(f => clave(f) === k && (p == null || quien(f) === p));
+  const cli = a => new Set(a.map(f => String(f.id))).size;
+  const celda = a => a.length ? `${a.length}<div style="font-size:11px;color:var(--muted)">${cli(a)} cli.</div>` : "";
+  const btn = (k, t) => `<button class="btn ${FAC_UI.yres === k ? "" : "ghost"}" style="padding:4px 12px;font-size:12px" data-yfres="${k}">${t}</button>`;
+  return `<div style="display:flex;gap:6px;margin:0 0 8px">${btn("dia", "Por día")}${btn("semana", "Por semana")}</div>
+    <div style="overflow:auto"><table><thead><tr><th>${porSem ? "Semana" : "Día"}</th>${per.map(p => `<th style="text-align:right">${escape(p)}</th>`).join("")}<th style="text-align:right">Total</th></tr></thead><tbody>
+    ${filas.map(k => `<tr><td class="mono">${escape(txt[k])}</td>${per.map(p => `<td class="mono" style="text-align:right">${celda(de(k, p))}</td>`).join("")}<td class="mono" style="text-align:right"><b>${celda(de(k))}</b></td></tr>`).join("")}
+    <tr><td><b>Total (todo)</b></td>${per.map(p => `<td class="mono" style="text-align:right"><b>${celda(l.filter(f => quien(f) === p))}</b></td>`).join("")}<td class="mono" style="text-align:right"><b>${celda(l)}</b></td></tr>
+  </tbody></table></div><p class="note" style="margin:6px 0 0">Cada celda: facturas y, debajo, a cuántos clientes distintos («cli.»).</p>`;
 }
 // Duplicadas de clientes CONTAX (las detecta la conciliación de CONTROL): las anula el equipo y al repartidor no se le avisa
 async function yfYaAnulada(id, btn) {
@@ -6708,7 +6722,8 @@ function yfHTML() {
   const faltan = todas.filter(x => x.estado === "porEmitir"), problema = todas.filter(yfProblema), emitidas = (YF.emitidas || []).length;
   const hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
   const hoyN = (YF.emitidas || []).filter(f => f.subido && f.subido.seconds && new Date(f.subido.seconds * 1000 - 4 * 3600e3).toISOString().slice(0, 10) === hoy).length;
-  const kpi = (n, t, c) => `<div class="kpi"><div class="n"${c ? ` style="color:${c}"` : ""}>${n}</div><div class="l">${t}</div></div>`;
+  const nCli = a => new Set(a.map(x => String(x.id))).size;
+  const kpi = (n, t, c, cl) => `<div class="kpi"><div class="n"${c ? ` style="color:${c}"` : ""}>${n}${cl != null ? `<span style="font-size:.5em;font-weight:600;color:var(--muted)"> · ${cl} ${cl === 1 ? "cliente" : "clientes"}</span>` : ""}</div><div class="l">${t}</div></div>`;
   const cred = c => {
     if (!c || !canEd) return "";
     return [["NIT", bdV(c, "nit")], ["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["SIAT", bdV(c, "passSiat")]].filter(y => y[1])
@@ -6720,9 +6735,9 @@ function yfHTML() {
     <p class="note" style="margin:0 0 10px">Solo los repartidores que son <b>clientes activos de CONTAX</b> (lista de facturación de CONTROL, mismos importes). Copia los accesos para entrar al SIAT y luego marca la factura como emitida o explica por qué no se pudo; el repartidor verá el motivo en su Portal. Se actualiza cada 10 minutos.</p>
     ${yfPorAnularHTML(canEd, cred, fmtF)}
     ${YF.sinEmi ? `<p class="msg err" style="margin:0 0 10px">Los motivos y comentarios todavía no se pueden leer: faltan publicar las reglas del Portal de repartidores.</p>` : ""}
-    <div class="kpis">${kpi(emitidas + faltan.length + problema.length, "Total que CONTAX debe emitir")}${kpi(emitidas, "Emitidas · " + hoyN + " hoy", "var(--ok)")}${kpi(faltan.length, "Faltan emitir · " + fmtBsY(faltan.reduce((s, x) => s + x.importe, 0)))}${kpi(problema.length, "Con problema", "#B4453C")}</div>
-    <p class="note" style="margin:0 0 10px">Total = Emitidas + Faltan emitir + Con problema. Emitidas cuenta desde que empezó el sistema, también las de semanas ya pagadas. No cuentan las facturas que sube el propio repartidor.</p>
-    <details style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:600">📊 Facturas emitidas por día y por persona</summary><div style="margin-top:8px">${yfResumenEmitidas()}</div></details>
+    <div class="kpis">${kpi(emitidas + faltan.length + problema.length, "Total que CONTAX debe emitir", "", nCli((YF.emitidas || []).concat(faltan, problema)))}${kpi(emitidas, "Emitidas · " + hoyN + " hoy", "var(--ok)", nCli(YF.emitidas || []))}${kpi(faltan.length, "Faltan emitir · " + fmtBsY(faltan.reduce((s, x) => s + x.importe, 0)), "", nCli(faltan))}${kpi(problema.length, "Con problema", "#B4453C", nCli(problema))}</div>
+    <p class="note" style="margin:0 0 10px">Número grande = facturas; al lado, a cuántos clientes distintos corresponden. Total = Emitidas + Faltan emitir + Con problema. Emitidas cuenta desde que empezó el sistema, también las de semanas ya pagadas. No cuentan las facturas que sube el propio repartidor.</p>
+    <details id="yf_res" style="margin:0 0 12px"${FAC_UI.yresAb ? " open" : ""}><summary style="cursor:pointer;font-weight:600">📊 Facturas emitidas por día, por semana y por persona</summary><div style="margin-top:8px">${yfResumenEmitidas()}</div></details>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center">
       <select id="yf_ver">${[["faltan", "Faltan y con problema"], ["poremitir", "Faltan emitir"], ["nosepudo", "Con problema"], ["con", "Con factura (semanas sin pagar)"], ["", "Todas"]].map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>
       <select id="yf_tipo">${[["", "Portal y Desktop"], ["portal", `Portal de Impuestos (${todas.filter(x => yfTipo(x) === "portal").length})`], ["desktop", `Desktop · SIAT (${todas.filter(x => yfTipo(x) === "desktop").length})`]].map(([k, t]) => `<option value="${k}" ${tp === k ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -6730,16 +6745,34 @@ function yfHTML() {
       <button class="btn ghost" id="yf_rec">↻ Actualizar</button>
       <button class="btn ghost" id="yf_full">${FAC_UI.yfull ? "✕ Salir (Esc)" : "⛶ Pantalla completa"}</button>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} filas · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))}</p>
-    <div style="overflow:auto"><table><thead><tr><th>#</th><th>Repartidor</th><th>Semana</th><th style="text-align:right">Importe</th>${canEd ? "<th>Accesos SIN</th>" : ""}<th>Estado</th><th>Comentarios</th><th></th></tr></thead><tbody>
-    ${l.slice(0, 500).map((x, i) => `<tr><td class="mono">${i + 1}</td><td><b>${escape(x.nombre || "—")}</b>${x.cli ? fichaOjo(bdV(x.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(x.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${x.cli ? " · " + escape(bdV(x.cli, "nombre")) : ""}</div></td>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">${l.length} facturas · ${nCli(l)} clientes · ${fmtBsY(l.reduce((s, x) => s + x.importe, 0))} · toca un título para ordenar</p>
+    ${yfTablaGrupos(l, canEd, cred, comentario, fmtF)}</div>`;
+}
+// Lista agrupada: todas las facturas de un mismo cliente juntas (nombre y accesos una sola vez). Se ordena por los títulos.
+const YF_ORD_EST = { porEmitir: 1, noSePudo: 2, observada: 3, revision: 4, preaprobada: 5, contax: 6, aprobada: 7 };
+function yfTablaGrupos(l, canEd, cred, comentario, fmtF) {
+  const g = {}; l.forEach(x => (g[x.id] = g[x.id] || { id: x.id, l: [] }).l.push(x));
+  const grupos = Object.values(g); grupos.forEach(G => { G.l.sort((a, b) => yfSemN(a.semana) - yfSemN(b.semana)); G.nombre = (G.l.find(x => x.nombre) || {}).nombre || ""; G.cli = G.l[0].cli;
+    G.bs = G.l.reduce((s, x) => s + x.importe, 0); G.sem = yfSemN(G.l[0].semana); G.est = Math.min(...G.l.map(x => YF_ORD_EST[x.estado] || 9)); });
+  const k = FAC_UI.yord, d = FAC_UI.ydir, porNom = (a, b) => yfNorm(a.nombre || "zzz").localeCompare(yfNorm(b.nombre || "zzz"));
+  const cmp = { nombre: porNom, semana: (a, b) => a.sem - b.sem, importe: (a, b) => a.bs - b.bs, estado: (a, b) => a.est - b.est, cant: (a, b) => a.l.length - b.l.length }[k] || porNom;
+  grupos.sort((a, b) => d * cmp(a, b) || porNom(a, b));
+  const th = (key, t, der) => `<th data-yford="${key}" style="cursor:pointer;user-select:none;white-space:nowrap${der ? ";text-align:right" : ""}" title="Ordenar">${t} <span style="color:${k === key ? "var(--brand,#235347)" : "var(--muted)"}">${k === key ? (d > 0 ? "▲" : "▼") : "↕"}</span></th>`;
+  let n = 0; const vis = []; for (const G of grupos) { if (n >= 500) break; vis.push(G); n += G.l.length; }
+  const filaHTML = (G, x, j, gi) => {
+    const prim = j === 0, rs = G.l.length > 1 ? ` rowspan="${G.l.length}"` : "";
+    return `<tr${prim ? ` style="border-top:2px solid var(--line)"` : ""}>
+      ${prim ? `<td class="mono"${rs} style="vertical-align:top">${gi + 1}</td><td${rs} style="vertical-align:top"><b>${escape(G.nombre || "—")}</b>${G.cli ? fichaOjo(bdV(G.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(G.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${G.cli ? " · " + escape(bdV(G.cli, "nombre")) : ""}</div>${G.l.length > 1 ? `<div style="margin-top:4px;display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--brand,#235347);color:#fff">${G.l.length} facturas · ${fmtBsY(G.bs)}</div>` : ""}</td>` : ""}
       <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
       <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
-      ${canEd ? `<td>${cred(x.cli)}</td>` : ""}
+      ${canEd && prim ? `<td${rs} style="vertical-align:top">${cred(G.cli)}</td>` : ""}
       <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
       <td style="font-size:13px;min-width:160px">${comentario(x)}</td>
-      <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
-    </tbody></table></div>${l.length > 500 ? `<p style="color:var(--muted)">Se muestran las primeras 500; usa el buscador.</p>` : ""}</div>`;
+      <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`;
+  };
+  return `<div style="overflow:auto"><table><thead><tr>${th("cant", "#")}${th("nombre", "Repartidor (A-Z)")}${th("semana", "Semana")}${th("importe", "Importe", 1)}${canEd ? "<th>Accesos SIN</th>" : ""}${th("estado", "Estado")}<th>Comentarios</th><th></th></tr></thead><tbody>
+    ${vis.map((G, gi) => G.l.map((x, j) => filaHTML(G, x, j, gi)).join("")).join("") || `<tr><td colspan="8" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
+    </tbody></table></div>${n < l.length ? `<p style="color:var(--muted)">Se muestran las primeras ${n} facturas; usa el buscador.</p>` : ""}`;
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape" && FAC_UI.yfull && el("yf_caja") && !document.querySelector("#yn_mot")) { FAC_UI.yfull = false; paintFacturacion(); } });
 async function renderFacturacion() {
@@ -6799,6 +6832,9 @@ function paintFacturacion() {
   if (el("yf_ver")) el("yf_ver").onchange = e => { FAC_UI.yver = e.target.value; paintFacturacion(); };
   if (el("yf_mtipo")) el("yf_mtipo").onchange = e => { FAC_UI.ymtipo = e.target.value; paintFacturacion(); };
   if (el("yf_tipo")) el("yf_tipo").onchange = e => { FAC_UI.ytipo = e.target.value; paintFacturacion(); };
+  el("v-facturacion").querySelectorAll("[data-yford]").forEach(t => t.onclick = () => { const k = t.dataset.yford; if (FAC_UI.yord === k) FAC_UI.ydir = -FAC_UI.ydir; else { FAC_UI.yord = k; FAC_UI.ydir = k === "nombre" || k === "semana" ? 1 : -1; } paintFacturacion(); });
+  el("v-facturacion").querySelectorAll("[data-yfres]").forEach(b => b.onclick = () => { FAC_UI.yres = b.dataset.yfres; FAC_UI.yresAb = true; paintFacturacion(); });
+  if (el("yf_res")) el("yf_res").ontoggle = e => { FAC_UI.yresAb = e.target.open; };
   el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem, b));
   el("v-facturacion").querySelectorAll("[data-yfno]").forEach(b => b.onclick = () => yfNoEmitida(b.dataset.yfno));
   el("v-facturacion").querySelectorAll("[data-yfanu]").forEach(b => b.onclick = () => yfYaAnulada(b.dataset.yfanu, b));
