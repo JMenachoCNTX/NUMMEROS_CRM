@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "109";
+const APP_VERSION = "110";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6759,20 +6759,39 @@ function yfTablaGrupos(l, canEd, cred, comentario, fmtF) {
   grupos.sort((a, b) => d * cmp(a, b) || porNom(a, b));
   const th = (key, t, der) => `<th data-yford="${key}" style="cursor:pointer;user-select:none;white-space:nowrap${der ? ";text-align:right" : ""}" title="Ordenar">${t} <span style="color:${k === key ? "var(--brand,#235347)" : "var(--muted)"}">${k === key ? (d > 0 ? "▲" : "▼") : "↕"}</span></th>`;
   let n = 0; const vis = []; for (const G of grupos) { if (n >= 500) break; vis.push(G); n += G.l.length; }
+  // Accesos SIN compactos debajo del nombre (2 por línea)
+  const acc = c => !c || !canEd ? "" : `<div class="yf-acc">${[["NIT", bdV(c, "nit")], ["Usuario", bdV(c, "usuario")], ["Contraseña", bdV(c, "password")], ["SIAT", bdV(c, "passSiat")]].filter(y => y[1])
+    .map(([t, val]) => `<span><em>${t}</em> <b class="mono">${escape(val)}</b><button class="mini yf-cp" type="button" data-v="${escape(val)}" title="Copiar">📋</button></span>`).join("")}</div>`;
   const filaHTML = (G, x, j, gi) => {
     const prim = j === 0, rs = G.l.length > 1 ? ` rowspan="${G.l.length}"` : "";
-    return `<tr${prim ? ` style="border-top:2px solid var(--line)"` : ""}>
-      ${prim ? `<td class="mono"${rs} style="vertical-align:top">${gi + 1}</td><td${rs} style="vertical-align:top"><b>${escape(G.nombre || "—")}</b>${G.cli ? fichaOjo(bdV(G.cli, "nit")) : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(G.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${G.cli ? " · " + escape(bdV(G.cli, "nombre")) : ""}</div>${G.l.length > 1 ? `<div style="margin-top:4px;display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--brand,#235347);color:#fff">${G.l.length} facturas · ${fmtBsY(G.bs)}</div>` : ""}</td>` : ""}
-      <td>${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
-      <td class="mono" style="text-align:right"><b>${fmtBsY(x.importe)}</b></td>
-      ${canEd && prim ? `<td${rs} style="vertical-align:top">${cred(G.cli)}</td>` : ""}
+    return `<tr>
+      ${prim ? `<td class="mono yf-n"${rs}>${gi + 1}</td><td class="yf-rep"${rs}><b>${escape(G.nombre || "—")}</b>${G.cli ? fichaOjo(bdV(G.cli, "nit")) : ""}${G.l.length > 1 ? ` <span class="yf-cant">${G.l.length} facturas · ${fmtBsY(G.bs)}</span>` : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(G.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${G.cli ? " · " + escape(bdV(G.cli, "nombre")) : ""}</div>${acc(G.cli)}</td>` : ""}
+      <td style="white-space:nowrap">${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
+      <td class="mono" style="text-align:right;white-space:nowrap"><b>${fmtBsY(x.importe)}</b></td>
       <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
-      <td style="font-size:13px;min-width:160px">${comentario(x)}</td>
-      <td>${!x.f && canEd ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn" style="padding:4px 10px;font-size:12px" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:4px 10px;font-size:12px" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`;
+      <td style="font-size:13px;min-width:140px">${comentario(x)}</td>
+      <td>${!x.f && canEd ? `<div style="display:flex;gap:6px;flex-wrap:nowrap"><button class="btn" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`;
   };
-  return `<div style="overflow:auto"><table><thead><tr>${th("cant", "#")}${th("nombre", "Repartidor (A-Z)")}${th("semana", "Semana")}${th("importe", "Importe", 1)}${canEd ? "<th>Accesos SIN</th>" : ""}${th("estado", "Estado")}<th>Comentarios</th><th></th></tr></thead><tbody>
-    ${vis.map((G, gi) => G.l.map((x, j) => filaHTML(G, x, j, gi)).join("")).join("") || `<tr><td colspan="8" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr>`}
-    </tbody></table></div>${n < l.length ? `<p style="color:var(--muted)">Se muestran las primeras ${n} facturas; usa el buscador.</p>` : ""}`;
+  const css = `<style>
+    .yf-tab{border-collapse:collapse;width:100%}
+    .yf-tab tbody tr:hover{background:transparent}
+    .yf-tab tbody.yf-g{border-top:2px solid #8EB69B}
+    .yf-tab tbody.yf-g td{vertical-align:middle}
+    .yf-tab tbody.yf-g:nth-of-type(even) td{background:rgba(142,182,155,.16)}
+    .yf-tab tbody.yf-g:hover td{background:rgba(142,182,155,.30)}
+    .yf-tab td.yf-n,.yf-tab td.yf-rep{vertical-align:top}
+    .yf-tab td.yf-n{border-left:4px solid #235347;font-weight:700;color:#235347}
+    html.dark .yf-tab td.yf-n{border-left-color:#8EB69B;color:#8EB69B}
+    .yf-tab td.yf-rep{min-width:280px;max-width:420px}
+    .yf-cant{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#235347;color:#DAF1DE;vertical-align:middle}
+    .yf-acc{display:grid;grid-template-columns:repeat(2,minmax(0,max-content));gap:3px 12px;margin-top:6px;font-size:12px}
+    .yf-acc span{display:flex;gap:4px;align-items:center;white-space:nowrap}
+    .yf-acc em{font-style:normal;color:var(--muted)}
+    .yf-acc .mini{padding:0 4px;font-size:11px}
+  </style>`;
+  return `${css}<div style="overflow:auto"><table class="yf-tab"><thead><tr>${th("cant", "#")}${th("nombre", canEd ? "Repartidor y accesos SIN (A-Z)" : "Repartidor (A-Z)")}${th("semana", "Semana")}${th("importe", "Importe", 1)}${th("estado", "Estado")}<th>Comentarios</th><th></th></tr></thead>
+    ${vis.map((G, gi) => `<tbody class="yf-g">${G.l.map((x, j) => filaHTML(G, x, j, gi)).join("")}</tbody>`).join("") || `<tbody><tr><td colspan="7" style="color:var(--muted)">Nada con estos filtros. 🎉</td></tr></tbody>`}
+    </table></div>${n < l.length ? `<p style="color:var(--muted)">Se muestran las primeras ${n} facturas; usa el buscador.</p>` : ""}`;
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape" && FAC_UI.yfull && el("yf_caja") && !document.querySelector("#yn_mot")) { FAC_UI.yfull = false; paintFacturacion(); } });
 async function renderFacturacion() {
