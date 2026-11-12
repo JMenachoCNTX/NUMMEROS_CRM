@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "110";
+const APP_VERSION = "111";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6782,10 +6782,11 @@ function yfTablaGrupos(l, canEd, cred, comentario, fmtF) {
     .yf-tab td.yf-n,.yf-tab td.yf-rep{vertical-align:top}
     .yf-tab td.yf-n{border-left:4px solid #235347;font-weight:700;color:#235347}
     html.dark .yf-tab td.yf-n{border-left-color:#8EB69B;color:#8EB69B}
-    .yf-tab td.yf-rep{min-width:280px;max-width:420px}
+    .yf-tab td.yf-rep{width:380px;min-width:300px;max-width:420px}
     .yf-cant{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#235347;color:#DAF1DE;vertical-align:middle}
-    .yf-acc{display:grid;grid-template-columns:repeat(2,minmax(0,max-content));gap:3px 12px;margin-top:6px;font-size:12px}
-    .yf-acc span{display:flex;gap:4px;align-items:center;white-space:nowrap}
+    .yf-acc{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:6px;font-size:12px}
+    .yf-acc span{display:flex;gap:4px;align-items:center;max-width:100%}
+    .yf-acc b{word-break:break-all}
     .yf-acc em{font-style:normal;color:var(--muted)}
     .yf-acc .mini{padding:0 4px;font-size:11px}
   </style>`;
