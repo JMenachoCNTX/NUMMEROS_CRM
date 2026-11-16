@@ -3,10 +3,10 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "111";
+const APP_VERSION = "112";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 if (!window.APP_CONFIG || !window.APP_CONFIG.firebase) {
   document.body.innerHTML = '<div style="color:#fff;font-family:sans-serif;padding:40px">Falta config.js con los datos de Firebase.</div>';
@@ -4794,6 +4794,7 @@ function openDDJJ(r, alGuardar) {
         <div class="note" style="margin:2px 0 0">NIT <b class="mono">${escape(String(r.nit || "—"))}</b>${r.nit ? ` <button class="mini" id="dj_nitcopy" title="Copiar NIT" type="button">📋</button>` : ""}${r.clienteId ? " · ID " + escape(String(r.clienteId)) : ""} · ${escape(r.rubro || "")} · ${escape(r.detalleServicio || "")} · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b> · Rec. ${escape(r.fecha || djFechaTxt(r.fechaISO))} N° ${escape(String(r.nroRecepcion || "—"))}</div></div>
       <button class="mini" id="dj_x">✕</button></div>
     <div id="dj_cred" class="note" style="margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px">${canEdit ? "🔑 Cargando accesos del cliente…" : "🔑 Accesos visibles solo para quienes pueden editar."}</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border-radius:8px;background:var(--tint)"><button class="btn" type="button" id="dj_escanear" style="padding:8px 14px">📱 Escanear facturas con el celular</button><span class="note" style="margin:0">Muestra un QR: sacas fotos a las facturas físicas, la IA las lee y bajas el Excel para el Registro de Compras.</span></div>
     <style>.dj-dos{display:grid;grid-template-columns:3fr 2fr;gap:12px;align-items:start;margin-bottom:10px}.dj-eq,.dj-ia{border-radius:10px;padding:10px 12px}.dj-eq{border:1px solid var(--line)}
       .dj-ia{border:1.5px dashed var(--accent);background:var(--panel2)}.dj-tit{font-size:12px;font-weight:700;letter-spacing:.03em;margin:0 0 8px;color:var(--muted)}.dj-ia .dj-tit{color:var(--accent)}
       .dj-dos .grid2{gap:0 12px}@media(max-width:760px){.dj-dos{grid-template-columns:1fr}}</style>
@@ -4877,6 +4878,7 @@ function openDDJJ(r, alGuardar) {
     $("dj_declarado").onchange = ponDecl;
     $("dj_fechaDeclaracion").onchange = () => { if ($("dj_fechaDeclaracion").value && !$("dj_declarado").checked) { $("dj_declarado").checked = true; ponDecl(); } };
   }
+  if ($("dj_escanear")) $("dj_escanear").onclick = () => escAbrir(r);
   if ($("dj_nitcopy")) $("dj_nitcopy").onclick = () => { try { navigator.clipboard.writeText(String(r.nit || "").trim()); $("dj_nitcopy").textContent = "✓"; } catch (e) {} };
   if (canEdit) (() => {
     const box = $("dj_cred");
@@ -5235,6 +5237,342 @@ async function djLeerIA(tipo, dataUrl) {
     }
   }
   return { error: "La IA está ocupada " + err + ". Toca «Leer con IA» de nuevo en unos segundos." };
+}
+
+// ---------- ESCANEAR FACTURAS CON EL CELULAR (v112) ----------
+// Declaraciones → formulario → «📱 Escanear facturas con el celular»: muestra un QR que abre escanear.html?s=<sesión>
+// en el celular. El celular saca fotos y las guarda en escaneos/{sid}/img/{id} (foto) y escaneos/{sid}/fotos/{id}
+// (ficha: estado, miniatura, datos). Esta ventana las ve en tiempo real, las lee con Gemini (la clave queda en la
+// compu, nunca va al celular), deja corregir cada dato y descarga el Excel con la plantilla oficial del Registro
+// de Compras (compras-excel.js). Las fotos se borran a los 3 meses; los datos quedan.
+const ESC_DIAS = 7;               // la sesión del QR vale 7 días (se renueva sola al volver a abrirla)
+const ESC_CAMPOS = [
+  ["nitProveedor", "NIT proveedor", 105], ["razonSocial", "Razón social", 170], ["codigoAutorizacion", "Cód. autorización", 170],
+  ["numeroFactura", "N.º factura", 78], ["fecha", "Fecha", 92], ["importeTotal", "Importe total", 90], ["descuentos", "Descuentos", 78],
+  ["ice", "ICE", 70, 1], ["iehd", "IEHD", 70, 1], ["ipj", "IPJ", 70, 1], ["tasas", "Tasas", 70, 1], ["otroNoSujeto", "No sujeto a CF", 80, 1],
+  ["exentos", "Exentos", 70, 1], ["tasaCero", "Tasa cero", 70, 1], ["giftCard", "Gift card", 70, 1], ["codigoControl", "Cód. control", 100]
+];
+const ESC_PROMPT = `Eres un lector de facturas de COMPRA de Bolivia (Impuestos Nacionales: facturas electrónicas o computarizadas del SIAT y facturas antiguas con código de control). Recibes la foto (o PDF) de UNA factura. Extrae los datos exactamente como aparecen; no inventes nada.
+- esFactura: false si no es una factura (recibo, nota de venta, ticket, proforma, comprobante de pago o foto de otra cosa).
+- nitProveedor: NIT de quien EMITE la factura (arriba, junto al nombre de la empresa). Solo dígitos.
+- razonSocial: nombre o razón social de quien emite.
+- codigoAutorizacion: «CÓD. AUTORIZACIÓN», «CUF» o «N.º AUTORIZACIÓN». Si viene partido en varias líneas, únelo sin espacios.
+- numeroFactura: «FACTURA N.º». Solo dígitos.
+- fecha: fecha de emisión en formato dd/mm/aaaa.
+- nitComprador: NIT/CI/CEX del cliente (comprador). Solo dígitos.
+- subtotal: SUBTOTAL antes del descuento (si la factura no tiene subtotal, el TOTAL).
+- descuento: DESCUENTO, bonificación o rebaja. 0 si no hay.
+- giftCard: MONTO GIFT CARD. 0 si no hay.
+- total: TOTAL o MONTO A PAGAR.
+- baseCF: IMPORTE BASE CRÉDITO FISCAL si aparece; 0 si no.
+- ice, iehd, ipj, tasas, otroNoSujeto, exentos, tasaCero: importes de ICE, IEHD, IPJ, tasas, otros no sujetos a crédito fiscal, exentos y gravados a tasa cero, solo si la factura los muestra; 0 si no.
+- codigoControl: «CÓDIGO DE CONTROL» (formato XX-XX-XX-XX), solo en facturas antiguas; vacío si no tiene.
+- legible: false si algún dato importante está borroso, cortado o tapado. ilegibles: los nombres de esos datos.
+Importes como número con punto decimal.`;
+const ESC_ESQUEMA = {
+  type: "OBJECT",
+  properties: Object.assign({ esFactura: { type: "BOOLEAN" }, legible: { type: "BOOLEAN" }, ilegibles: { type: "ARRAY", items: { type: "STRING" } } },
+    ...["nitProveedor", "razonSocial", "codigoAutorizacion", "numeroFactura", "fecha", "nitComprador", "codigoControl"].map(k => ({ [k]: { type: "STRING" } })),
+    ...["subtotal", "descuento", "giftCard", "total", "baseCF", "ice", "iehd", "ipj", "tasas", "otroNoSujeto", "exentos", "tasaCero"].map(k => ({ [k]: { type: "NUMBER" } }))),
+  required: ["esFactura", "nitProveedor", "razonSocial", "codigoAutorizacion", "numeroFactura", "fecha", "total", "legible"]
+};
+async function escLeerIA(dataUrl) {
+  const cfg = await loadConfigDoc();
+  const key = (cfg.visionKey || cfg.aiKey || cfg.geminiKey || "").trim();
+  if (!key) return { error: "Falta la clave de Gemini (Configuración → IA)." };
+  const mime = (dataUrl.match(/^data:([^;]+);base64,/) || [])[1] || "image/jpeg";
+  const parts = [{ text: ESC_PROMPT }, { inline_data: { mime_type: mime, data: dataUrl.replace(/^data:[^;]+;base64,/, "") } }];
+  const base = /latest|gemini-3/.test(cfg.visionModel || "") ? cfg.visionModel : "gemini-3.5-flash-lite";
+  let err = "";
+  for (const model of [base, ...CX_GEMINI_FALLBACKS].filter((m, i, a) => m && a.indexOf(m) === i)) {
+    let sp = false;
+    for (let k = 0; k < 3; k++) {
+      try {
+        const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: cxGenConfig(model, { temperature: 0.1, maxOutputTokens: 1500, responseMimeType: "application/json", responseSchema: ESC_ESQUEMA }, sp) });
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (res.ok) {
+          const j = await res.json();
+          const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || "").join("").replace(/```json|```/g, "").trim();
+          try { return { data: JSON.parse(t) }; } catch (e) { const m = t.match(/\{[\s\S]*\}/); if (m) try { return { data: JSON.parse(m[0]) }; } catch (_) {} }
+          return { error: "La IA no pudo leer la factura." };
+        }
+        err = "(" + res.status + ")"; if (res.status === 400 && !sp) { sp = true; continue; } if (res.status !== 503 && res.status !== 429 && res.status !== 500) break;
+      } catch (e) { err = String(e.message || e); }
+      await new Promise(z => setTimeout(z, 700));
+    }
+  }
+  return { error: "La IA está ocupada " + err + ". Toca «↻ Leer de nuevo» en un rato." };
+}
+// Lo que devuelve la IA → datos de la fila del Registro de Compras
+function escDeIA(a) {
+  const n = v => { const x = ComprasExcel.num(v); return x ? x.toFixed(2) : ""; }, dg = v => String(v || "").replace(/\D/g, "");
+  const sub = ComprasExcel.num(a.subtotal), desc = ComprasExcel.num(a.descuento), tot = ComprasExcel.num(a.total);
+  const f = ComprasExcel.fecha(a.fecha);
+  return {
+    nitProveedor: dg(a.nitProveedor), razonSocial: String(a.razonSocial || "").trim().toUpperCase(),
+    codigoAutorizacion: String(a.codigoAutorizacion || "").replace(/\s+/g, "").toUpperCase(), numeroFactura: dg(a.numeroFactura),
+    fecha: f ? ComprasExcel.fechaTxt(f) : String(a.fecha || ""), nitComprador: dg(a.nitComprador),
+    importeTotal: (sub > 0 ? sub : tot + desc).toFixed(2), descuentos: n(desc), giftCard: n(a.giftCard),
+    ice: n(a.ice), iehd: n(a.iehd), ipj: n(a.ipj), tasas: n(a.tasas), otroNoSujeto: n(a.otroNoSujeto), exentos: n(a.exentos), tasaCero: n(a.tasaCero),
+    codigoControl: String(a.codigoControl || "").replace(/\s+/g, "").toUpperCase(), baseFactura: n(a.baseCF)
+  };
+}
+let QR_P = null, CE_P = null;
+function escCargarQR() {
+  if (window.QRCode) return Promise.resolve(window.QRCode);
+  if (!QR_P) QR_P = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; sc.onload = () => res(window.QRCode); sc.onerror = () => { QR_P = null; rej(new Error("No se pudo cargar el generador de QR.")); }; document.head.appendChild(sc); });
+  return QR_P;
+}
+function escCargarExcel() {
+  if (window.ComprasExcel) return Promise.resolve(window.ComprasExcel);
+  if (!CE_P) CE_P = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "compras-excel.js?v=" + APP_VERSION; sc.onload = () => res(window.ComprasExcel); sc.onerror = () => { CE_P = null; rej(new Error("No se pudo cargar el armador del Excel.")); }; document.head.appendChild(sc); });
+  return CE_P;
+}
+function escIdNuevo(n) { return Array.from(crypto.getRandomValues(new Uint8Array(n || 24)), b => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[b & 63]).join(""); }
+// Busca la sesión de esta declaración (o la crea) y la deja vigente 7 días más
+async function escSesion(r) {
+  const vence = new Date(Date.now() + ESC_DIAS * 86400000);
+  const q = await getDocs(query(collection(db, "escaneos"), where("recId", "==", r.id), limit(1)));
+  if (!q.empty) {
+    const d = q.docs[0];
+    await updateDoc(d.ref, { vence, cliente: r.clienteNombre || "", nit: String(r.nit || "") });
+    return { id: d.id, ...d.data(), vence };
+  }
+  const id = escIdNuevo(), periodo = recPeriodoKey(r);
+  const s = { recId: r.id, nit: String(r.nit || ""), cliente: r.clienteNombre || "", periodo, periodoTxt: periodo ? recPeriodoTxt(periodo) : "", creadoPor: djYo(), creadoUid: (ME && ME.uid) || "", creado: serverTimestamp(), vence };
+  await setDoc(doc(db, "escaneos", id), s);
+  return { id, ...s };
+}
+// Borra las fotos (no los datos) de sesiones de hace más de 3 meses, para no llenar el 1 GB gratis. Una vez por visita.
+let ESC_LIMPIO = false;
+async function escLimpiarViejas() {
+  if (ESC_LIMPIO) return; ESC_LIMPIO = true;
+  try {
+    const q = await getDocs(query(collection(db, "escaneos"), where("vence", "<", new Date(Date.now() - (90 - ESC_DIAS) * 86400000)), limit(20)));
+    for (const s of q.docs) {
+      if (s.data().fotosBorradas) continue;
+      const imgs = await getDocs(collection(db, "escaneos", s.id, "img"));
+      for (const d of imgs.docs) await deleteDoc(d.ref);
+      await updateDoc(s.ref, { fotosBorradas: true });
+    }
+  } catch (e) { console.warn("Limpieza de fotos de facturas:", e); }
+}
+function escAchicar(fuente, w, h, lado, max) {
+  const k = Math.min(1, lado / Math.max(w, h));
+  const c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext("2d").drawImage(fuente, 0, 0, c.width, c.height);
+  let q = 0.82, url = c.toDataURL("image/jpeg", q);
+  while (url.length > max && q > 0.35) { q -= 0.1; url = c.toDataURL("image/jpeg", q); }
+  return url;
+}
+
+async function escAbrir(r) {
+  if (!r) return;
+  const canEdit = canEditClientes();
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:130;display:flex;align-items:center;justify-content:center;padding:14px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:1400px;max-width:98vw;max-height:96vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><h3 style="margin:0">📱 Escanear facturas con el celular</h3>
+      <div class="note" style="margin:2px 0 0"><b>${escape(r.clienteNombre || "—")}</b> · NIT <span class="mono">${escape(String(r.nit || "—"))}</span> · Período <b>${escape(recPeriodoTxt(recPeriodoKey(r)))}</b></div></div>
+      <button class="mini" type="button" data-x>✕</button></div>
+    <div id="esc_cuerpo"><p class="lead"><span class="cx-spin"></span> Preparando la sesión…</p></div></div>`;
+  document.body.appendChild(bg);
+  const $b = id => bg.querySelector("#" + id);
+  const E = { sid: "", docs: [], cola: [], trabajando: false, extra: false, unsub: null, pend: false, cerrado: false };
+  const cerrar = () => { E.cerrado = true; if (E.unsub) E.unsub(); bg.remove(); document.removeEventListener("keydown", tecla); };
+  const tecla = e => { if (e.key === "Escape" && !bg.querySelector("#esc_ver")) cerrar(); };
+  document.addEventListener("keydown", tecla);
+  bg.addEventListener("click", e => { if (e.target === bg || e.target.closest("[data-x]")) cerrar(); });
+  let S;
+  try { [S] = await Promise.all([escSesion(r), escCargarExcel()]); }
+  catch (e) {
+    $b("esc_cuerpo").innerHTML = `<p class="msg err">No se pudo abrir la sesión de escaneo: ${escape(e.code || e.message)}.${/permission/i.test(String(e.code || e.message)) ? " Faltan las reglas de Firestore para «escaneos» (ver firestore-rules-COMPLETO.txt)." : ""}</p>`;
+    return;
+  }
+  E.sid = S.id;
+  escLimpiarViejas();
+  const url = new URL("escanear.html?s=" + S.id, location.href).href;
+  const ctx = { periodo: S.periodo || recPeriodoKey(r), nitCliente: String(r.nit || "") };
+  $b("esc_cuerpo").innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin:12px 0">
+      <div style="text-align:center"><div id="esc_qr" style="background:#fff;padding:10px;border-radius:10px;border:1px solid var(--line);width:220px;height:220px"></div>
+        <div class="note" style="margin-top:4px">Vale hasta el ${escape(S.vence.toLocaleDateString("es-BO"))}</div>
+        <button class="mini" type="button" id="esc_copiar">🔗 Copiar enlace</button></div>
+      <div style="flex:1;min-width:280px">
+        <ol style="margin:0 0 10px;padding-left:20px;line-height:1.6">
+          <li>Abre la <b>cámara del celular</b> y apunta a este código QR. Toca el enlace que aparece.</li>
+          <li>Saca <b>una foto por factura</b>, sobre una mesa y con buena luz.</li>
+          <li>Cada foto aparece abajo y <b>la IA la lee sola</b> (deja esta ventana abierta mientras escaneas).</li>
+          <li>Revisa y corrige los datos (las casillas se guardan solas) y toca <b>«⬇ Descargar Excel»</b>. Ese Excel se sube tal cual al Registro de Compras del SIAT.</li>
+        </ol>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${canEdit ? `<label class="btn sec" style="border:1px solid var(--line);cursor:pointer">⬆ Subir fotos o PDF desde la compu<input type="file" id="esc_subir" multiple accept="image/*,application/pdf" style="display:none"></label>
+          <button class="btn sec" type="button" id="esc_mano" style="border:1px solid var(--line)">＋ Agregar a mano</button>` : ""}
+          <button class="btn" type="button" id="esc_excel">⬇ Descargar Excel</button>
+          <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="esc_extra" style="width:auto"> Ver ICE, IEHD, IPJ, tasas, exentos…</label>
+        </div>
+        <div class="msg" id="esc_msg"></div>
+        <div id="esc_res" style="margin-top:6px"></div>
+      </div></div>
+    <div id="esc_tabla" style="overflow:auto"></div>`;
+  try { const QR = await escCargarQR(); new QR($b("esc_qr"), { text: url, width: 200, height: 200, correctLevel: QR.CorrectLevel.M }); }
+  catch (e) { $b("esc_qr").innerHTML = `<p class="note">No se pudo dibujar el QR. Usa «Copiar enlace» y ábrelo en el celular.</p>`; }
+  $b("esc_copiar").onclick = () => { try { navigator.clipboard.writeText(url); $b("esc_copiar").textContent = "✓ Copiado"; } catch (e) { prompt("Copia este enlace:", url); } };
+  $b("esc_extra").onchange = e => { E.extra = e.target.checked; pintar(); };
+  const msg = (t, cls) => { const m = $b("esc_msg"); if (m) { m.className = "msg " + (cls || ""); m.innerHTML = t; } };
+  const fRef = id => doc(db, "escaneos", E.sid, "fotos", id);
+
+  // ---- La lista en tiempo real ----
+  const clave = d => [String(d.nitProveedor || "").replace(/\D/g, ""), String(d.numeroFactura || "").replace(/\D/g, ""), String(d.codigoAutorizacion || "").toUpperCase()].join("|");
+  function pintar() {
+    const caja = $b("esc_tabla"); if (!caja) return;
+    if (caja.contains(document.activeElement) && document.activeElement.tagName === "INPUT") { E.pend = true; return; } // no se repinta mientras se escribe
+    E.pend = false;
+    const cols = ESC_CAMPOS.filter(c => E.extra || !c[3]);
+    const vistas = {}; E.docs.forEach(x => { if (x.datos) { const k = clave(x.datos); vistas[k] = (vistas[k] || 0) + 1; } });
+    let tot = 0, cf = 0, nListas = 0, nAvisos = 0, nFaltan = 0;
+    const filas = E.docs.map((x, i) => {
+      const d = x.datos || {};
+      const est = x.estado === "lista" ? "" : x.estado === "leyendo" ? `<span class="badge warn">🤖 Leyendo…</span>` : x.estado === "nueva" ? `<span class="badge mut">⏳ En espera</span>` :
+        x.estado === "no_factura" ? `<span class="badge danger">No parece factura</span>` : `<span class="badge danger" title="${escape(x.error || "")}">✕ ${escape(String(x.error || "Error").slice(0, 60))}</span>`;
+      let av = "";
+      if (x.estado === "lista") {
+        const rv = ComprasExcel.revisar(d, ctx), c = ComprasExcel.calcular(d);
+        nListas++; tot += c.total; cf += c.cf;
+        const avisos = rv.avisos.slice();
+        if (vistas[clave(d)] > 1 && d.numeroFactura) avisos.push("factura repetida en esta lista");
+        if (x.ilegible) avisos.push("la IA no leyó bien: " + x.ilegible);
+        if (rv.faltan.length) nFaltan++; else if (avisos.length) nAvisos++;
+        av = (rv.faltan.length ? `<div style="color:var(--danger)">Falta: ${escape(rv.faltan.join(", "))}</div>` : "") + avisos.map(a => `<div style="color:var(--warn)">⚠ ${escape(a)}</div>`).join("") || `<span style="color:var(--ok)">✓</span>`;
+      }
+      const celdas = cols.map(([k, , w]) => `<td style="padding:3px"><input data-f="${k}" data-id="${x.id}" value="${escape(d[k] == null ? "" : d[k])}" ${canEdit && x.estado === "lista" ? "" : "disabled"} style="width:${w}px;padding:5px 6px;font-size:12.5px${/^(importe|descuentos|ice|iehd|ipj|tasas|otro|exentos|tasaCero|giftCard)/.test(k) ? ";text-align:right" : ""}"></td>`).join("");
+      const c = x.estado === "lista" ? ComprasExcel.calcular(d) : null;
+      return `<tr data-row="${x.id}"><td class="mono">${i + 1}</td>
+        <td style="padding:3px">${x.mini ? `<img src="${x.mini}" data-ver="${x.id}" title="Ver la foto" style="width:38px;height:48px;object-fit:cover;border-radius:5px;cursor:zoom-in;display:block">` : x.origen === "manual" ? `<span class="note">a mano</span>` : `<button class="mini" type="button" data-ver="${x.id}">📄 Ver</button>`}</td>
+        ${est ? `<td colspan="${cols.length}">${est}</td>` : celdas}
+        <td class="mono" style="text-align:right">${c ? c.base.toFixed(2) : ""}</td><td class="mono" style="text-align:right">${c ? c.cf.toFixed(2) : ""}</td>
+        <td style="font-size:11.5px;min-width:160px">${av}</td>
+        <td style="white-space:nowrap">${canEdit && x.estado !== "leyendo" && x.origen !== "manual" ? `<button class="mini" type="button" data-releer="${x.id}" title="Leer de nuevo con la IA">↻</button>` : ""}${canEdit ? `<button class="mini" type="button" data-borrar="${x.id}" title="Quitar de la lista">✕</button>` : ""}</td></tr>`;
+    }).join("");
+    caja.innerHTML = `<table style="font-size:12.5px"><thead><tr><th>#</th><th>Foto</th>${cols.map(c => `<th>${c[1]}</th>`).join("")}<th style="text-align:right">Base CF</th><th style="text-align:right">Crédito fiscal 13%</th><th>Revisión</th><th></th></tr></thead>
+      <tbody>${filas || `<tr><td colspan="${cols.length + 6}" style="color:var(--muted);padding:16px">Todavía no hay facturas. Escanea el QR con el celular y saca la primera foto.</td></tr>`}</tbody></table>`;
+    const fmt = n => n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    $b("esc_res").innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="n">${E.docs.length}</div><div class="l">Fotos</div></div><div class="kpi"><div class="n">${nListas}</div><div class="l">Leídas</div></div>
+      <div class="kpi"><div class="n" style="color:var(--danger)">${nFaltan}</div><div class="l">Les falta un dato</div></div><div class="kpi"><div class="n" style="color:var(--warn)">${nAvisos}</div><div class="l">Con aviso</div></div>
+      <div class="kpi"><div class="n">Bs ${fmt(tot)}</div><div class="l">Importe total</div></div><div class="kpi"><div class="n">Bs ${fmt(cf)}</div><div class="l">Crédito fiscal</div></div></div>`;
+  }
+  $b("esc_tabla").addEventListener("focusout", () => setTimeout(() => { if (E.pend) pintar(); }, 50));
+  $b("esc_tabla").addEventListener("change", async e => {
+    const i = e.target.closest("input[data-f]"); if (!i) return;
+    let v = i.value.trim();
+    if (i.dataset.f === "fecha") { const f = ComprasExcel.fecha(v); if (f) v = ComprasExcel.fechaTxt(f); }
+    if (/^(razonSocial|codigoAutorizacion|codigoControl)$/.test(i.dataset.f)) v = v.toUpperCase();
+    i.value = v;
+    try { await updateDoc(fRef(i.dataset.id), { ["datos." + i.dataset.f]: v, editadoPor: djYo(), editadoEn: serverTimestamp() }); i.style.outline = "2px solid var(--ok)"; setTimeout(() => { i.style.outline = ""; }, 1200); }
+    catch (err) { i.style.outline = "2px solid var(--danger)"; msg("No se guardó: " + escape(err.code || err.message), "err"); }
+  });
+  $b("esc_tabla").addEventListener("click", async e => {
+    const ver = e.target.closest("[data-ver]"), rel = e.target.closest("[data-releer]"), bor = e.target.closest("[data-borrar]");
+    if (ver) {
+      const s = await getDoc(doc(db, "escaneos", E.sid, "img", ver.dataset.ver)).catch(() => null);
+      const img = s && s.exists() ? s.data().img : "";
+      if (!img) { msg("La foto ya no está (las fotos se borran a los 3 meses).", "err"); return; }
+      const v = document.createElement("div"); v.id = "esc_ver";
+      v.style = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:140;display:flex;align-items:center;justify-content:center;padding:14px;cursor:zoom-out";
+      v.innerHTML = /^data:application\/pdf/.test(img) ? `<iframe src="${img}" style="width:90vw;height:92vh;border:0;background:#fff"></iframe>` : `<img src="${img}" style="max-width:96vw;max-height:94vh;border-radius:8px">`;
+      const fuera = ev => { if (ev.key === "Escape") { v.remove(); document.removeEventListener("keydown", fuera); } };
+      v.onclick = () => { v.remove(); document.removeEventListener("keydown", fuera); };
+      document.addEventListener("keydown", fuera);
+      document.body.appendChild(v);
+    } else if (rel) {
+      await updateDoc(fRef(rel.dataset.releer), { estado: "nueva", error: "" }).catch(err => msg("No se pudo: " + escape(err.code || err.message), "err"));
+    } else if (bor) {
+      if (!confirm("¿Quitar esta factura de la lista? (también se borra su foto)")) return;
+      try { await deleteDoc(fRef(bor.dataset.borrar)); await deleteDoc(doc(db, "escaneos", E.sid, "img", bor.dataset.borrar)); }
+      catch (err) { msg("No se pudo quitar: " + escape(err.code || err.message), "err"); }
+    }
+  });
+
+  // ---- Lectura con la IA: una foto a la vez; si dos compus tienen la ventana abierta, solo una la lee ----
+  async function trabajar() {
+    if (E.trabajando || !canEdit) return;
+    E.trabajando = true;
+    try {
+      while (E.cola.length && !E.cerrado) {
+        const id = E.cola.shift(), ref = fRef(id);
+        const tomada = await runTransaction(db, async tx => {
+          const s = await tx.get(ref); if (!s.exists()) return false;
+          const x = s.data(), atascada = x.estado === "leyendo" && Date.now() - (x.leyendoDesde || 0) > 180000;
+          if (x.estado !== "nueva" && !atascada) return false;
+          tx.update(ref, { estado: "leyendo", leyendoDesde: Date.now(), leyendoPor: djYo() }); return true;
+        }).catch(() => false);
+        if (!tomada) continue;
+        const im = await getDoc(doc(db, "escaneos", E.sid, "img", id)).catch(() => null);
+        const img = im && im.exists() ? im.data().img : "";
+        if (!img) { await updateDoc(ref, { estado: "error", error: "No llegó la foto; sácala de nuevo" }).catch(() => {}); continue; }
+        const res = await escLeerIA(img);
+        if (res.error) { await updateDoc(ref, { estado: "error", error: res.error }).catch(() => {}); continue; }
+        const a = res.data || {};
+        if (a.esFactura === false) { await updateDoc(ref, { estado: "no_factura", ia: a }).catch(() => {}); continue; }
+        const datos = escDeIA(a);
+        const ileg = a.legible === false ? ((a.ilegibles || []).join(", ") || "revisa la foto") : "";
+        await updateDoc(ref, { estado: "lista", datos, ia: a, ilegible: ileg, error: "", leidoEn: serverTimestamp() }).catch(() => {});
+      }
+    } finally { E.trabajando = false; }
+  }
+  E.unsub = onSnapshot(query(collection(db, "escaneos", E.sid, "fotos"), orderBy("creado", "asc")), snap => {
+    E.docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    E.docs.forEach(x => { if ((x.estado === "nueva" || (x.estado === "leyendo" && Date.now() - (x.leyendoDesde || 0) > 180000)) && E.cola.indexOf(x.id) < 0) E.cola.push(x.id); });
+    pintar(); trabajar();
+  }, err => msg("No se puede ver la lista: " + escape(err.code || err.message), "err"));
+
+  // ---- Subir desde la compu y agregar a mano ----
+  if ($b("esc_subir")) $b("esc_subir").onchange = async e => {
+    const files = [...e.target.files]; e.target.value = "";
+    for (const f of files) {
+      msg(`<span class="cx-spin"></span> Subiendo ${escape(f.name)}…`);
+      try {
+        let img = "", mini = "";
+        if (/pdf/.test(f.type)) {
+          img = await djLeerArchivo(f);
+          if (img.length > 950000) { msg(`«${escape(f.name)}» es muy pesado (máx. ~700 KB para PDF). Sácale una foto o captura.`, "err"); continue; }
+        } else {
+          const u = URL.createObjectURL(f), im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("no se pudo abrir la imagen")); i.src = u; });
+          img = escAchicar(im, im.naturalWidth, im.naturalHeight, 1600, 900000); mini = escAchicar(im, im.naturalWidth, im.naturalHeight, 240, 60000); URL.revokeObjectURL(u);
+        }
+        const id = Date.now().toString(36) + "-" + escIdNuevo(8);
+        await setDoc(doc(db, "escaneos", E.sid, "img", id), { img, creado: serverTimestamp() });
+        await setDoc(fRef(id), { estado: "nueva", mini, origen: "compu", creado: serverTimestamp() });
+        msg("");
+      } catch (err) { msg("No se pudo subir «" + escape(f.name) + "»: " + escape(err.code || err.message), "err"); }
+    }
+  };
+  if ($b("esc_mano")) $b("esc_mano").onclick = async () => {
+    const id = Date.now().toString(36) + "-" + escIdNuevo(8);
+    try { await setDoc(fRef(id), { estado: "lista", origen: "manual", datos: { fecha: "", descuentos: "" }, creado: serverTimestamp(), editadoPor: djYo() }); }
+    catch (err) { msg("No se pudo agregar: " + escape(err.code || err.message), "err"); }
+  };
+
+  // ---- Excel con la plantilla oficial del Registro de Compras ----
+  $b("esc_excel").onclick = async () => {
+    const listas = E.docs.filter(x => x.estado === "lista");
+    const buenas = listas.filter(x => !ComprasExcel.revisar(x.datos, ctx).faltan.length);
+    const malas = listas.length - buenas.length, sinLeer = E.docs.length - listas.length;
+    if (!buenas.length) { msg("Todavía no hay facturas completas para el Excel.", "err"); return; }
+    if ((malas || sinLeer) && !confirm(`Van ${buenas.length} factura(s) al Excel.\n` + (malas ? `• ${malas} no van porque les falta un dato (en rojo).\n` : "") + (sinLeer ? `• ${sinLeer} no van porque no se leyeron (en espera, con error o no son factura).\n` : "") + "\n¿Descargar igual?")) return;
+    const ord = buenas.map(x => x.datos).sort((a, b) => { const fa = ComprasExcel.fecha(a.fecha), fb = ComprasExcel.fecha(b.fecha); return (fa ? fa.a * 10000 + fa.m * 100 + fa.d : 0) - (fb ? fb.a * 10000 + fb.m * 100 + fb.d : 0); });
+    try {
+      msg(`<span class="cx-spin"></span> Armando el Excel…`);
+      const [Z, pl] = await Promise.all([djCargarZip(), fetch(ComprasExcel.PLANTILLA).then(x => { if (!x.ok) throw new Error("no se encontró la plantilla"); return x.arrayBuffer(); })]);
+      const blob = await ComprasExcel.armar(Z, pl, ord, "blob");
+      const per = (ctx.periodo || "").split("-");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = `Compras_${String(r.nit || "").replace(/\D/g, "")}_${per[1] || ""}${per[0] || ""}.xlsx`;
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      updateDoc(doc(db, "escaneos", E.sid), { excelEn: serverTimestamp(), excelPor: djYo(), excelFilas: ord.length }).catch(() => {});
+      msg(`✓ Excel descargado con ${ord.length} factura(s). Súbelo en el SIAT → Registro de Compras → Importar.`, "ok");
+    } catch (err) { msg("No se pudo armar el Excel: " + escape(err.message || err), "err"); }
+  };
 }
 
 // ---------- FICHA DEL CLIENTE (antes "HistorialClientes" en Sheets) ----------

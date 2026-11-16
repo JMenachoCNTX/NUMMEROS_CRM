@@ -180,5 +180,37 @@ service cloud.firestore {
       allow create, update: if portalEdit();
       allow delete: if isAdmin();
     }
+
+    // ----- Escanear facturas con el celular (Declaraciones · v112) -----
+    // La sesión la crea el Panel; su id es un código secreto de 32 letras que va SOLO en el QR.
+    // El celular (sin iniciar sesión) puede leer esa sesión y subir fotos mientras no venza (7 días);
+    // no puede listar sesiones, ni cambiar ni borrar nada. La IA y la revisión se hacen en el Panel.
+    match /escaneos/{sid} {
+      function abierta() {
+        return sid.size() >= 20
+          && get(/databases/$(database)/documents/escaneos/$(sid)).data.vence > request.time;
+      }
+      allow get: if sid.size() >= 20;
+      allow list: if portalView();
+      allow create, update, delete: if portalEdit();
+      match /fotos/{fid} {
+        allow read: if portalView() || abierta();
+        allow create: if portalEdit()
+          || (abierta()
+              && request.resource.data.keys().hasOnly(['estado', 'mini', 'origen', 'creado'])
+              && request.resource.data.estado == 'nueva'
+              && request.resource.data.origen == 'celular'
+              && request.resource.data.mini is string && request.resource.data.mini.size() < 80000);
+        allow update, delete: if portalEdit();
+      }
+      match /img/{fid} {
+        allow read: if portalView();
+        allow create: if portalEdit()
+          || (abierta()
+              && request.resource.data.keys().hasOnly(['img', 'creado'])
+              && request.resource.data.img is string && request.resource.data.img.size() < 1000000);
+        allow update, delete: if portalEdit();
+      }
+    }
   }
 }

@@ -27,7 +27,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 ## Dónde se guardan los datos
 - **Firebase `crm-contax`** (Auth + Firestore): `users`, `userPins`, `config` (incluye `config/app` con claves de IA y del Sistema Contable),
   `clientes`, `bdclientes`, `bdlog`, `recepciones`, `tarifas`, `eventos`, `egresos`, `noclientes`, `quickReplies`, `waChats`,
-  `contacts`, `reminders`, `activity`, `ctrlLlaves` (solo la usa el script), `djArchivos` (archivos de cada declaración para el cliente: RCV, Excel de compras, F200, F400 y QR; id `{recId}_{tipo}`, contenido en trozos en `djArchivos/{id}/p/{n}`, máx. 2,5 MB; **solo se guardan 3 meses** para no llenar el 1 GB gratis; cuando haya plan Blaze se pasarán a Firebase Storage).
+  `contacts`, `reminders`, `activity`, `escaneos` (facturas escaneadas con el celular, v112), `ctrlLlaves` (solo la usa el script), `djArchivos` (archivos de cada declaración para el cliente: RCV, Excel de compras, F200, F400 y QR; id `{recId}_{tipo}`, contenido en trozos en `djArchivos/{id}/p/{n}`, máx. 2,5 MB; **solo se guardan 3 meses** para no llenar el 1 GB gratis; cuando haya plan Blaze se pasarán a Firebase Storage).
 - **Google Drive** (cuenta del script): carpetas "NUMMEROS Pasarela - Comprobantes", "NUMMEROS · Balance Independiente" y "NUMMEROS · Portal de clientes".
 - **Gmail** de CONTAX para enviar recibos. Algunas funciones viejas usan Google Sheets (BDCONTAX) por puente.
 - El script escribe también cuentas en los proyectos `control--nummeros` y `portal-nummeros`.
@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v111; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v112; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -100,3 +100,13 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **v102:** el título de cada pestaña sale solo en la barra de arriba (el `<h1>` de cada vista se oculta por CSS). Facturación → «Facturas por mes» (`yfMesHTML`): facturas emitidas por CONTAX a cada repartidor cliente, últimos 6 meses, por el mes en que se marcaron (`yfDia`). Suscriptores Activos: cuadros con nombres claros.
 - **v109 · Facturas pendientes (Repartidores Yango):** las facturas de un mismo cliente salen juntas (`yfTablaGrupos`: nombre y accesos una vez, etiqueta «N facturas · Bs total»). Títulos ordenables (#, Repartidor A-Z, Semana, Importe, Estado; `FAC_UI.yord`/`ydir`). Los cuadros muestran facturas y clientes distintos. «Facturas emitidas» se ve por día o por semana ISO (`yfSemIso`), con clientes distintos en cada celda.
 - **v110:** en esa lista los accesos SIN van debajo del nombre (2 por línea, sin columna aparte), «Marcar emitida» y «No se pudo» lado a lado, y cada cliente es un bloque (`<tbody class="yf-g">`) con franja verde NUMMEROS alternada y borde a la izquierda.
+
+### v112 · Declaraciones → «📱 Escanear facturas con el celular»
+- Botón en el formulario de la declaración (`escAbrir(r)` en app.js). Crea o reutiliza la sesión `escaneos/{sid}` de esa recepción (`recId`, `nit`, `cliente`, `periodo`, `vence` = 7 días, se renueva al abrirla) y muestra un QR (qrcodejs 1.0.0 de cdnjs) a `escanear.html?s={sid}`. El `sid` (32 letras al azar) es la única llave: solo va en el QR.
+- `escanear.html` (celular, sin iniciar sesión): cámara en vivo con botón de disparo (o «Abrir cámara» / galería si el navegador no deja), achica la foto a 1600 px JPEG (< 900 KB) y guarda `escaneos/{sid}/img/{id}` (foto) y `escaneos/{sid}/fotos/{id}` (`estado: 'nueva'`, `mini`, `origen: 'celular'`). Ve el estado de cada foto en vivo.
+- La **IA la corre la computadora** (la clave de Gemini nunca va al celular): mientras la ventana está abierta, toma cada foto `nueva` con una transacción (`leyendo`, se libera a los 3 min si se cuelga), la lee con `escLeerIA` (prompt `ESC_PROMPT` + `responseSchema`, mismos modelos que los comprobantes) y guarda `datos` (`escDeIA`): estado `lista`, `error` o `no_factura`. También se puede subir fotos/PDF desde la compu o agregar filas a mano.
+- Lista editable en vivo (cada casilla se guarda sola en `datos.*`), avisos: falta un dato, fecha de otro mes, factura a nombre de otro NIT, base que no coincide con la de la factura, repetida, ilegible. Columnas ICE/IEHD/IPJ/tasas/exentos/tasa cero/gift card ocultas con una casilla.
+- **Excel:** `compras-excel.js` (`ComprasExcel.armar`) abre la plantilla oficial `marca/plantillas/PlantillaRegistroCompras.xlsx` (23 columnas A–W, hoja «Hoja1»; copia de la del SIN sin el autor) con JSZip y agrega las filas con los estilos de la plantilla: especificación 1, DUI 0, fecha como fecha dd/mm/aaaa, importes con 2 decimales, SUBTOTAL = total − ICE − IEHD − IPJ − tasas − no sujeto − exentos − tasa cero, BASE = subtotal − descuentos − gift card, CF = 13 %, tipo de compra 1, código de control 0 si no tiene. Solo van las filas completas, ordenadas por fecha. Nombre `Compras_{NIT}_{MMAAAA}.xlsx`.
+- **Reglas** (`escaneos` en `firestore-rules-COMPLETO.txt`): el celular puede leer la sesión por su id, ver y crear fotos mientras no venza (solo esos campos, tamaño limitado); no lista sesiones ni cambia/borra nada. Respaldo de las reglas anteriores: `respaldo-reglas-2026-11-16.txt`.
+- Las **fotos** de sesiones vencidas hace más de ~3 meses se borran solas al abrir la ventana (`escLimpiarViejas`); los datos quedan.
+
