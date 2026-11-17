@@ -725,7 +725,8 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       h = '<div class="pila"><h2>Declaración mensual</h2>' + (S.plan === "estandar" && dfin && S.per && Number(S.per.mes) === dfin.mesNum && Number(S.per.anio) === dfin.anio ? cajaDecl : "") +
         '<div class="planElegido"><div><span>Tu plan</span><b>Plan ' + esc(selP[1]) + '</b><small>' + esc(selP[2]) + '</small></div><button class="link" id="bCambiarPlan">Cambiar plan</button></div>' +
         '<div><label class="l" for="selPer">Mes a declarar</label><select id="selPer">' +
-        S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(x.texto) + " · se presenta en " + esc(String(x.seDeclara || "").toLowerCase()) + " (" + perEtq(x) + ")</option>"; }).join("") + "</select>" +
+        S.cfg.periodosDecl.map(function (x, i) { return '<option value="' + i + '"' + (S.per && x.anio === S.per.anio && x.mes === S.per.mes ? " selected" : "") + ">" + esc(perOpc(x, i)) + "</option>"; }).join("") + "</select>" +
+        perAyudaHtml() +
         '<p class="chico suave" style="margin-top:6px">Cada pago cubre un mes. Si debes varios, paga uno por uno.</p></div>' +
         (S.plan && S.plan !== "basico" ? '<p class="l" style="margin:4px 0 0">¿Qué facturas tuviste?</p><div class="tipos">' +
           [["elec", "Electrónicas"], ["man", "Manuales"], ["mix", "Ambas"]].map(function (t) { return '<button data-tf="' + t[0] + '" class="' + (S.tipoFact === t[0] ? "sel" : "") + '">' + t[1] + "</button>"; }).join("") + "</div>" +
@@ -881,7 +882,43 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
       t.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><p class="chico">Te los enviamos también en el correo de tu Orden de Recepción.</p>' +
       '<label class="acepto"><input type="checkbox" id="chkTer"' + (S.acepta ? " checked" : "") + ' style="width:20px;height:20px;margin:0;flex-shrink:0;accent-color:var(--acento)"> <span>Leí y acepto los términos y condiciones de este servicio.</span></label></div>';
   }
-  function perDefault() { var d = S.cfg.periodoDeclDefault, l = S.cfg.periodosDecl || []; for (var i = 0; i < l.length; i++) if (l[i].anio === d.anio && l[i].mes === d.mes) return l[i]; return l[0] || d; }
+  // Mes sugerido: el que se presenta ESTE mes (el mes anterior). El mes en curso solo se sugiere
+  // desde el día 25, cuando ya es "en fecha"; antes de eso sería un pago por adelantado y casi
+  // siempre es un error (el cliente quiere la declaración del mes que ya terminó).
+  function perDefault() {
+    var d = S.cfg.periodoDeclDefault, l = S.cfg.periodosDecl || [];
+    if (l.length > 1 && l[0].estado === "adelantado") return l[1];
+    for (var i = 0; i < l.length; i++) if (l[i].anio === d.anio && l[i].mes === d.mes) return l[i];
+    return l[0] || d;
+  }
+  function perMesNom(x) { return String((x && x.texto) || "").split(" ")[0]; }
+  // l[0] es siempre el mes en curso y l[1] el mes anterior (el que se presenta este mes)
+  function perOpc(x, i) {
+    var l = S.cfg.periodosDecl || [], hoyNom = perMesNom(l[0]).toLowerCase();
+    if (i === 0 && x.estado === "adelantado") return x.texto + " · ⚠ ADELANTADO: el mes aún no termina, se presenta recién en " + String(x.seDeclara || "").toLowerCase();
+    if (i === 1 && l[0].estado === "adelantado") return x.texto + " · ✔ la que se presenta este mes (" + hoyNom + ")" + (x.estado === "atrasado" ? " · recepción tardía" : "");
+    return x.texto + " · se presenta en " + String(x.seDeclara || "").toLowerCase() + " (" + perEtq(x) + ")";
+  }
+  function perAyudaHtml() {
+    var l = S.cfg.periodosDecl || [];
+    if (l.length < 2 || l[0].estado !== "adelantado") return "";
+    return '<div class="aviso ok" style="margin-top:8px">📌 <b>Se declara el mes que ya terminó.</b> En ' + esc(perMesNom(l[0]).toLowerCase()) + " se presenta la declaración de <b>" + esc(perMesNom(l[1]).toLowerCase()) + "</b>.</div>";
+  }
+  // Ventana que pregunta otra vez si de verdad quiere pagar por adelantado el mes en curso
+  function confirmarAdelantado(siAcepta) {
+    var l = S.cfg.periodosDecl || [], act = l[0], ant = l[1];
+    var bg = document.createElement("div"); bg.className = "popNue";
+    bg.innerHTML = '<div class="popNueC" role="alertdialog" aria-modal="true" aria-labelledby="paT"><h3 id="paT"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>¿Seguro que es ' + esc(act.texto) + "?</h3>" +
+      "<p><b>" + esc(perMesNom(act)) + " todavía no terminó.</b> Esa declaración la presentamos recién en " + esc(String(act.seDeclara || "").toLowerCase()) + ".</p>" +
+      "<p>Si lo que necesitas es la declaración que se presenta <b>este mes</b>, debes elegir <b>" + esc(ant.texto) + "</b>. Si eliges " + esc(perMesNom(act).toLowerCase()) + ", <b>no haremos la de " + esc(perMesNom(ant).toLowerCase()) + "</b>.</p>" +
+      '<button class="btn" id="paAnt">No, quiero declarar ' + esc(ant.texto) + '</button><button class="link" id="paSi">Sí, pagar ' + esc(act.texto) + " por adelantado</button></div>";
+    document.body.appendChild(bg);
+    var cerrar = function () { bg.remove(); };
+    bg.onclick = function (ev) { if (ev.target === bg) cerrar(); };
+    bg.querySelector("#paAnt").onclick = function () { cerrar(); S.per = ant; cotizar(); window.scrollTo(0, 0); };
+    bg.querySelector("#paSi").onclick = function () { cerrar(); siAcepta(); };
+    bg.querySelector("#paAnt").focus();
+  }
   function perEtq(x) { return x.estado === "adelantado" ? "por adelantado" : x.estado === "en fecha" ? "en fecha" : "atrasado"; }
   // Ejemplo real (con datos ficticios) de cómo entregamos los estados financieros
   function virtualHtml() {
@@ -1015,7 +1052,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   function avisoFecha() {
     var pr = S.cfg.precios, x = S.per || {};
     if (!x.texto) return "";
-    if (x.estado === "adelantado") return '<div class="aviso ok"><b>Pagas por adelantado la declaración de ' + esc(x.texto) + "</b><br>La presentamos en " + esc(String(x.seDeclara).toLowerCase()) + ", antes de tu vencimiento. Mantienes el precio normal" + (S.plan === "estandar" ? " de Bs " + esc(pr.enFecha) : "") + ".</div>";
+    if (x.estado === "adelantado") { var ant = (S.cfg.periodosDecl || [])[1]; return '<div class="aviso warn"><b>⚠ Ojo: elegiste ' + esc(x.texto) + ", un mes que todavía no termina.</b><br>Es un pago por adelantado: esta declaración la presentamos recién en " + esc(String(x.seDeclara).toLowerCase()) + ". Mantienes el precio normal" + (S.plan === "estandar" ? " de Bs " + esc(pr.enFecha) : "") + "." + (ant ? "<br>Si lo que necesitas es la declaración que se presenta este mes, elige <b>" + esc(ant.texto) + '</b>.<br><button class="btn" id="bPerAnt" style="margin-top:8px">Cambiar a ' + esc(ant.texto) + "</button>" : "") + "</div>"; }
     if (x.enFecha) return '<div class="aviso ok"><b>Estás en fecha</b><br>Declaración de ' + esc(x.texto) + ", se presenta en " + esc(String(x.seDeclara).toLowerCase()) + "." + (S.plan === "estandar" ? " Precio normal: Bs " + esc(pr.enFecha) + "." : "") + "</div>";
     return '<div class="aviso warn"><b>Declaración atrasada: ' + esc(x.texto) + "</b><br>" + (S.plan === "estandar" ? "Precio de recepción tardía: Bs " + esc(pr.fueraFecha) + ". " : "") + "Si ya pasó tu vencimiento, Impuestos Nacionales puede cobrar multa por presentarla tarde.</div>";
   }
@@ -1121,10 +1158,12 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     document.querySelectorAll("[data-plan]").forEach(function (b) { b.onclick = function () { if (S.plan !== b.dataset.plan) { S.acepta = false; S.tipoFact = ""; } S.plan = b.dataset.plan; ir("detalle"); cotizar(); }; });
     document.querySelectorAll("[data-tf]").forEach(function (b) { b.onclick = function () { S.tipoFact = b.dataset.tf; cotizar(); }; });
     if ($("selPer")) $("selPer").onchange = function () { S.per = S.cfg.periodosDecl[Number(this.value)]; if (S.plan) cotizar(); else pintar(); };
+    if ($("bPerAnt")) $("bPerAnt").onclick = function () { S.per = S.cfg.periodosDecl[1]; cotizar(); window.scrollTo(0, 0); };
     if ($("chkTer")) $("chkTer").onchange = function () { S.acepta = this.checked; var y = window.scrollY; pintar(); window.scrollTo(0, y); };
     if ($("chkUtil")) $("chkUtil").onchange = function () { S.aceptaUtil = this.checked; var y = window.scrollY; pintar(); window.scrollTo(0, y); };
     if ($("bPagar")) $("bPagar").onclick = function () {
       if (!puedePagar()) return;
+      if (S.serv === "decl" && S.per && S.per.estado === "adelantado" && (S.cfg.periodosDecl || []).length > 1) { confirmarAdelantado(function () { ir("pago"); }); return; }
       if (S.serv !== "eeff") { ir("pago"); return; }
       cargando("Reservando tu cupo…");
       api({ action: "pas_reservar", nit: S.nit, servicio: "eeff", fase: S.eeffFase || "" }).then(function (r) {

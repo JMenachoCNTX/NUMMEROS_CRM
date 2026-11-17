@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v112; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v113; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -110,3 +110,8 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas** (`escaneos` en `firestore-rules-COMPLETO.txt`): el celular puede leer la sesión por su id, ver y crear fotos mientras no venza (solo esos campos, tamaño limitado); no lista sesiones ni cambia/borra nada. Respaldo de las reglas anteriores: `respaldo-reglas-2026-11-16.txt`.
 - Las **fotos** de sesiones vencidas hace más de ~3 meses se borran solas al abrir la ventana (`escLimpiarViejas`); los datos quedan.
 
+
+### v113 · Pasarela → mes a declarar
+- Muchos clientes pagaban la declaración del mes en curso (ej. noviembre) cuando querían la del mes anterior (octubre), y no salían al filtrar la recepción de octubre. Ahora `perDefault()` (pagos.html) sugiere el **mes anterior** mientras el mes en curso sea «adelantado» (antes del día 25); desde el 25 sugiere el mes en curso, como antes. Solo cambia la página: el puente no se tocó.
+- La lista marca el mes en curso como «⚠ ADELANTADO» y el anterior como «✔ la que se presenta este mes» (`perOpc`), con la ayuda «Se declara el mes que ya terminó» (`perAyudaHtml`). Si eligen el mes en curso, el aviso es amarillo con el botón «Cambiar a …» (`bPerAnt`), y al pagar sale la ventana `confirmarAdelantado` («¿Seguro que es …?»).
+- Los precios no cambiaron: el mes anterior pagado en el mes en curso sigue siendo «recepción tardía» (`pasDeclEnFecha_`).
