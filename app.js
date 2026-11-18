@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "113";
+const APP_VERSION = "114";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6845,7 +6845,7 @@ async function yfCargar(forzar) {
     const emiDe = {};
     try { (await getDocs(collection(YF.db, "emisionContax"))).forEach(d => { const x = d.data(); emiDe[String(x.id) + "|" + x.semana] = { _id: d.id, ...x }; }); YF.sinEmi = false; }
     catch (e) { YF.sinEmi = true; }
-    YF.emitidas = fac.docs.map(d => d.data()).filter(f => f.origen === "contax" && f.estado !== "anulada");
+    YF.emitidas = fac.docs.map(d => ({ _id: d.id, ...d.data() })).filter(f => f.origen === "contax" && f.estado !== "anulada");
     YF.porAnular = fac.docs.map(d => ({ _id: d.id, ...d.data() })).filter(f => f.estado === "porAnular");
     // Factura vigente por ID de Yango y semana (la más reciente manda)
     const facDe = {};
@@ -6907,6 +6907,27 @@ async function yfMarcarEmitida(clave, btn) {
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = "Marcar emitida"; }
     alert(/permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso para registrar facturas (pide rol operador o admin)." : (e.message || String(e)));
+  }
+}
+// «↶ Deshacer emitida» (v114): si se marcó por error, la factura de CONTAX pasa a `anulada` (no se borra; las reglas del Portal
+// no dejan borrar facturas) con `revertida`, quién, cuándo y motivo. CONTROL y el Portal ignoran las anuladas, así que la
+// semana vuelve a «Por emitir» en el Panel, en CONTROL y en «Mis facturas» del repartidor, sin cambiar nada en CONTROL.
+async function yfDeshacerEmitida(clave, btn) {
+  const x0 = (YF.filas || []).find(x => x.id + "|" + x.semana === clave); if (!x0 || !x0.f || x0.f.origen !== "contax" || !x0.f._id) return;
+  const motivo = prompt(`¿Deshacer «Emitida por CONTAX» de ${x0.nombre || "ID " + x0.id} · semana ${String(x0.semana).replace(/G\d+$/, "")} · ${fmtBsY(x0.importe)}?\n\nVolverá a «Por emitir» en el Panel, en CONTROL y en el Portal del repartidor.\n\nEscribe el motivo (por ejemplo: se marcó por error):`, "Se marcó por error");
+  if (motivo === null) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="cx-spin"></span>`; }
+  try {
+    await yfConectar();
+    const quien = String(auth.currentUser.email || ""), fid = x0.f._id;
+    await updateDoc(doc(YF.db, "facturas", fid), { estado: "anulada", revertida: true, revertidaPor: quien, revertidaEn: serverTimestamp(), motivoReversion: String(motivo).trim().slice(0, 200) || "Se marcó por error" });
+    try { await setDoc(doc(collection(db, "bdlog")), { fechaISO: new Date().toISOString(), accion: "factura_yango_revertida", nombre: x0.nombre, detalle: x0.semana + " · Bs " + x0.importe + " · " + (String(motivo).trim() || "Se marcó por error") + " · factura " + fid, porUid: auth.currentUser.uid, porNombre: (ME && ME.name) || quien }); } catch (e) {}
+    YF.emitidas = (YF.emitidas || []).filter(f => f._id !== fid);
+    x0.f = null; x0.tiene = false; x0.estado = x0.cli ? (x0.emi && x0.emi.estado === "noSePudo" ? "noSePudo" : "porEmitir") : "falta";
+    paintFacturacion();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "↶ Deshacer emitida"; }
+    alert(/permission|insufficient/i.test(e.message || "") ? "Tu usuario de CONTROL no tiene permiso para cambiar facturas (pide rol operador o admin)." : (e.message || String(e)));
   }
 }
 // «No se pudo emitir»: motivo + comentario por semana en portal-nummeros/emisionContax ({uid}_{semana}).
@@ -7108,7 +7129,7 @@ function yfTablaGrupos(l, canEd, cred, comentario, fmtF) {
       <td class="mono" style="text-align:right;white-space:nowrap"><b>${fmtBsY(x.importe)}</b></td>
       <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
       <td style="font-size:13px;min-width:140px">${comentario(x)}</td>
-      <td>${!x.f && canEd ? `<div style="display:flex;gap:6px;flex-wrap:nowrap"><button class="btn" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : ""}</td></tr>`;
+      <td>${!x.f && canEd ? `<div style="display:flex;gap:6px;flex-wrap:nowrap"><button class="btn" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfem="${escape(x.id + "|" + x.semana)}">Marcar emitida</button><button class="btn ghost" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfno="${escape(x.id + "|" + x.semana)}">No se pudo ▾</button></div>` : x.f && x.f.origen === "contax" && x.f._id && canEd ? `<button class="btn ghost" style="padding:5px 10px;font-size:12px;white-space:nowrap" data-yfdes="${escape(x.id + "|" + x.semana)}" title="Se marcó por error: vuelve a «Por emitir»">↶ Deshacer emitida</button>` : ""}</td></tr>`;
   };
   const css = `<style>
     .yf-tab{border-collapse:collapse;width:100%}
@@ -7194,6 +7215,7 @@ function paintFacturacion() {
   el("v-facturacion").querySelectorAll("[data-yfres]").forEach(b => b.onclick = () => { FAC_UI.yres = b.dataset.yfres; FAC_UI.yresAb = true; paintFacturacion(); });
   if (el("yf_res")) el("yf_res").ontoggle = e => { FAC_UI.yresAb = e.target.open; };
   el("v-facturacion").querySelectorAll("[data-yfem]").forEach(b => b.onclick = () => yfMarcarEmitida(b.dataset.yfem, b));
+  el("v-facturacion").querySelectorAll("[data-yfdes]").forEach(b => b.onclick = () => yfDeshacerEmitida(b.dataset.yfdes, b));
   el("v-facturacion").querySelectorAll("[data-yfno]").forEach(b => b.onclick = () => yfNoEmitida(b.dataset.yfno));
   el("v-facturacion").querySelectorAll("[data-yfanu]").forEach(b => b.onclick = () => yfYaAnulada(b.dataset.yfanu, b));
   el("v-facturacion").querySelectorAll(".yf-cp").forEach(b => b.onclick = () => { try { navigator.clipboard.writeText(b.dataset.v); b.textContent = "✓"; setTimeout(() => { b.textContent = "📋"; }, 1200); } catch (e) {} });

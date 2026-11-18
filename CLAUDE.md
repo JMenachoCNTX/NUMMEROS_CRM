@@ -37,7 +37,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - **Reglas:** copiar `firestore-rules-COMPLETO.txt` y pegarlo en Firebase → `crm-contax` → Firestore → Reglas → Publicar.
 - **Apps Script:** pegar `PUENTE-RECIBOS.gs`, `PASARELA.gs` y `appsscript.json` en el proyecto de script y crear
   **Implementar → Gestionar implementaciones → Nueva versión** (así la URL `/exec` no cambia). Esa misma URL la usan CONTROL y `pagos-config.js`.
-- **Versiones:** el commit empieza con "vNN: ..." (hoy v113; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
+- **Versiones:** el commit empieza con "vNN: ..." (hoy v114; puente versión 55). Al subir versión se cambia `APP_VERSION` en `app.js` y el
   "vNN" y `?v=NN` en `index.html` (para que el navegador no use la copia vieja). `APP_VERSION` de `config.js` está desactualizado.
 
 ## Cuidados importantes
@@ -115,3 +115,7 @@ CONTAX (estudio contable, Santa Cruz) con la marca NUMMEROS by CONTAX.
 - Muchos clientes pagaban la declaración del mes en curso (ej. noviembre) cuando querían la del mes anterior (octubre), y no salían al filtrar la recepción de octubre. Ahora `perDefault()` (pagos.html) sugiere el **mes anterior** mientras el mes en curso sea «adelantado» (antes del día 25); desde el 25 sugiere el mes en curso, como antes. Solo cambia la página: el puente no se tocó.
 - La lista marca el mes en curso como «⚠ ADELANTADO» y el anterior como «✔ la que se presenta este mes» (`perOpc`), con la ayuda «Se declara el mes que ya terminó» (`perAyudaHtml`). Si eligen el mes en curso, el aviso es amarillo con el botón «Cambiar a …» (`bPerAnt`), y al pagar sale la ventana `confirmarAdelantado` («¿Seguro que es …?»).
 - Los precios no cambiaron: el mes anterior pagado en el mes en curso sigue siendo «recepción tardía» (`pasDeclEnFecha_`).
+
+### v114 · Facturación → Facturas pendientes → «↶ Deshacer emitida»
+- En las filas «Emitida por CONTAX» (factura `origen: 'contax'`) quien edita clientes ve «↶ Deshacer emitida» (`yfDeshacerEmitida`). Pide el motivo y pasa esa factura de `portal-nummeros/facturas` a `estado: 'anulada'` con `revertida: true`, `revertidaPor`, `revertidaEn`, `motivoReversion` (no se borra: las reglas del Portal no dejan borrar facturas). Queda en `bdlog` (`factura_yango_revertida`).
+- CONTROL (`facturaDe`) y el Portal ignoran las anuladas: la semana vuelve a «Por emitir» en los tres sistemas sin cambiar CONTROL. Solo sale en la lista de pendientes (semanas `pendiente`, retenidas o de la hoja), nunca en semanas ya enviadas al banco. En la pestaña «Anuladas» de CONTROL figura con la etiqueta genérica «Anulada por el repartidor».
