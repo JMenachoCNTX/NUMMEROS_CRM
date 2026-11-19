@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "115";
+const APP_VERSION = "116";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -6829,6 +6829,8 @@ async function yfBDYango() {
     return m;
   } catch (e) { console.warn("BDYango:", e); return {}; }
 }
+// Pago sin factura (igual que CONTROL, sinFacturaTxt): vacío, «Pago Retenido» o «Falta factura»
+function yfSinFactura(v) { const t = typeof v === "object" && v ? (v.numero || "") : String(v == null ? "" : v).trim(); return !t || /RETEN|FALTA/i.test(t); }
 async function yfCargar(forzar) {
   if (!forzar && YF.filas && Date.now() - YF.at < 10 * 60e3) return YF.filas;
   if (YF.cargando) return YF.cargando;
@@ -6836,7 +6838,7 @@ async function yfCargar(forzar) {
     bdLoaded = false;   // la BD se relee: un cliente reactivado (pasarela u otra compañera) debe salir como CONTAX sin apretar F5
     await Promise.all([yfConectar(), new Promise(res => bdEnsureLoaded(() => res()))]);
     const [sem, fac, hist, bdy] = await Promise.all([
-      getDocs(query(collection(YF.db, "semanas"), where("estado", "==", "pendiente"))),
+      getDocs(query(collection(YF.db, "semanas"), where("estado", "in", ["pendiente", "en_planilla"]))),   // como CONTROL: también los «Enviado a pagar»
       getDocs(collection(YF.db, "facturas")),
       getDocs(collection(YF.db, "historialPagos")),
       yfBDYango()
@@ -6872,10 +6874,10 @@ async function yfCargar(forzar) {
       filas.push({ id, nombre: nombre || "", celular: cel || "", semana, importe: Number(importe) || 0, tipo, f, cli, contador: cli ? "CONTAX" : "OTRO", estado, emi,
         tiene: estado === "aprobada" || estado === "contax" || estado === "subida", ...(extra || {}) });
     };
-    sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, "pendiente", { rango: x.rango || "", uid: x.uid || yfUid(x.id) }); });
+    sem.docs.forEach(d => { const x = d.data(); agregar(x.id, x.nombre, x.celular, x.semana, x.importe, x.estado === "en_planilla" ? "enviado" : "pendiente", { rango: x.rango || "", uid: x.uid || yfUid(x.id) }); });
     hist.docs.forEach(d => { const x = d.data(); let l = []; try { l = JSON.parse(x.filas || "[]"); } catch (e) {}
       const deHoja = x.origen === "hojaControl";   // semanas que deben factura según la hoja CONTROL, sin pago registrado
-      l.forEach(h => { if (deHoja || /RETENID/.test(yfNorm(h[6]))) agregar(h[2], h[3], "", h[0], h[4], deHoja ? "hoja" : "retenido", { rango: h[1] || "", fechaPago: deHoja ? "" : (x.fecha || ""), uid: yfUid(h[2]) }); }); });
+      l.forEach(h => { if (deHoja || yfSinFactura(h[6])) agregar(h[2], h[3], "", h[0], h[4], deHoja ? "hoja" : "retenido", { rango: h[1] || "", fechaPago: deHoja ? "" : (x.fecha || ""), uid: yfUid(h[2]) }); }); });
     filas.sort((a, b) => yfNorm(a.nombre).localeCompare(yfNorm(b.nombre)) || yfSemN(a.semana) - yfSemN(b.semana));
     YF.filas = filas; YF.at = Date.now(); YF.err = "";
     return filas;
@@ -7125,7 +7127,7 @@ function yfTablaGrupos(l, canEd, cred, comentario, fmtF) {
     const prim = j === 0, rs = G.l.length > 1 ? ` rowspan="${G.l.length}"` : "";
     return `<tr>
       ${prim ? `<td class="mono yf-n"${rs}>${gi + 1}</td><td class="yf-rep"${rs}><b>${escape(G.nombre || "—")}</b>${G.cli ? fichaOjo(bdV(G.cli, "nit")) : ""}${G.l.length > 1 ? ` <span class="yf-cant">${G.l.length} facturas · ${fmtBsY(G.bs)}</span>` : ""}<div style="color:var(--muted);font-size:12px">ID ${escape(G.id)}${x.celular ? " · " + escape(String(x.celular).replace(/^591/, "")) : ""}${G.cli ? " · " + escape(bdV(G.cli, "nombre")) : ""}</div>${acc(G.cli)}</td>` : ""}
-      <td style="white-space:nowrap">${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado con retención</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">De la hoja CONTROL</div>` : ""}</td>
+      <td style="white-space:nowrap">${escape(String(x.semana).replace(/G\d+$/, ""))}${x.tipo === "retenido" ? `<div style="color:var(--muted);font-size:12px">Pagado sin factura</div>` : x.tipo === "enviado" ? `<div style="color:var(--muted);font-size:12px">Enviado a pagar</div>` : x.tipo === "hoja" ? `<div style="color:var(--muted);font-size:12px">Sistema anterior · sin pago registrado</div>` : ""}</td>
       <td class="mono" style="text-align:right;white-space:nowrap"><b>${fmtBsY(x.importe)}</b></td>
       <td>${yfChip(x.estado)}${x.f ? `<div class="mono" style="font-size:12px;margin-top:3px">${x.f.numero ? "N.º " + escape(String(x.f.numero)) + " · " : ""}${fmtF(x.f.fechaEmision)}${x.f.origen === "contax" ? `<br><span style="color:var(--muted)">por ${escape(yfQuien(x.f.registradoPor))}</span>` : ""}</div>` : ""}</td>
       <td style="font-size:13px;min-width:140px">${comentario(x)}</td>
