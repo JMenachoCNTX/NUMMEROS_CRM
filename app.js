@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "114";
+const APP_VERSION = "115";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -174,7 +174,7 @@ function roleOptionsHTML(cur) {
 // ---------- Accesos a otros sistemas (el Panel es la fuente de usuarios) ----------
 // CONTROL (panel del Portal de repartidores) usa estos mismos usuarios. El rol en CONTROL
 // sale de users/{uid}.sistemas.control; si está vacío, se deduce del rol del panel.
-const CTRL_URL = "https://jmenachocntx.github.io/CONTROL-NUMMEROS/";
+const CTRL_URL = "https://nummeroscontrol.contaxbolivia.com/";
 const CTRL_OPC = [["", "Automático"], ["admin", "Administrador"], ["operador", "Operador"], ["lectura", "Solo lectura"], ["ninguno", "Sin acceso"]];
 const CTRL_DEF = { admin: "admin", supervisor: "admin", editor: "operador", cajero: "lectura", lector: "lectura" };
 const CTRL_TXT = { admin: "Administrador", operador: "Operador", lectura: "Solo lectura" };
@@ -202,7 +202,7 @@ const SISTEMAS = [
     ["Pasarela de pagos", "Página donde los clientes pagan con QR (vista previa).", "pagos.html?vista=previa", "M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M7 15h3"]
   ]],
   ["Yango / MTG", [
-    ["CONTROL", "Pagos y facturas de los repartidores (entras con tu mismo usuario).", "https://jmenachocntx.github.io/CONTROL-NUMMEROS/", "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"],
+    ["CONTROL", "Pagos y facturas de los repartidores (entras con tu mismo usuario).", "https://nummeroscontrol.contaxbolivia.com/", "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"],
     ["Portal de repartidores", "Lo que ve cada repartidor: sus pagos, facturas y pólizas.", "https://portalnummeros.contaxbolivia.com/", "M5.5 17a3.5 3.5 0 1 0 0 .01M18.5 17a3.5 3.5 0 1 0 0 .01M5.5 17h6l3-6h-4M15 6h2l3.5 11"]
   ]],
   ["Contenido y webs", [
