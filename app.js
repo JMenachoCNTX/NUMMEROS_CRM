@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "119";
+const APP_VERSION = "120";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -3141,7 +3141,7 @@ function paintRecepcion() {
        <td>${escape(r.tipoPago || "—")}</td>
        <td>${escape(r.atencion || "—")}</td>
        <td style="text-align:center">${(r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") ? '<span class="badge danger">Con deuda</span>' : '<span class="badge ok">Sin deuda</span>'}</td>
-       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Enviar Recibo</button>` : ''}${puedeCorregirRec() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
+       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}" title="Ver detalle" aria-label="Ver detalle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>${puedeCorregirRec() && r.periodoTipo !== "none" ? ` <button class="mini" data-editr="${r.id}" title="Corregir el mes o la gestión" aria-label="Corregir"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>` : ''}${canEdit ? ` <button class="mini" data-recibo="${r.id}">Enviar Recibo</button>` : ''}${puedeCorregirRec() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro" aria-label="Eliminar" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ''}</td></tr>`).join("");
 
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
@@ -3377,6 +3377,7 @@ function paintRecepcion() {
       if (el("r_export")) el("r_export").onclick = recExport;
       el("v-recepcion").querySelectorAll("[data-ver]").forEach(b => b.onclick = () => openRecepDetalle(RECEP.find(x => x.id === b.dataset.ver)));
       el("v-recepcion").querySelectorAll("[data-recibo]").forEach(b => b.onclick = () => enviarReciboDe(RECEP.find(x => x.id === b.dataset.recibo)));
+      el("v-recepcion").querySelectorAll("[data-editr]").forEach(b => b.onclick = () => corregirPeriodoRec(RECEP.find(x => x.id === b.dataset.editr)));
       el("v-recepcion").querySelectorAll("[data-delr]").forEach(b => b.onclick = () => delRecepcion(RECEP.find(x => x.id === b.dataset.delr)));
     }
   });
