@@ -116,6 +116,12 @@ service cloud.firestore {
     }
 
     // Registro de movimientos de clientes (altas, bajas, cambios de estado)
+    // Quién está conectado (burbujas arriba, Panel v117): cada persona escribe solo su propio documento
+    match /presencia/{uid} {
+      allow read: if portalView();
+      allow write: if portalView() && request.auth.uid == uid;
+    }
+
     match /bdlog/{id} {
       allow read: if portalView();
       allow create: if portalEdit() || isAgent();

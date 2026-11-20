@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "116";
+const APP_VERSION = "117";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -314,6 +314,7 @@ function switchView(v, btn) {
   try { const _t = document.getElementById("pgTitle"); if (_t) { const _s = btn && btn.querySelector("span"); _t.textContent = _s ? _s.textContent : (v.charAt(0).toUpperCase() + v.slice(1)); } } catch (e) {}
   document.querySelectorAll('.view').forEach(s =>s.classList.remove('active'));
   el("v-" + v).classList.add("active");
+  try { przPagina(v); } catch (e) { console.warn(e); }
   if (v === "inicio") renderInicio();
   if (v === "clientes") renderClientes();
   if (v === "basedatos") renderBaseDatos();
@@ -8139,3 +8140,87 @@ async function impUndo(lote, n) {
 
 
 function escape(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
+
+/* ══════════ EQUIPO EN VIVO (v117) ══════════
+   Burbujas de quién está conectado (como Google Sheets) y campanita con los cambios de hoy en la Base de
+   Datos (bdlog). Colección «presencia/{uid}» de crm-contax: cada pestaña avisa «sigo aquí» cada 60 s; se ve
+   conectado si avisó hace menos de 2,5 min. Lo que otra persona anota en bdlog sale como aviso abajo. */
+const PRZ = { lista: [], log: [], nuevas: 0, desde: 0, activo: false, sinPermiso: false, vista: "", titulo: "" };
+const PRZ_COL = ["#235347", "#8E5B2E", "#3A5A8C", "#7A3E6B", "#2E7D6B", "#8C3A3A", "#5B6B2E", "#4B4B8C"];
+function przColor(t) { let h = 0; for (const c of String(t || "")) h = (h * 31 + c.charCodeAt(0)) % 9973; return PRZ_COL[h % PRZ_COL.length]; }
+function przIni(n) { const p = String(n || "?").trim().split(/\s+/); return ((p[0] || "?").charAt(0) + (p[1] ? p[1].charAt(0) : "")).toUpperCase(); }
+function przNom(x) { return x.nombre || String(x.correo || "").split("@")[0] || "Alguien"; }
+function przHace(ms) { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? "ahora" : m < 60 ? "hace " + m + " min" : "hace " + Math.round(m / 60) + " h"; }
+function przMs(t) { return t && t.toMillis ? t.toMillis() : 0; }
+function przLatir(salio) {
+  if (!ME || PRZ.sinPermiso) return;
+  setDoc(doc(db, "presencia", ME.uid), { correo: String(ME.email || "").toLowerCase(), nombre: ME.name || "", pagina: PRZ.vista, titulo: PRZ.titulo, visto: serverTimestamp(), salio: !!salio })
+    .catch(e => { if (/permission/i.test(e && (e.code || e.message))) PRZ.sinPermiso = true; else console.warn("Presencia:", e); });
+}
+function przVivos() { return PRZ.lista.filter(x => !x.salio && Date.now() - przMs(x.visto) < 150000); }
+function przToast(t) {
+  const d = document.createElement("div");
+  d.textContent = t; d.setAttribute("role", "status");
+  d.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0B2B26;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:min(560px,calc(100vw - 32px))";
+  document.body.appendChild(d); setTimeout(() => d.remove(), 6000);
+}
+function przBur(x, chico) {
+  return `<span title="${escape(przNom(x) + " · " + (x.titulo || x.pagina || "") + " · " + przHace(przMs(x.visto)))}" style="width:${chico ? 28 : 30}px;height:${chico ? 28 : 30}px;border-radius:50%;display:inline-grid;place-items:center;flex:none;color:#fff;font-weight:700;font-size:12px;background:${przColor(x.correo)};border:2px solid var(--panel);${chico ? "" : "margin-left:-6px;"}${x.pagina === PRZ.vista ? "box-shadow:0 0 0 2px #8EB69B;" : ""}">${escape(przIni(przNom(x)))}</span>`;
+}
+function przPintar() {
+  const box = el("przBox"); if (!box) return;
+  const otros = przVivos().filter(x => x.uid !== ME.uid);
+  box.innerHTML = otros.slice(0, 5).map(x => przBur(x)).join("") + (otros.length > 5 ? `<span style="margin-left:4px;font-size:12px;color:var(--muted)">+${otros.length - 5}</span>` : "");
+  box.style.paddingLeft = otros.length ? "6px" : "0";
+  const b = el("przBell"); if (!b) return;
+  let n = b.querySelector(".prz-n");
+  if (PRZ.nuevas) { if (!n) { n = document.createElement("span"); n.className = "prz-n"; n.style.cssText = "position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#C0392B;color:#fff;font:700 10px/17px sans-serif;text-align:center"; b.appendChild(n); } n.textContent = PRZ.nuevas > 9 ? "9+" : PRZ.nuevas; }
+  else if (n) n.remove();
+}
+function przVer() {
+  PRZ.nuevas = 0; przPintar();
+  const otros = przVivos().filter(x => x.uid !== ME.uid);
+  const fila = (bur, t, s) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)">${bur}<div><div>${t}</div><div style="color:var(--muted);font-size:12px">${s}</div></div></div>`;
+  const w = document.createElement("div");
+  w.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9998;display:flex;justify-content:flex-end";
+  w.innerHTML = `<div style="width:min(440px,100vw);height:100%;overflow:auto;background:var(--panel);padding:20px;box-shadow:-8px 0 24px rgba(0,0,0,.2)">
+    <div style="display:flex;align-items:center;margin-bottom:12px"><h2 style="margin:0;font-size:19px">Equipo en vivo</h2><button class="btn ghost" data-x style="margin-left:auto">Cerrar</button></div>
+    <h3 style="font-size:15px;margin:8px 0">Conectados ahora</h3>
+    ${otros.length ? otros.map(x => fila(przBur(x, true), `<b>${escape(przNom(x))}</b>`, escape((x.titulo || x.pagina || "") + " · " + przHace(przMs(x.visto))))).join("") : `<p style="color:var(--muted)">Solo tú${PRZ.sinPermiso ? " (falta publicar la regla «presencia»)" : ""}.</p>`}
+    <h3 style="font-size:15px;margin:18px 0 8px">Cambios de hoy en la Base de Datos</h3>
+    ${PRZ.log.length ? PRZ.log.map(l => fila(przBur({ correo: l.porUid, nombre: l.porNombre }, true), `<b>${escape(l.porNombre || "—")}</b> · ${escape(l.nombre || "")}`,
+      escape(new Date(l.fechaISO).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit" }) + " · " + [l.accion, l.estadoAnterior && l.estadoNuevo ? l.estadoAnterior + " → " + l.estadoNuevo : "", l.detalle].filter(Boolean).join(" · ")))).join("")
+      : `<p style="color:var(--muted)">Todavía no hay cambios hoy.</p>`}</div>`;
+  w.onclick = ev => { if (ev.target === w || ev.target.closest("[data-x]")) w.remove(); };
+  document.body.appendChild(w);
+}
+function przIniciar() {
+  if (PRZ.activo || !ME) return;
+  PRZ.activo = true; PRZ.desde = Date.now();
+  const sp = document.querySelector(".topbar .sp");
+  if (sp && !el("przBox")) {
+    sp.insertAdjacentHTML("afterend", `<div id="przBox" style="display:flex;align-items:center"></div><button id="przBell" title="Equipo en vivo: quién está conectado y los cambios de hoy" aria-label="Equipo en vivo" style="position:relative;background:none;border:1px solid var(--line);border-radius:10px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;color:inherit"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></button>`);
+    el("przBell").onclick = przVer;
+  }
+  onSnapshot(collection(db, "presencia"), q => { PRZ.lista = q.docs.map(d => ({ uid: d.id, ...d.data() })); przPintar(); },
+    e => { if (/permission/i.test(e && (e.code || e.message))) PRZ.sinPermiso = true; });
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  onSnapshot(query(collection(db, "bdlog"), where("fechaISO", ">=", hoy.toISOString()), orderBy("fechaISO", "desc"), limit(40)), q => {
+    PRZ.log = q.docs.map(d => d.data());
+    q.docChanges().forEach(c => {
+      const l = c.doc.data();
+      if (c.type !== "added" || c.doc.metadata.hasPendingWrites || l.porUid === ME.uid || new Date(l.fechaISO).getTime() < PRZ.desde - 5000) return;
+      PRZ.nuevas++; przToast("🔔 " + (l.porNombre || "Alguien") + ": " + [l.accion, l.nombre, l.estadoNuevo].filter(Boolean).join(" · ").slice(0, 140));
+    });
+    przPintar();
+  }, e => console.warn("bdlog en vivo:", e));
+  przLatir();
+  setInterval(() => { if (!document.hidden) przLatir(); }, 60000);
+  setInterval(przPintar, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) przLatir(); });
+  window.addEventListener("pagehide", () => przLatir(true));
+}
+function przPagina(v) {
+  PRZ.vista = v; PRZ.titulo = (el("pgTitle") && el("pgTitle").textContent) || v;
+  if (!PRZ.activo) przIniciar(); else { przLatir(); przPintar(); }
+}
