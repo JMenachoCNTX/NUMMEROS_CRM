@@ -279,6 +279,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
     raiz.querySelectorAll("[data-tab]").forEach(function (b) { b.onclick = function () { S.tab = b.dataset.tab; pintarApp(); window.scrollTo(0, 0); }; });
     pintarTab();
     if (S.chatAbierto) pintarChat();
+    if (window.AvisoPortal) window.AvisoPortal.mostrar();
   }
   function ir(tab) { S.tab = tab; pintarApp(); window.scrollTo(0, 0); }
   function pintarTab() {
@@ -696,6 +697,7 @@ if(mq&&mq.addEventListener)mq.addEventListener("change",aplicar);aplicar();})();
   } else pintarLogin("", nitGuardado);
 })();
 </script>
+<script src="aviso-portal.js?v=121"></script>
 <script src="premio-imagen.js"></script>
 <script src="version-aviso.js" defer></script>
 </body>

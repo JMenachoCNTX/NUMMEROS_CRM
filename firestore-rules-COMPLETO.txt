@@ -187,6 +187,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ----- Aviso emergente del Portal del Cliente (v121) -----
+    // Lo lee cualquiera: el Portal del Cliente no inicia sesión en Firebase y es solo una imagen de publicidad.
+    // Solo el administrador lo crea, cambia o borra (Panel → Comunicados).
+    match /avisos/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ----- Escanear facturas con el celular (Declaraciones · v112) -----
     // La sesión la crea el Panel; su id es un código secreto de 32 letras que va SOLO en el QR.
     // El celular (sin iniciar sesión) puede leer esa sesión y subir fotos mientras no venza (7 días);

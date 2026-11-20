@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "120";
+const APP_VERSION = "121";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4107,7 +4107,7 @@ const CM_PLANTILLAS = {
 // habilitada para él (como en Recepción y la pasarela); otros rubros = precio de otros rubros.
 const CO = { plantillas: [], plSel: {}, borrador: {}, grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], imgModo: "adjunto", ver: false, fases: null, pagados: null, cargando: false, msg: "" };
 async function renderComunicados() {
-  const v = el("v-comunicados");
+  const v = coCont(); avPintar();
   if (!isAdmin()) { v.innerHTML = `<h1>Comunicados</h1><p class="lead">Solo un administrador o supervisor puede enviar comunicados.</p>`; return; }
   v.innerHTML = `<h1>Comunicados</h1><p class="lead"><span class="cx-spin"></span> Preparando las listas…</p>`;
   if (!CO.per) { const d = new Date(); d.setMonth(d.getMonth() - 1); CO.per = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
@@ -4119,6 +4119,125 @@ async function renderComunicados() {
     CO.pagados = new Set(todos.filter(r => recValida(r) && recCatDe(r) === "eeff" && eeffGestionDe(r) === String(f.gestion)).map(r => fiNit(r.nit)).filter(Boolean));
   } catch (e) { v.innerHTML = `<h1>Comunicados</h1><p class="msg err">No se pudo preparar la lista: ${escape(e.message || String(e))}</p>`; return; }
   paintComunicados();
+}
+// ---------- AVISO EMERGENTE DEL PORTAL DEL CLIENTE (v121) ----------
+// Documento público avisos/portal (lo lee cliente.html con aviso-portal.js; reglas: leer todos, escribir solo admin).
+// Campos: activo, img (JPEG en data URL, < 900 KB), boton, link, desde, hasta (AAAA-MM-DD), version (cambia al subir otra imagen).
+// Si el cliente lo cierra no vuelve a salir en su navegador hasta que haya otra versión.
+function coCont() {
+  const v = el("v-comunicados");
+  if (!el("co_main")) v.innerHTML = `<div id="co_aviso"></div><div id="co_main"></div>`;
+  return el("co_main");
+}
+const AV = { d: null, img: "", cargado: false, msg: "", err: false, guardando: false };
+async function avPintar() {
+  const box = el("co_aviso"); if (!box) return;
+  if (!AV.cargado) {
+    box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px"><span class="cx-spin"></span> Cargando el aviso del Portal…</div>`;
+    try { const d = await getDoc(doc(db, "avisos", "portal")); AV.d = d.exists() ? d.data() : {}; AV.cargado = true; }
+    catch (e) { box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px"><b>🖼 Aviso del Portal del Cliente</b><p class="msg err">No se pudo leer el aviso: ${escape(e.message || String(e))}</p></div>`; return; }
+  }
+  const a = AV.d || {}, puede = isAdminStrict(), img = AV.img || a.img || "", hoy = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+  const vigente = a.activo && a.img && (!a.desde || hoy >= a.desde) && (!a.hasta || hoy <= a.hasta);
+  const estado = !a.img ? "Todavía no hay aviso." : vigente ? "🟢 Se está mostrando a los clientes." : a.activo ? "🟡 Encendido, pero hoy está fuera de las fechas elegidas." : "⚪ Apagado: los clientes no lo ven.";
+  const dis = puede ? "" : "disabled";
+  box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b style="font-size:16px">🖼 Aviso emergente del Portal del Cliente</b><span style="font-size:13px">${estado}</span></div>
+    <p class="note" style="margin:6px 0 12px">Imagen que aparece en una ventana cuando el cliente entra a su Portal. Si la cierra, no vuelve a salirle hasta que subas otra imagen.${puede ? "" : " <b>Solo el administrador puede cambiarlo.</b>"}</p>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:0 0 auto;text-align:center">
+        ${img ? `<img src="${img}" alt="Imagen del aviso" style="display:block;max-height:280px;max-width:180px;border-radius:10px;border:1px solid var(--line)">` : `<div style="width:160px;height:260px;border:2px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;padding:10px">Sin imagen</div>`}
+        ${AV.img ? `<div style="font-size:12px;color:#C77C2E;margin-top:4px">Imagen nueva sin guardar</div>` : ""}
+      </div>
+      <div style="flex:1 1 280px;display:flex;flex-direction:column;gap:10px">
+        <div class="field" style="margin:0"><label>${img ? "Cambiar la imagen" : "Subir la imagen"} (JPG o PNG; vertical se ve mejor en el celular)</label><input id="av_file" type="file" accept="image/*" ${dis}></div>
+        <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input id="av_activo" type="checkbox" ${a.activo ? "checked" : ""} ${dis}> Mostrar el aviso a los clientes</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="field" style="margin:0;flex:1 1 160px"><label>Texto del botón (opcional)</label><input id="av_boton" type="text" maxlength="40" placeholder="Asegura tu cupo hoy" value="${escape(a.boton || "")}" ${dis}></div>
+          <div class="field" style="margin:0;flex:2 1 240px"><label>Enlace del botón (opcional; sin enlace no hay botón)</label><input id="av_link" type="url" placeholder="https://nummerospanel.contaxbolivia.com/pagos.html" value="${escape(a.link || "")}" ${dis}></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="field" style="margin:0"><label>Desde (opcional)</label><input id="av_desde" type="date" value="${escape(a.desde || "")}" ${dis}></div>
+          <div class="field" style="margin:0"><label>Hasta (opcional)</label><input id="av_hasta" type="date" value="${escape(a.hasta || "")}" ${dis}></div>
+        </div>
+        ${puede ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="av_guardar" ${AV.guardando ? "disabled" : ""}>${AV.guardando ? "Guardando…" : "Guardar aviso"}</button>${img ? `<button class="btn ghost" id="av_ver" type="button">👁 Ver cómo se ve</button>` : ""}</div>` : ""}
+        ${a.actualizado ? `<div style="font-size:12px;color:var(--muted)">Última vez: ${escape(new Date(a.actualizado).toLocaleString("es-BO"))}${a.por ? " · " + escape(a.por) : ""}</div>` : ""}
+        ${AV.msg ? `<div class="msg ${AV.err ? "err" : "ok"}">${escape(AV.msg)}</div>` : ""}
+      </div>
+    </div></div>`;
+  if (!puede) return;
+  el("av_file").onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    AV.msg = ""; AV.err = false;
+    try { AV.img = await avAchicar(f); } catch (er) { AV.msg = er.message || String(er); AV.err = true; }
+    avGuardarCampos(); avPintar();
+  };
+  el("av_guardar").onclick = avGuardar;
+  if (el("av_ver")) el("av_ver").onclick = () => avVistaPrevia();
+}
+// Guarda en AV.d lo que se escribió en el formulario (para no perderlo al repintar)
+function avGuardarCampos() {
+  if (!el("av_activo")) return;
+  AV.d = Object.assign({}, AV.d, { activo: el("av_activo").checked, boton: el("av_boton").value.trim(), link: el("av_link").value.trim(), desde: el("av_desde").value, hasta: el("av_hasta").value });
+}
+// Achica la imagen a 1080 px de ancho como máximo y la pasa a JPEG de menos de ~900 KB (cabe en un documento de Firestore)
+function avAchicar(file) {
+  return new Promise((res, rej) => {
+    if (!/^image\//.test(file.type)) return rej(new Error("El archivo no es una imagen."));
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error("No se pudo leer la imagen."));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => rej(new Error("No se pudo abrir la imagen."));
+      im.onload = () => {
+        const k = Math.min(1, 1080 / im.width), c = document.createElement("canvas");
+        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        let q = 0.85, url = c.toDataURL("image/jpeg", q);
+        while (url.length > 900000 && q > 0.4) { q -= 0.08; url = c.toDataURL("image/jpeg", q); }
+        if (url.length > 900000) return rej(new Error("La imagen es muy pesada aun achicada. Prueba con otra más liviana."));
+        res(url);
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+async function avGuardar() {
+  avGuardarCampos();
+  const a = AV.d || {}, img = AV.img || a.img || "";
+  AV.err = true;
+  if (!img) { AV.msg = "Primero sube la imagen."; return avPintar(); }
+  if (a.link && !/^https:\/\//i.test(a.link)) { AV.msg = "El enlace debe empezar con https://"; return avPintar(); }
+  if (a.desde && a.hasta && a.hasta < a.desde) { AV.msg = "La fecha «Hasta» es anterior a «Desde»."; return avPintar(); }
+  const nuevo = {
+    activo: !!a.activo, img, boton: a.boton || "", link: a.link || "", desde: a.desde || "", hasta: a.hasta || "",
+    version: AV.img || !a.version ? String(Date.now()) : String(a.version),
+    actualizado: new Date().toISOString(), por: (ME && ME.email) || ""
+  };
+  AV.guardando = true; AV.msg = ""; avPintar();
+  try {
+    await setDoc(doc(db, "avisos", "portal"), nuevo);
+    AV.d = nuevo; AV.img = ""; AV.err = false;
+    AV.msg = nuevo.activo ? "Guardado. Los clientes lo verán al entrar a su Portal." : "Guardado. El aviso está apagado.";
+  } catch (e) { AV.err = true; AV.msg = "No se pudo guardar: " + (e.message || String(e)); }
+  AV.guardando = false; avPintar();
+}
+// Muestra el aviso como lo verá el cliente (con lo que está en pantalla, aunque no esté guardado)
+function avVistaPrevia() {
+  avGuardarCampos();
+  const a = AV.d || {}, img = AV.img || a.img; if (!img) return;
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;z-index:300;background:rgba(3,10,25,.72);display:flex;align-items:center;justify-content:center;padding:14px";
+  bg.innerHTML = `<div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;max-width:min(460px,100%);max-height:100%">
+    <img src="${img}" alt="" style="display:block;max-width:100%;max-height:calc(100vh - 110px);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.45);background:#fff">
+    <button type="button" data-x style="position:absolute;top:-8px;right:-8px;width:40px;height:40px;border-radius:50%;border:2px solid #fff;background:#0A1A3A;color:#fff;font-size:20px;cursor:pointer">✕</button>
+    ${/^https:\/\//i.test(a.link || "") ? `<span style="display:block;width:100%;text-align:center;background:#0A1A3A;color:#fff;border:2px solid #fff;border-radius:12px;padding:13px 16px;font-weight:700;font-size:17px">${escape(a.boton || "Ver más")}</span>` : ""}
+  </div>`;
+  const cerrar = () => { bg.remove(); document.removeEventListener("keydown", tecla); };
+  const tecla = e => { if (e.key === "Escape") cerrar(); };
+  bg.onclick = e => { if (e.target === bg || e.target.hasAttribute("data-x")) cerrar(); };
+  document.addEventListener("keydown", tecla); document.body.appendChild(bg);
 }
 // Precio del balance para este cliente (0 = todas las fases agotadas)
 function coPrecio(c) {
@@ -4160,7 +4279,7 @@ function coLlenar(t, c) {
     .replace(/\{precio\}/g, c.precio ? String(c.precio) : "").replace(/\{gestion\}/g, CO.fases ? CO.fases.gestion : "");
 }
 function paintComunicados() {
-  const v = el("v-comunicados"), L = coLista(), pl = coBorrador(CO.grupo), F = CO.fases;
+  const v = coCont(), L = coLista(), pl = coBorrador(CO.grupo), F = CO.fases;
   const plGrupo = CO.plantillas.filter(x => x.grupo === CO.grupo), ej = L.con[0] || { nombre: "Juan Pérez", nit: "1234567", precio: 250 };
   const sel = (id, opts, val) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(val) === k ? "selected" : ""}>${escape(t)}</option>`).join("")}</select>`;
   const vars = ["{nombre}", "{cliente}", "{nit}"].concat(CO.grupo === "norec" ? ["{periodo}", "{vence}"] : CO.grupo === "balance" ? ["{precio}", "{gestion}"] : []).concat(CO.imgModo === "dentro" ? ["{imagen}"] : []);
