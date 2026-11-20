@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "121";
+const APP_VERSION = "122";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -4106,19 +4106,93 @@ const CM_PLANTILLAS = {
 // de la gestión que está a la venta. En «balance» cada cliente recibe SU precio ({precio}): repartidores = la fase
 // habilitada para él (como en Recepción y la pasarela); otros rubros = precio de otros rubros.
 const CO = { plantillas: [], plSel: {}, borrador: {}, grupo: "balance", per: "", rubro: "", susc: "", precio: "", ADJ: [], imgModo: "adjunto", ver: false, fases: null, pagados: null, cargando: false, msg: "" };
+// Subpestañas (v122): cada tema por separado para no mezclar opciones
+const CO_TABS = [
+  ["aviso", "🖼 Aviso del Portal", "Imagen que aparece en una ventana cuando el cliente entra a su Portal."],
+  ["balance", "💰 Cobro del balance", "Correo a los clientes activos que todavía no pagaron el balance de la gestión a la venta. Cada uno recibe su propio precio."],
+  ["norec", "📅 Recordatorio de declaración", "Correo a los clientes activos que no recepcionaron su declaración del período que elijas."],
+  ["activos", "📢 Comunicado a todos", "Correo a todos los clientes activos (avisos generales, feriados, cambios, novedades)."],
+  ["plantillas", "🗂 Plantillas guardadas", "Todos los textos guardados, separados por tipo de correo."],
+  ["historial", "🕘 Envíos realizados", "Los correos masivos que ya se enviaron: cuándo, quién, qué asunto y a cuántos clientes."]
+];
+const CO_ES_CORREO = t => t === "balance" || t === "norec" || t === "activos";
 async function renderComunicados() {
-  const v = coCont(); avPintar();
-  if (!isAdmin()) { v.innerHTML = `<h1>Comunicados</h1><p class="lead">Solo un administrador o supervisor puede enviar comunicados.</p>`; return; }
-  v.innerHTML = `<h1>Comunicados</h1><p class="lead"><span class="cx-spin"></span> Preparando las listas…</p>`;
+  if (!CO.tab) CO.tab = "aviso";
+  const v = coCont(); coTabsPintar();
+  const t = CO.tab;
+  el("co_aviso").style.display = t === "aviso" ? "" : "none";
+  v.style.display = t === "aviso" ? "none" : "";
+  if (t === "aviso") { avPintar(); return; }
+  if (!isAdmin()) { v.innerHTML = `<p class="lead">Solo un administrador o supervisor puede enviar correos masivos y ver sus plantillas.</p>`; return; }
+  if (t === "historial") return coHistorial();
+  if (t === "plantillas") return coPlantillasTab();
+  CO.grupo = t;
+  v.innerHTML = `<p class="lead"><span class="cx-spin"></span> Preparando las listas…</p>`;
   if (!CO.per) { const d = new Date(); d.setMonth(d.getMonth() - 1); CO.per = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
   try {
     await Promise.all([new Promise(res => bdEnsureLoaded(() => res())), ltLoad()]);
     const [f, res, todos] = await Promise.all([eeffFasesCfg(), eeffReservasScript().catch(() => ({})), recSync()]);
     CO.fases = Object.assign(f, { recs: eeffRecsPorPrecio(f.gestion), res: res || {} });
-    try { const d = await getDoc(doc(db, "config", "comunicados")); CO.plantillas = (d.exists() && d.data().plantillas) || []; } catch (e) { CO.plantillas = []; }
+    await coCargarPlantillas();
     CO.pagados = new Set(todos.filter(r => recValida(r) && recCatDe(r) === "eeff" && eeffGestionDe(r) === String(f.gestion)).map(r => fiNit(r.nit)).filter(Boolean));
-  } catch (e) { v.innerHTML = `<h1>Comunicados</h1><p class="msg err">No se pudo preparar la lista: ${escape(e.message || String(e))}</p>`; return; }
-  paintComunicados();
+  } catch (e) { v.innerHTML = `<p class="msg err">No se pudo preparar la lista: ${escape(e.message || String(e))}</p>`; return; }
+  if (CO.tab === t) paintComunicados();
+}
+async function coCargarPlantillas() {
+  try { const d = await getDoc(doc(db, "config", "comunicados")); CO.plantillas = (d.exists() && d.data().plantillas) || []; } catch (e) { CO.plantillas = []; }
+}
+function coTabsPintar() {
+  const box = el("co_tabs"); if (!box) return;
+  const info = CO_TABS.find(x => x[0] === CO.tab) || CO_TABS[0];
+  box.innerHTML = `<div class="subtabs" style="margin-bottom:6px">${CO_TABS.map(([k, l]) => `<button class="subtab ${CO.tab === k ? "on" : ""}" data-cotab="${k}" type="button">${l}</button>`).join("")}</div>
+    ${CO.tab === "aviso" ? "" : `<p class="note" style="margin:0 0 12px">${escape(info[2])}${CO_ES_CORREO(CO.tab) ? " Se envía con el Gmail de CONTAX: ajusta los filtros, revisa la lista y mándate una prueba antes de enviar." : ""}</p>`}`;
+  box.querySelectorAll("[data-cotab]").forEach(b => b.onclick = () => {
+    if (CO.tab === b.dataset.cotab) return;
+    if (CO_ES_CORREO(CO.tab) && el("co_asunto")) { const pl = coBorrador(CO.tab); pl.asunto = el("co_asunto").value; pl.texto = el("co_texto").value; }   // no se pierde lo escrito
+    avGuardarCampos();
+    CO.tab = b.dataset.cotab; renderComunicados();
+  });
+}
+const CO_GRUPO_TXT = { balance: "💰 Cobro del balance", norec: "📅 Recordatorio de declaración", activos: "📢 Comunicado a todos" };
+async function coPlantillasTab() {
+  const v = el("co_main");
+  v.innerHTML = `<p class="lead"><span class="cx-spin"></span> Cargando plantillas…</p>`;
+  await coCargarPlantillas();
+  if (CO.tab !== "plantillas") return;
+  const puede = isAdminStrict();
+  v.innerHTML = Object.keys(CO_GRUPO_TXT).map(g => {
+    const l = CO.plantillas.filter(x => x.grupo === g);
+    return `<div class="co-card" style="padding:14px;margin-bottom:12px"><b style="font-size:15px">${CO_GRUPO_TXT[g]}</b> <span class="note">· ${l.length} plantilla(s) guardada(s) + la original del sistema</span>
+      ${l.length ? `<table style="font-size:13px;margin-top:8px"><thead><tr><th>Nombre</th><th>Asunto</th><th>Mensaje</th><th></th></tr></thead><tbody>${l.map(x => `<tr>
+        <td><b>${escape(x.nombre)}</b></td><td>${escape(x.asunto)}</td><td style="color:var(--muted);max-width:420px">${escape(String(x.texto || "").slice(0, 140))}${String(x.texto || "").length > 140 ? "…" : ""}</td>
+        <td style="white-space:nowrap"><button class="mini" type="button" data-plusar="${escape(x.id)}">✉️ Usar</button>${puede ? ` <button class="mini" type="button" data-plborrar="${escape(x.id)}">🗑 Borrar</button>` : ""}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="note" style="margin:8px 0 0">Todavía no hay plantillas guardadas de este tipo. Se crean desde su pestaña con «💾 Guardar como plantilla».</p>`}</div>`;
+  }).join("") + (puede ? "" : `<p class="note">Solo el administrador puede crear, cambiar o borrar plantillas.</p>`) + `<div class="msg" id="copl_msg"></div>`;
+  v.querySelectorAll("[data-plusar]").forEach(b => b.onclick = () => {
+    const p = CO.plantillas.find(x => x.id === b.dataset.plusar); if (!p) return;
+    CO.plSel[p.grupo] = p.id; CO.borrador[p.grupo] = coBase(p.grupo); CO.tab = p.grupo; renderComunicados();
+  });
+  v.querySelectorAll("[data-plborrar]").forEach(b => b.onclick = async () => {
+    const i = CO.plantillas.findIndex(x => x.id === b.dataset.plborrar); if (i < 0 || !confirm("¿Borrar la plantilla «" + CO.plantillas[i].nombre + "»?")) return;
+    const quitada = CO.plantillas.splice(i, 1)[0];
+    try { await coGuardarPlantillas(); if (CO.plSel[quitada.grupo] === quitada.id) { CO.plSel[quitada.grupo] = ""; CO.borrador[quitada.grupo] = null; } coPlantillasTab(); }
+    catch (e) { CO.plantillas.splice(i, 0, quitada); el("copl_msg").className = "msg err"; el("copl_msg").textContent = "No se pudo borrar: " + (e.message || ""); }
+  });
+}
+// Envíos realizados: el puente deja un registro en bdlog («correo_masivo») por cada tanda de hasta 40 correos.
+async function coHistorial() {
+  const v = el("co_main");
+  v.innerHTML = `<p class="lead"><span class="cx-spin"></span> Cargando envíos…</p>`;
+  let l = [];
+  try { l = (await getDocs(query(collection(db, "bdlog"), where("accion", "==", "correo_masivo"), limit(300)))).docs.map(d => d.data()); }
+  catch (e) { v.innerHTML = `<p class="msg err">No se pudo leer el historial: ${escape(e.message || String(e))}</p>`; return; }
+  if (CO.tab !== "historial") return;
+  l.sort((a, b) => String(b.fechaISO || "").localeCompare(String(a.fechaISO || "")));
+  const tipo = g => { g = String(g || ""); return /^balance/.test(g) ? "💰 Balance" : /^norec/.test(g) ? "📅 Declaración " + g.replace(/^norec_?/, "") : /^activos/.test(g) ? "📢 Todos" : /^baja/.test(g) ? "⛔ Baja" : g || "—"; };
+  v.innerHTML = l.length ? `<div style="overflow:auto"><table style="font-size:13px"><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Por</th></tr></thead><tbody>${l.map(x => `<tr>
+      <td style="white-space:nowrap">${escape(x.fechaISO ? new Date(x.fechaISO).toLocaleString("es-BO", { dateStyle: "short", timeStyle: "short" }) : "")}</td>
+      <td style="white-space:nowrap">${escape(tipo(x.nombre))}</td><td>${escape(x.detalle || "")}</td><td>${escape(x.porNombre || "")}</td></tr>`).join("")}</tbody></table></div>
+    <p class="note">Cada fila es una tanda (el Gmail manda de a 40). Las pruebas no se guardan aquí.</p>` : `<p class="note">Todavía no hay envíos registrados.</p>`;
 }
 // ---------- AVISO EMERGENTE DEL PORTAL DEL CLIENTE (v121) ----------
 // Documento público avisos/portal (lo lee cliente.html con aviso-portal.js; reglas: leer todos, escribir solo admin).
@@ -4126,22 +4200,22 @@ async function renderComunicados() {
 // Si el cliente lo cierra no vuelve a salir en su navegador hasta que haya otra versión.
 function coCont() {
   const v = el("v-comunicados");
-  if (!el("co_main")) v.innerHTML = `<div id="co_aviso"></div><div id="co_main"></div>`;
+  if (!el("co_main")) v.innerHTML = `<h1>Comunicados</h1><div id="co_tabs"></div><div id="co_aviso"></div><div id="co_main"></div>`;
   return el("co_main");
 }
 const AV = { d: null, img: "", cargado: false, msg: "", err: false, guardando: false };
 async function avPintar() {
   const box = el("co_aviso"); if (!box) return;
   if (!AV.cargado) {
-    box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px"><span class="cx-spin"></span> Cargando el aviso del Portal…</div>`;
+    box.innerHTML = `<div class="co-card" style="padding:14px;margin-bottom:12px"><span class="cx-spin"></span> Cargando el aviso del Portal…</div>`;
     try { const d = await getDoc(doc(db, "avisos", "portal")); AV.d = d.exists() ? d.data() : {}; AV.cargado = true; }
-    catch (e) { box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px"><b>🖼 Aviso del Portal del Cliente</b><p class="msg err">No se pudo leer el aviso: ${escape(e.message || String(e))}</p></div>`; return; }
+    catch (e) { box.innerHTML = `<div class="co-card" style="padding:14px;margin-bottom:12px"><b>🖼 Aviso del Portal del Cliente</b><p class="msg err">No se pudo leer el aviso: ${escape(e.message || String(e))}</p></div>`; return; }
   }
   const a = AV.d || {}, puede = isAdminStrict(), img = AV.img || a.img || "", hoy = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
   const vigente = a.activo && a.img && (!a.desde || hoy >= a.desde) && (!a.hasta || hoy <= a.hasta);
   const estado = !a.img ? "Todavía no hay aviso." : vigente ? "🟢 Se está mostrando a los clientes." : a.activo ? "🟡 Encendido, pero hoy está fuera de las fechas elegidas." : "⚪ Apagado: los clientes no lo ven.";
   const dis = puede ? "" : "disabled";
-  box.innerHTML = `<div class="card" style="padding:14px;margin-bottom:12px">
+  box.innerHTML = `<div class="co-card" style="padding:14px;margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><b style="font-size:16px">🖼 Aviso emergente del Portal del Cliente</b><span style="font-size:13px">${estado}</span></div>
     <p class="note" style="margin:6px 0 12px">Imagen que aparece en una ventana cuando el cliente entra a su Portal. Si la cierra, no vuelve a salirle hasta que subas otra imagen.${puede ? "" : " <b>Solo el administrador puede cambiarlo.</b>"}</p>
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
@@ -4283,11 +4357,8 @@ function paintComunicados() {
   const plGrupo = CO.plantillas.filter(x => x.grupo === CO.grupo), ej = L.con[0] || { nombre: "Juan Pérez", nit: "1234567", precio: 250 };
   const sel = (id, opts, val) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(val) === k ? "selected" : ""}>${escape(t)}</option>`).join("")}</select>`;
   const vars = ["{nombre}", "{cliente}", "{nit}"].concat(CO.grupo === "norec" ? ["{periodo}", "{vence}"] : CO.grupo === "balance" ? ["{precio}", "{gestion}"] : []).concat(CO.imgModo === "dentro" ? ["{imagen}"] : []);
-  v.innerHTML = `<h1>Comunicados</h1>
-    <p class="note" style="margin:0 0 12px">Correos a clientes activos, enviados con el Gmail de CONTAX. Elige el grupo, ajusta los filtros, revisa la lista y mándate una prueba antes de enviar.</p>
-    <div class="card" style="padding:14px;margin-bottom:12px">
+  v.innerHTML = `<div class="co-card" style="padding:14px;margin-bottom:12px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div class="field" style="margin:0"><label>Grupo</label>${sel("co_grupo", [["balance", "No pagaron el balance"], ["norec", "No recepcionaron su declaración"], ["activos", "Todos los activos"]], CO.grupo)}</div>
         ${CO.grupo === "norec" ? `<div class="field" style="margin:0"><label>Período a declarar</label><input id="co_per" type="month" value="${CO.per}"></div>` : ""}
         <div class="field" style="margin:0"><label>Rubro</label>${sel("co_rubro", [["", "Todos"], ["rep", "Repartidores"], ["otros", "Otros rubros"]], CO.rubro)}</div>
         <div class="field" style="margin:0"><label>Tipo de suscriptor</label>${sel("co_susc", [["", "Todos"], [SUSC_DECL, "De declaración"], [SUSC_FACT, "De facturación"]], CO.susc)}</div>
