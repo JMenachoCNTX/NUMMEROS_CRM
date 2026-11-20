@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "117";
+const APP_VERSION = "118";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -8151,6 +8151,7 @@ function przColor(t) { let h = 0; for (const c of String(t || "")) h = (h * 31 +
 function przIni(n) { const p = String(n || "?").trim().split(/\s+/); return ((p[0] || "?").charAt(0) + (p[1] ? p[1].charAt(0) : "")).toUpperCase(); }
 function przNom(x) { return x.nombre || String(x.correo || "").split("@")[0] || "Alguien"; }
 function przHace(ms) { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? "ahora" : m < 60 ? "hace " + m + " min" : "hace " + Math.round(m / 60) + " h"; }
+function przAcc(a) { const t = String(a || "").replace(/_/g, " ").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ""; }
 function przMs(t) { return t && t.toMillis ? t.toMillis() : 0; }
 function przLatir(salio) {
   if (!ME || PRZ.sinPermiso) return;
@@ -8189,7 +8190,7 @@ function przVer() {
     ${otros.length ? otros.map(x => fila(przBur(x, true), `<b>${escape(przNom(x))}</b>`, escape((x.titulo || x.pagina || "") + " · " + przHace(przMs(x.visto))))).join("") : `<p style="color:var(--muted)">Solo tú${PRZ.sinPermiso ? " (falta publicar la regla «presencia»)" : ""}.</p>`}
     <h3 style="font-size:15px;margin:18px 0 8px">Cambios de hoy en la Base de Datos</h3>
     ${PRZ.log.length ? PRZ.log.map(l => fila(przBur({ correo: l.porUid, nombre: l.porNombre }, true), `<b>${escape(l.porNombre || "—")}</b> · ${escape(l.nombre || "")}`,
-      escape(new Date(l.fechaISO).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit" }) + " · " + [l.accion, l.estadoAnterior && l.estadoNuevo ? l.estadoAnterior + " → " + l.estadoNuevo : "", l.detalle].filter(Boolean).join(" · ")))).join("")
+      escape(new Date(l.fechaISO).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit" }) + " · " + [przAcc(l.accion), l.estadoAnterior && l.estadoNuevo ? l.estadoAnterior + " → " + l.estadoNuevo : "", l.detalle].filter(Boolean).join(" · ")))).join("")
       : `<p style="color:var(--muted)">Todavía no hay cambios hoy.</p>`}</div>`;
   w.onclick = ev => { if (ev.target === w || ev.target.closest("[data-x]")) w.remove(); };
   document.body.appendChild(w);
@@ -8210,7 +8211,7 @@ function przIniciar() {
     q.docChanges().forEach(c => {
       const l = c.doc.data();
       if (c.type !== "added" || c.doc.metadata.hasPendingWrites || l.porUid === ME.uid || new Date(l.fechaISO).getTime() < PRZ.desde - 5000) return;
-      PRZ.nuevas++; przToast("🔔 " + (l.porNombre || "Alguien") + ": " + [l.accion, l.nombre, l.estadoNuevo].filter(Boolean).join(" · ").slice(0, 140));
+      PRZ.nuevas++; przToast("🔔 " + (l.porNombre || "Alguien") + ": " + [przAcc(l.accion), l.nombre, l.estadoNuevo].filter(Boolean).join(" · ").slice(0, 140));
     });
     przPintar();
   }, e => console.warn("bdlog en vivo:", e));
