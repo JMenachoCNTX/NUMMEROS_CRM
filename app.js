@@ -3,7 +3,7 @@
 //  VERSIÓN 1  ·  2026-09-07
 //  Presencia · Reportes · Clientes · Base de Datos (Google Sheets) · IA
 // ============================================================
-const APP_VERSION = "118";
+const APP_VERSION = "119";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, serverTimestamp, increment, FieldPath, query, where, orderBy, limit, startAfter, documentId, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -164,6 +164,9 @@ function roleViewsFor(role) {
 }
 function canSeeView(v) { if (!ME) return false; if (v === "comunicados") return isAdmin(); if (ME.role === "admin" || v === "sistemas") return true; return roleViewsFor(ME.role).indexOf(v) >= 0; }
 function isAdmin() { return !!(ME && (ME.role === "admin" || ME.role === "supervisor")); }
+// Corregir el período o eliminar recepciones: admin/supervisor, o quien el admin habilitó en Usuarios (v119)
+let RECEP_PERM = {};
+function puedeCorregirRec() { return isAdmin() || !!(ME && RECEP_PERM[ME.uid]); }
 function isAdminStrict() { return !!(ME && ME.role === "admin"); }
 function canEditClientes() { return !!(ME && ["admin", "supervisor", "editor", "cajero"].indexOf(ME.role) >= 0); }
 function roleOptionsHTML(cur) {
@@ -268,7 +271,7 @@ onAuthStateChanged(auth, async (user) => {
   }
   ME = { uid: user.uid, ...snap.data() };
   // Cargar permisos por rol configurados (si existen)
-  try { const c = await loadConfigDoc(); ROLE_VIEWS = c.rolePerms || null; } catch (e) { ROLE_VIEWS = null; }
+  try { const c = await loadConfigDoc(); ROLE_VIEWS = c.rolePerms || null; RECEP_PERM = c.recepCorregir || {}; } catch (e) { ROLE_VIEWS = null; }
   // 2) Perfil sin acceso al portal: rol de agente / rol desconocido / inactivo
   if (ME.active !== true || PORTAL_ROLES.indexOf(ME.role) < 0) {
     el("app").classList.add("hidden"); el("agentOnly").classList.remove("hidden");
@@ -684,8 +687,10 @@ async function renderUsers() {
          </div>`
       : `<span style="color:var(--muted)">—</span>`;
     return `<tr>
-    <td>${escape(u.name || "—")}<div style="color:var(--muted);font-size:12px">${escape(u.email || "")}</div></td>
-    <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select></td>
+    <td>${escape(u.name || "—")}${isAdmin ? ` <button class="mini u-nom" data-uid="${u.uid}" data-nombre="${escape(u.name || "")}" title="Cambiar el nombre">✎</button>` : ""}<div style="color:var(--muted);font-size:12px">${escape(u.email || "")}</div></td>
+    <td><select class="mini role-sel" data-uid="${u.uid}" ${u.uid === ME.uid ? "disabled" : ""}>${roleOptionsHTML(u.role)}</select>
+      ${u.role === "admin" || u.role === "supervisor" ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">Corrige y elimina recepciones (por su rol)</div>`
+        : isAdmin ? `<label style="display:flex;gap:5px;align-items:center;font-size:11px;margin-top:4px;cursor:pointer"><input type="checkbox" class="u-recp" data-uid="${u.uid}" ${RECEP_PERM[u.uid] ? "checked" : ""}> Corregir y eliminar recepciones</label>` : ""}</td>
     <td>${pinCell}</td>
     <td>${isAdmin ? `<select class="mini ctrl-sel" data-uid="${u.uid}" title="Acceso al panel CONTROL (Portal de repartidores)">${CTRL_OPC.map(o => `<option value="${o[0]}" ${((u.sistemas && u.sistemas.control) || "") === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select>` : ""}
       <div style="font-size:11px;color:var(--muted);margin-top:4px">${ctrlRolDe(u) ? "Entra como " + CTRL_TXT[ctrlRolDe(u)] : "Sin acceso"}</div></td>
@@ -731,6 +736,22 @@ async function renderUsers() {
       msg.textContent = e.code === "auth/email-already-in-use" ? "Ese correo ya está registrado." : ("Error: " + (e.code || e.message));
     } finally { el("u_create").disabled = false; }
   };
+  document.querySelectorAll(".u-nom").forEach(b => b.onclick = async () => {
+    const n = prompt("Nuevo nombre del usuario:", b.dataset.nombre || ""); if (n == null) return;
+    const nombre = n.replace(/\s+/g, " ").trim(); if (!nombre || nombre === b.dataset.nombre) return;
+    try {
+      await updateDoc(doc(db, "users", b.dataset.uid), { name: nombre });
+      if (b.dataset.uid === ME.uid) { ME.name = nombre; el("who").textContent = `${ME.name} · ${ROLE_LABELS[ME.role] || ME.role}`; }
+      try { await ctrlSync(b.dataset.uid); } catch (e) {}
+      renderUsers();
+    } catch (e) { alert("No se pudo cambiar el nombre: " + (e.code || e.message)); }
+  });
+  document.querySelectorAll(".u-recp").forEach(c => c.onchange = async () => {
+    c.disabled = true;
+    try { await setDoc(doc(db, "config", "app"), { recepCorregir: { [c.dataset.uid]: c.checked } }, { merge: true }); RECEP_PERM[c.dataset.uid] = c.checked; }
+    catch (e) { c.checked = !c.checked; alert("No se pudo guardar el permiso: " + (e.code || e.message)); }
+    c.disabled = false;
+  });
   document.querySelectorAll(".role-sel").forEach(s =>s.onchange = async () => { await updateDoc(doc(db, "users", s.dataset.uid), { role: s.value }); await ctrlSync(s.dataset.uid); renderUsers(); });
   document.querySelectorAll("[data-toggle]").forEach(b =>b.onclick = async () => { await updateDoc(doc(db, "users", b.dataset.toggle), { active: b.dataset.s !== "true" }); await ctrlSync(b.dataset.toggle); renderUsers(); });
   document.querySelectorAll(".ctrl-sel").forEach(s => s.onchange = async () => { s.disabled = true; await updateDoc(doc(db, "users", s.dataset.uid), { "sistemas.control": s.value }); await ctrlSync(s.dataset.uid); renderUsers(); });
@@ -3120,7 +3141,7 @@ function paintRecepcion() {
        <td>${escape(r.tipoPago || "—")}</td>
        <td>${escape(r.atencion || "—")}</td>
        <td style="text-align:center">${(r.tipoPago === "DEUDOR" || r.estadoDeuda === "con_deuda") ? '<span class="badge danger">Con deuda</span>' : '<span class="badge ok">Sin deuda</span>'}</td>
-       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Enviar Recibo</button>` : ''}${isAdmin() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro (solo administrador)" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
+       <td style="text-align:right;white-space:nowrap"><button class="mini" data-ver="${r.id}">Ver</button>${canEdit ? ` <button class="mini" data-recibo="${r.id}">Enviar Recibo</button>` : ''}${puedeCorregirRec() ? ` <button class="mini" data-delr="${r.id}" title="Eliminar este registro" style="color:#B42318;border-color:#F3B8B2"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Eliminar</button>` : ''}</td></tr>`).join("");
 
     const g2 = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
     const formHTML = !canEdit ? '<div class="note">Tu rol puede ver la recepción pero no registrar.</div>' : `
@@ -3603,14 +3624,58 @@ function openRecepDetalle(r) {
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn sec" id="rd_close" style="border:1px solid var(--line)">Cerrar</button>
       <button class="btn sec" id="rd_ver" style="border:1px solid var(--line)">👁 Ver comprobante</button>
+      ${puedeCorregirRec() && r.periodoTipo !== "none" ? '<button class="btn sec" id="rd_per" style="border:1px solid var(--line)">✎ Corregir período</button>' : ''}
       ${canEditClientes() ? '<button class="btn" id="rd_recibo">Reenviar recibo</button>' : ''}
-    </div></div>`;
+    </div>
+    ${r.periodoAntes ? `<div class="note" style="margin-top:8px">Período corregido por ${escape(r.periodoPor || "—")} el ${escape(r.periodoAt ? new Date(r.periodoAt).toLocaleString("es-BO") : "—")} (antes: ${escape(r.periodoAntes)}).</div>` : ""}
+    </div>`;
   document.body.appendChild(bg);
   const close = () => bg.remove();
   bg.onclick = e => { if (e.target === bg) close(); };
   bg.querySelector("#rd_x").onclick = close; bg.querySelector("#rd_close").onclick = close;
   bg.querySelector("#rd_ver").onclick = () => verComprobante(r);
   const rb = bg.querySelector("#rd_recibo"); if (rb) rb.onclick = () => { enviarReciboDe(r); close(); };
+  const rp = bg.querySelector("#rd_per"); if (rp) rp.onclick = () => { close(); corregirPeriodoRec(r); };
+}
+// Corrige el mes (o la gestión) de una recepción mal elegida en la pasarela: la recepción pasa a la lista correcta
+// (declaraciones, trámites, balances o facturación) sin eliminarla ni volver a recepcionar. Queda anotado quién y cuándo.
+function corregirPeriodoRec(r) {
+  if (!r || !puedeCorregirRec()) return;
+  const gestion = r.periodoTipo === "gestion" || (!r.periodoMes && /GESTION/i.test(recNormTxt(r.mesRecepcion)));
+  const k = gestion ? "" : recPeriodoKey(r), [ky, km] = k ? k.split("-").map(Number) : [0, 0];
+  const anio = gestion ? (recGestionEEFF(r) || new Date().getFullYear()) : (ky || new Date().getFullYear());
+  const bg = document.createElement("div");
+  bg.style = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:101;display:flex;align-items:center;justify-content:center;padding:20px";
+  bg.innerHTML = `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:460px;max-width:96vw">
+    <h3 style="margin:0 0 6px">Corregir período · Recepción N° ${escape(String(r.nroRecepcion || "—"))}</h3>
+    <p class="note" style="margin:0 0 12px">${escape(r.clienteNombre || "")} · ${escape(r.servicio || r.servicioNombre || "")}${r.detalleServicio ? " · " + escape(r.detalleServicio) : ""}<br>Ahora dice: <b>${escape(r.mesRecepcion || "—")}</b></p>
+    <label>${gestion ? "Gestión" : "Mes y año correctos"}</label>
+    <div style="display:flex;gap:6px">${gestion ? "" : `<select id="cp_mes" style="flex:1">${recMesOptions(km ? km - 1 : new Date().getMonth())}</select>`}<select id="cp_anio" style="width:${gestion ? "100%" : "90px"}">${recAnioOptions(Number(anio))}</select></div>
+    <label style="margin-top:10px">Motivo (opcional)</label><input id="cp_mot" placeholder="Ej. eligió un mes que no le toca declarar">
+    <div class="msg" id="cp_msg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn sec" id="cp_x" style="border:1px solid var(--line)">Cancelar</button><button class="btn" id="cp_ok">Guardar corrección</button></div></div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.onclick = e => { if (e.target === bg) close(); };
+  bg.querySelector("#cp_x").onclick = close;
+  bg.querySelector("#cp_ok").onclick = async () => {
+    const a = bg.querySelector("#cp_anio").value, mi = gestion ? NaN : parseInt(bg.querySelector("#cp_mes").value, 10);
+    const texto = gestion ? "Gestión " + a : (REC_MESES_CAP[mi] + " " + a);
+    if (texto === r.mesRecepcion) { close(); return; }
+    const quien = (ME && (ME.name || ME.email)) || "";
+    const datos = { mesRecepcion: texto, periodoTipo: gestion ? "gestion" : "mes", periodoMes: gestion ? "" : mi + 1, periodoAnio: a, anio: a,
+      periodoAntes: r.mesRecepcion || "—", periodoPor: quien, periodoAt: Date.now(), periodoMotivo: bg.querySelector("#cp_mot").value.trim().slice(0, 200), _upd: Date.now() };
+    const b = bg.querySelector("#cp_ok"); b.disabled = true; b.textContent = "Guardando…";
+    try {
+      const eeff = recValida(r) && recCatDe(r) === "eeff";
+      if (eeff) eeffContar(r, -1);   // la fase de balances de la gestión anterior libera su cupo
+      await setDoc(doc(db, "recepciones", r.id), datos, { merge: true });
+      rcPoner(r.id, datos); Object.assign(r, datos);
+      if (eeff) eeffContar(r, 1);
+      bdLog({ accion: "corrigio_periodo", nombre: r.clienteNombre || "", estadoAnterior: datos.periodoAntes, estadoNuevo: texto, detalle: "Recepción N° " + (r.nroRecepcion || "") + (datos.periodoMotivo ? " · " + datos.periodoMotivo : "") });
+      LT_DATA = null; close(); await recepLoad(); paintRecepcion();
+    } catch (e) { b.disabled = false; b.textContent = "Guardar corrección"; const m = bg.querySelector("#cp_msg"); m.className = "msg err"; m.textContent = "No se pudo guardar: " + (e.code || e.message); }
+  };
 }
 function recExport() {
   const H = ["Fecha", "Hora", "N Recepcion", "N Comprobante", "Cliente", "NIT", "ID", "Rubro", "Servicio", "Detalle", "Mes recepcion", "Año", "Mes pago", "Fecha pago", "Total", "Forma pago", "Atencion", "Comentarios", "Banco", "N operacion", "Depositante", "Estado deuda", "Correo", "Celular", "Registrado por"];
@@ -3627,7 +3692,7 @@ async function enviarReciboDe(rec) {
 }
 async function delRecepcion(rec) {
   if (!rec) return;
-  if (!isAdmin()) { alert("Solo el administrador puede eliminar registros."); return; }
+  if (!puedeCorregirRec()) { alert("No tienes permiso para eliminar recepciones. Pídeselo al administrador (Usuarios)."); return; }
   const det = [rec.servicio || rec.servicioNombre, rec.detalleServicio, rec.mesRecepcion].filter(Boolean).join(" · ");
   if (!confirm(`¿Estás seguro de eliminar este registro?\n\nRecepción N° ${rec.nroRecepcion || "—"}\nCliente: ${rec.clienteNombre || "—"}\n${det}\nImporte: ${money(rec.importe)}\n\nDesaparecerá de todas las listas (declaraciones, balances, facturación, trámites, reportes y dashboard) en todas las computadoras. No se puede deshacer.`)) return;
   const quien = (ME && (ME.name || ME.email)) || "";
